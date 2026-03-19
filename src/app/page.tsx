@@ -168,11 +168,31 @@ export default function Home() {
         .map(part => part.text)
         .join('')
 
-      if (currentChatId && textContent.trim()) {
-        const result = await saveMessage(currentChatId, 'assistant', textContent)
+      if (currentChatId && (textContent.trim() || message.parts.some(p => p.type === 'file'))) {
+        const result = await saveMessage(currentChatId, 'assistant', textContent || '(image)')
+
+        // Save AI-generated images (file parts) to messageAttachments
+        if (result?.[0]?.id) {
+          const fileParts = message.parts.filter(
+            (p): p is { type: 'file'; mediaType: string; url: string } =>
+              p.type === 'file' && typeof (p as Record<string, unknown>).mediaType === 'string'
+          )
+          if (fileParts.length > 0) {
+            saveMessageAttachments(
+              result[0].id,
+              currentChatId,
+              fileParts.map((p, i) => ({
+                filename: `generated-image-${i + 1}.png`,
+                mediaType: p.mediaType,
+                dataUrl: p.url,
+                fileSize: p.url.length,
+              }))
+            ).catch(() => {}) // Best-effort
+          }
+        }
 
         // Async embed the assistant message (best-effort)
-        if (result?.[0]?.id) {
+        if (result?.[0]?.id && textContent.trim()) {
           fetch('/api/embed', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
