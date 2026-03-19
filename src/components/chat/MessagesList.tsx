@@ -1,6 +1,6 @@
 "use client"
 
-import { memo } from "react"
+import { memo, useState, useCallback } from "react"
 import { Folder, MessageSquare, ExternalLink, Globe, Paperclip } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
@@ -153,6 +153,10 @@ export const MessagesList = memo(function MessagesList({
   selectedModel,
   onDeleteMessage,
 }: MessagesListProps) {
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
+  const onImageClick = useCallback((url: string) => setLightboxUrl(url), [])
+  const closeLightbox = useCallback(() => setLightboxUrl(null), [])
+
   if (!activeChatId) {
     return (
       <div className="h-full flex flex-col items-center justify-center text-muted-foreground px-4 animate-in fade-in duration-500">
@@ -230,22 +234,30 @@ export const MessagesList = memo(function MessagesList({
                 )}>
                   {(() => {
                     const images = getMessageImages(m)
+                    const isGenerated = m.role === 'assistant'
                     return images.length > 0 ? (
-                      <div className="flex flex-wrap gap-2 mb-2">
+                      <div className="flex flex-wrap gap-3 mb-2">
                         {images.map((img, idx) => (
-                          <a
+                          <button
                             key={idx}
-                            href={img.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="block rounded-lg overflow-hidden border border-white/10 hover:border-white/20 transition-colors"
+                            type="button"
+                            onClick={() => onImageClick?.(img.url)}
+                            className={cn(
+                              "block rounded-lg overflow-hidden border border-white/10 hover:border-white/20 transition-colors cursor-zoom-in",
+                              isGenerated && "shadow-lg"
+                            )}
                           >
                             <img
                               src={img.url}
-                              alt={m.role === 'user' ? "Attached image" : "Generated image"}
-                              className="max-w-[300px] max-h-[300px] object-contain"
+                              alt={isGenerated ? "Generated image" : "Attached image"}
+                              className={cn(
+                                "object-contain",
+                                isGenerated
+                                  ? "max-w-lg max-h-128"
+                                  : "max-w-75 max-h-75"
+                              )}
                             />
-                          </a>
+                          </button>
                         ))}
                       </div>
                     ) : null
@@ -322,6 +334,30 @@ export const MessagesList = memo(function MessagesList({
           )}
         </AnimatePresence>
       </div>
+
+      {/* Image Lightbox */}
+      <AnimatePresence>
+        {lightboxUrl && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm cursor-zoom-out"
+            onClick={closeLightbox}
+            onKeyDown={(e) => e.key === 'Escape' && closeLightbox()}
+            role="dialog"
+            aria-label="Image preview"
+            tabIndex={0}
+          >
+            <img
+              src={lightboxUrl}
+              alt="Full size preview"
+              className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </Tooltip.Provider>
   )
 })
