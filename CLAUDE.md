@@ -63,7 +63,7 @@ Atelier AI is a Next.js 16 App Router chat application with hybrid AI backend (G
 1. **Client** (`src/app/page.tsx`) — Single-page chat UI using `useChat` from `@ai-sdk/react`. All application state lives here. Three view states: **active chat**, **project landing page** (two-column: chats + documents), **empty state** (branding with always-visible input toolbar). Sending a message with no active chat auto-creates a standalone quick chat.
 2. **Server Actions** (`src/app/actions.ts`) — "use server" functions for all DB reads/writes (CRUD for projects, chats, messages, settings, chat previews).
 3. **API Routes**:
-   - `POST /api/chat` — Streams LLM responses. Routes to provider based on model name prefix (`gemini` → Google, `qwen` → DashScope, else → Ollama). Applies five-layer context (see below). Gemini models have Google Search grounding enabled automatically.
+   - `POST /api/chat` — Streams LLM responses. Routes to provider based on model name prefix (`gemini` → Google, `qwen` → DashScope, else → Ollama). Applies five-layer context (see below). Gemini text models have Google Search grounding enabled automatically. Image models (`*image*`) get `responseModalities: ['TEXT', 'IMAGE']` instead of grounding. Deep Think (`*deep-think*`) routes to `gemini-3.1-pro-preview` with `thinkingConfig: { thinkingLevel: 'high' }`.
    - `GET /api/models` — Lists available models from all providers. Skips Ollama in cloud environments (`isCloudEnvironment()`). Caches 5 minutes.
    - `POST /api/summarize` — Compresses older messages. Auto-triggers at 30+ messages, keeps last 10 in full.
    - `POST /api/embed` — Async 768-dim embedding generation via Ollama `nomic-embed-text` or Gemini `text-embedding-004` (cloud fallback). Best-effort after each exchange.
@@ -109,11 +109,13 @@ Tailwind CSS v4 with glassmorphism design system. Glass panels: `bg-background/6
 
 ### Provider Routing
 
-Model name prefixes determine the provider: `gemini` → `@ai-sdk/google`, `qwen` → `@ai-sdk/openai` (DashScope OpenAI-compatible endpoint), else → `ai-sdk-ollama`. Google Search grounding is auto-enabled for Gemini via `google.tools.googleSearch({})`. Sources stream as `source-url` parts and render as link chips.
+Model name prefixes determine the provider: `gemini` → `@ai-sdk/google`, `qwen` → `@ai-sdk/openai` (DashScope OpenAI-compatible endpoint), else → `ai-sdk-ollama`. Google Search grounding is auto-enabled for Gemini text models via `google.tools.googleSearch({})`. Image models (name contains `image`) skip grounding and instead set `providerOptions: { google: { responseModalities: ['TEXT', 'IMAGE'] } }`. Deep Think (name contains `deep-think`) is a virtual model that routes to `gemini-3.1-pro-preview` with `thinkingConfig: { thinkingLevel: 'high' }`. Sources stream as `source-url` parts and render as link chips.
 
 ### Multimodal
 
-Images sent as `FileUIPart` via `sendMessage({ text, files })`, persisted in `message_attachments` table (base64 data URLs), reloaded as `file` parts on page load. `convertToModelMessages()` handles format conversion automatically. Gemini and Qwen have vision support; Ollama requires multimodal models (llava, bakllava).
+**Input**: Images sent as `FileUIPart` via `sendMessage({ text, files })`, persisted in `message_attachments` table (base64 data URLs), reloaded as `file` parts on page load. `convertToModelMessages()` handles format conversion automatically. Gemini and Qwen have vision support; Ollama requires multimodal models (llava, bakllava).
+
+**Output (Nano Banana 2)**: Gemini image models (`gemini-3.1-flash-image-preview`) return generated images as `file` parts in assistant messages. Both user-attached and AI-generated images render inline in `MessagesList`.
 
 ## AI SDK v6 Gotchas
 
@@ -129,6 +131,9 @@ Images sent as `FileUIPart` via `sendMessage({ text, files })`, persisted in `me
 10. **Qwen model prefix**: Use `startsWith('qwen')` (not `startsWith('qwen-')`) to match both `qwen-flash` and `qwen3-max` patterns
 11. **Source deduplication**: Google Search grounding sends `source-url` parts in `message.parts[]` — deduplicate by URL before rendering
 12. **Multimodal images**: `sendMessage({ text, files: FileUIPart[] })` on client, `convertToModelMessages()` on server handles data URL → inline base64 automatically
+13. **Gemini image generation**: Image models (name contains `image`) require `providerOptions: { google: { responseModalities: ['TEXT', 'IMAGE'] } }` — without this, no images are returned. Must NOT have Google Search grounding tools (incompatible).
+14. **Deep Think virtual model**: `gemini-3.1-pro-preview-deep-think` is a virtual model ID — the chat route strips `-deep-think` and routes to `gemini-3.1-pro-preview` with `thinkingConfig: { thinkingLevel: 'high' }`.
+15. **Gemini model IDs**: Use `gemini-3-flash-preview` (not `gemini-3.1-flash-preview` — 3.1 Flash doesn't exist). Valid 3.1 models: `gemini-3.1-pro-preview`, `gemini-3.1-flash-lite-preview`, `gemini-3.1-flash-image-preview`.
 
 ## Testing
 

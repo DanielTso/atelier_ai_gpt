@@ -17,20 +17,37 @@ export async function POST(req: Request) {
     // Determine which provider to use based on model name
     const isGeminiModel = modelName.startsWith('gemini');
     const isQwenModel = modelName.startsWith('qwen');
+    const isImageModel = modelName.includes('image');
+    const isDeepThink = modelName.includes('deep-think');
+
+    // Deep Think uses gemini-3.1-pro-preview with high thinking level
+    const actualModelName = isDeepThink ? 'gemini-3.1-pro-preview' : modelName;
 
     let selectedModel;
     let googleTools: Record<string, ReturnType<ReturnType<typeof createGoogleGenerativeAI>['tools']['googleSearch']>> | undefined;
+    let providerOptions: Record<string, Record<string, string | string[] | Record<string, string>>> | undefined;
     if (isGeminiModel) {
       const apiKey = await getGeminiApiKey();
       if (!apiKey) {
         throw new Error("Google Gemini API Key is missing. Set it in Settings or .env.local.");
       }
       const google = createGoogleGenerativeAI({ apiKey });
-      selectedModel = google(modelName);
-      // Enable Google Search grounding for Gemini models
-      googleTools = {
-        google_search: google.tools.googleSearch({}),
-      };
+      selectedModel = google(actualModelName);
+      if (isImageModel) {
+        // Image models need TEXT+IMAGE response modalities, no search grounding
+        providerOptions = { google: { responseModalities: ['TEXT', 'IMAGE'] } };
+      } else if (isDeepThink) {
+        // Deep Think uses high thinking level for extended reasoning
+        providerOptions = { google: { thinkingConfig: { thinkingLevel: 'high' } } };
+        googleTools = {
+          google_search: google.tools.googleSearch({}),
+        };
+      } else {
+        // Enable Google Search grounding for non-image Gemini models
+        googleTools = {
+          google_search: google.tools.googleSearch({}),
+        };
+      }
     } else if (isQwenModel) {
       const apiKey = await getDashScopeApiKey();
       if (!apiKey) {
@@ -239,6 +256,7 @@ export async function POST(req: Request) {
       system: systemPrompt, // System instruction is always first, never trimmed
       messages: modelMessages,
       ...(googleTools && { tools: googleTools }),
+      ...(providerOptions && { providerOptions }),
     });
 
     return result.toUIMessageStreamResponse({ sendSources: true });

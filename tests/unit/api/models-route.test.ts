@@ -51,8 +51,8 @@ describe('GET /api/models', () => {
     const response = await GET()
     const data = await response.json()
 
-    // 3 Gemini + 1 Ollama
-    expect(data.models).toHaveLength(4)
+    // 5 Gemini + 1 Ollama
+    expect(data.models).toHaveLength(6)
     expect(data.models.some((m: { name: string }) => m.name === 'llama3')).toBe(true)
   })
 

@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.0] - 2026-03-19
+
+### Nano Banana 2 (Image Generation)
+- **Native Image Generation:** Gemini image model (`gemini-3.1-flash-image-preview`) now works correctly with `responseModalities: ['TEXT', 'IMAGE']` provider option.
+- **Image Rendering:** AI-generated images in assistant messages now render inline (previously only user-attached images were displayed).
+- **Provider Isolation:** Image models skip Google Search grounding (incompatible with image generation).
+
+### Gemini Deep Think
+- **Virtual Model:** "Gemini 3.1 Deep Think" is now a virtual model that routes to `gemini-3.1-pro-preview` with `thinkingConfig: { thinkingLevel: 'high' }` for extended reasoning.
+
+### Model ID Fixes
+- **Fixed:** `gemini-3.1-flash-preview` → `gemini-3-flash-preview` (3.1 Flash doesn't exist; use 3.0 Flash).
+- **Fixed:** `gemini-3.1-deep-think` → virtual model routing to `gemini-3.1-pro-preview` with high thinking level.
+- **Verified:** `gemini-3.1-pro-preview`, `gemini-3.1-flash-lite-preview`, `gemini-3.1-flash-image-preview` confirmed valid against Google API docs.
+
+### Test Fix
+- **Fixed:** Models route test expected 4 models but route had 5 Gemini models. Updated assertion to match.
+
 ## [1.3.0] - 2026-02-15
 
 ### Documentation & Maintenance

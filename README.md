@@ -11,7 +11,9 @@ Atelier AI is designed for individuals, small teams, and companies who want a un
 ### AI Chat
 - **Multi-Provider:** Switch between local models (Ollama), Google Gemini, Alibaba Qwen, or bring your own fine-tuned models
 - **Persona System:** 6 built-in presets and custom system prompts for different workflows
-- **Google Search Grounding:** Gemini models can search the web and cite sources inline
+- **Google Search Grounding:** Gemini text models can search the web and cite sources inline
+- **Image Generation (Nano Banana 2):** Native AI image generation via Gemini `gemini-3.1-flash-image-preview`
+- **Deep Think:** Extended reasoning mode using Gemini 3.1 Pro with high thinking level
 - **Streaming:** Real-time response streaming with animated cursor
 
 ### Document Intelligence (RAG)

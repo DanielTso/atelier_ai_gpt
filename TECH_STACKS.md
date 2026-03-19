@@ -24,7 +24,7 @@ This document outlines the final technology choices used in the "Atelier AI" app
     *   Uses `UIMessage` format with `parts` array (not `content` string)
     *   Server uses `convertToModelMessages()` and `toUIMessageStreamResponse()`
 *   **Ollama AI Provider (`ai-sdk-ollama`):** For connecting to locally hosted models (Llama 3, Mistral, Qwen, etc.).
-*   **Google Generative AI SDK (`@ai-sdk/google`):** For integrating Gemini cloud models (Gemini 3, Gemini 2.5, etc.).
+*   **Google Generative AI SDK (`@ai-sdk/google`):** For integrating Gemini cloud models (Gemini 3 Flash, 3.1 Pro, 3.1 Flash-Lite, 3.1 Flash Image / Nano Banana 2). Supports `providerOptions` for image generation (`responseModalities: ['TEXT', 'IMAGE']`) and deep thinking (`thinkingConfig: { thinkingLevel: 'high' }`).
 *   **Alibaba Cloud DashScope (`@ai-sdk/openai`):** For Qwen cloud models via OpenAI-compatible endpoint (`dashscope-us.aliyuncs.com`).
 
 ## Data Persistence

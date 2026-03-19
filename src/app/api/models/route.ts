@@ -11,9 +11,9 @@ export async function GET() {
 
   // Only include Gemini models if an API key is configured
   const geminiModels = geminiApiKey ? [
-    { name: 'Gemini 3.1 Flash', model: 'gemini-3.1-flash-preview', digest: 'gemini-3.1-flash-preview' },
+    { name: 'Gemini 3 Flash', model: 'gemini-3-flash-preview', digest: 'gemini-3-flash-preview' },
     { name: 'Gemini 3.1 Pro', model: 'gemini-3.1-pro-preview', digest: 'gemini-3.1-pro-preview' },
-    { name: 'Gemini 3.1 Deep Think', model: 'gemini-3.1-deep-think', digest: 'gemini-3.1-deep-think' },
+    { name: 'Gemini 3.1 Deep Think', model: 'gemini-3.1-pro-preview-deep-think', digest: 'gemini-3.1-pro-preview-deep-think' },
     { name: 'Gemini 3.1 Flash-Lite', model: 'gemini-3.1-flash-lite-preview', digest: 'gemini-3.1-flash-lite-preview' },
     { name: 'Nano Banana 2', model: 'gemini-3.1-flash-image-preview', digest: 'gemini-3.1-flash-image-preview' },
   ] : [];

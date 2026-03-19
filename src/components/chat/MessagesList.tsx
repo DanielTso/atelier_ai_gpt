@@ -228,7 +228,7 @@ export const MessagesList = memo(function MessagesList({
                     ? "bg-primary/20 border-primary/10 rounded-tr-none"
                     : "bg-white/5 border-white/10 rounded-tl-none"
                 )}>
-                  {m.role === 'user' && (() => {
+                  {(() => {
                     const images = getMessageImages(m)
                     return images.length > 0 ? (
                       <div className="flex flex-wrap gap-2 mb-2">
@@ -242,7 +242,7 @@ export const MessagesList = memo(function MessagesList({
                           >
                             <img
                               src={img.url}
-                              alt="Attached image"
+                              alt={m.role === 'user' ? "Attached image" : "Generated image"}
                               className="max-w-[300px] max-h-[300px] object-contain"
                             />
                           </a>
