@@ -44,11 +44,16 @@ export async function POST(req: Request) {
     // Build conversation text for classification
     const conversationText = messages
       .slice(0, 10) // Only use first 10 messages for efficiency
-      .map((m: { role: string; text: string }) => `${m.role}: ${m.text}`)
+      .map((m: { role: string; content?: string; parts?: { type: string; text?: string }[] }) => {
+        const text = m.parts
+          ? m.parts.filter(p => p.type === 'text').map(p => p.text).join('')
+          : m.content || '';
+        return `${m.role}: ${text}`;
+      })
       .join('\n');
 
     // Use cheapest available model
-    const modelName = model || 'gemini-2.0-flash';
+    const modelName = model || 'gemini-3-flash-preview';
     const isGeminiModel = modelName.startsWith('gemini');
 
     let selectedModel;

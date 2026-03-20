@@ -25,7 +25,7 @@ export async function POST(req: Request) {
       .join('\n\n');
 
     // Select model (same provider routing as /api/summarize)
-    const modelName = model || 'gemini-2.0-flash';
+    const modelName = model || 'gemini-3-flash-preview';
     const isGeminiModel = modelName.startsWith('gemini');
     const isQwenModel = modelName.startsWith('qwen');
 

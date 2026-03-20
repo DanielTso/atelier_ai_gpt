@@ -5,6 +5,8 @@ import {
   stripFilePrefix,
   getFileTypeLabel,
   formatFileSize,
+  isImageFile,
+  fileToAttachedImage,
   type AttachedFile,
 } from '@/lib/fileAttachments'
 
@@ -172,5 +174,63 @@ describe('formatFileSize', () => {
     expect(formatFileSize(2560)).toBe('2.5 KB')
     expect(formatFileSize(1048576)).toBe('1.0 MB')
     expect(formatFileSize(5242880)).toBe('5.0 MB')
+  })
+})
+
+describe('isImageFile', () => {
+  it('recognizes standard image types', () => {
+    expect(isImageFile(new File([], 'test.png', { type: 'image/png' }))).toBe(true)
+    expect(isImageFile(new File([], 'test.jpg', { type: 'image/jpeg' }))).toBe(true)
+    expect(isImageFile(new File([], 'test.gif', { type: 'image/gif' }))).toBe(true)
+    expect(isImageFile(new File([], 'test.webp', { type: 'image/webp' }))).toBe(true)
+  })
+
+  it('recognizes modern image types (avif, heic, svg)', () => {
+    expect(isImageFile(new File([], 'test.avif', { type: 'image/avif' }))).toBe(true)
+    expect(isImageFile(new File([], 'test.heic', { type: 'image/heic' }))).toBe(true)
+    expect(isImageFile(new File([], 'test.svg', { type: 'image/svg+xml' }))).toBe(true)
+  })
+
+  it('rejects non-image types', () => {
+    expect(isImageFile(new File([], 'doc.pdf', { type: 'application/pdf' }))).toBe(false)
+  })
+})
+
+describe('fileToAttachedImage', () => {
+  it('rejects files over 10MB', async () => {
+    const bigFile = new File([new ArrayBuffer(11 * 1024 * 1024)], 'huge.png', { type: 'image/png' })
+    await expect(fileToAttachedImage(bigFile)).rejects.toThrow('Image too large')
+  })
+})
+
+describe('buildFileMessage security', () => {
+  it('sanitizes filenames containing HTML comment closers in FILECONTENT tags', () => {
+    const files: AttachedFile[] = [{
+      name: 'malicious-->file.txt',
+      type: 'text/plain',
+      size: 10,
+      charCount: 5,
+      textContent: 'content',
+      truncated: false,
+    }]
+    const result = buildFileMessage('', files)
+    // The FILECONTENT tag should have sanitized filename
+    expect(result).toContain('FILECONTENT:malicious__')
+    // Should not have raw --> inside a FILECONTENT comment tag
+    expect(result).not.toMatch(/<!-- FILECONTENT:.*-->.*-->/)
+  })
+
+  it('sanitizes filenames containing angle brackets in FILECONTENT tags', () => {
+    const files: AttachedFile[] = [{
+      name: '<script>alert(1)</script>.txt',
+      type: 'text/plain',
+      size: 10,
+      charCount: 5,
+      textContent: 'content',
+      truncated: false,
+    }]
+    const result = buildFileMessage('', files)
+    // FILECONTENT tag should not contain raw angle brackets
+    expect(result).toContain('FILECONTENT:_script_alert(1)_/script_.txt')
   })
 })

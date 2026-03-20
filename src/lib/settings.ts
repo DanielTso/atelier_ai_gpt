@@ -10,14 +10,37 @@ export function isCloudEnvironment(): boolean {
   return !!process.env.TURSO_DATABASE_URL
 }
 
+const settingsCache = new Map<string, { value: string | null; expiresAt: number }>()
+const SETTINGS_CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+
+/**
+ * Clear the settings cache. Call after saving settings to ensure changes take effect immediately.
+ */
+export function clearSettingsCache() {
+  settingsCache.clear()
+}
+
 /**
  * Get a setting from DB first, falling back to an environment variable.
+ * Results are cached for 5 minutes.
  */
 export async function getServerSetting(key: string, envFallback?: string): Promise<string | null> {
+  const cacheKey = envFallback ? `${key}:${envFallback}` : key
+  const cached = settingsCache.get(cacheKey)
+  if (cached && Date.now() < cached.expiresAt) {
+    return cached.value
+  }
+
   const result = await db.select().from(settings).where(eq(settings.key, key)).get()
-  if (result?.value) return result.value
-  if (envFallback) return process.env[envFallback] ?? null
-  return null
+  let value: string | null = null
+  if (result?.value) {
+    value = result.value
+  } else if (envFallback) {
+    value = process.env[envFallback] ?? null
+  }
+
+  settingsCache.set(cacheKey, { value, expiresAt: Date.now() + SETTINGS_CACHE_TTL })
+  return value
 }
 
 export async function getGeminiApiKey(): Promise<string | null> {

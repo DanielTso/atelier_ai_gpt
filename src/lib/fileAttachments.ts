@@ -11,13 +11,19 @@ export interface AttachedImage {
 
 const IMAGE_MIME_TYPES = new Set([
   'image/png', 'image/jpeg', 'image/gif', 'image/webp',
+  'image/avif', 'image/heic', 'image/svg+xml',
 ])
+
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024 // 10MB
 
 export function isImageFile(file: File): boolean {
   return IMAGE_MIME_TYPES.has(file.type)
 }
 
 export function fileToAttachedImage(file: File): Promise<AttachedImage> {
+  if (file.size > MAX_IMAGE_SIZE) {
+    return Promise.reject(new Error(`Image too large (${formatFileSize(file.size)}). Maximum is 10MB.`))
+  }
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => {
@@ -52,6 +58,13 @@ export interface FileMetadata {
 }
 
 /**
+ * Sanitize a filename for safe embedding in HTML comments.
+ */
+function sanitizeFilename(name: string): string {
+  return name.replace(/-->/g, '__').replace(/</g, '_').replace(/>/g, '_').slice(0, 255)
+}
+
+/**
  * Build a message string with file content embedded using HTML comment delimiters.
  * Format:
  *   <!-- FILES:[{...metadata}] -->
@@ -72,7 +85,7 @@ export function buildFileMessage(text: string, files: AttachedFile[]): string {
   let result = `<!-- FILES:${JSON.stringify(metadata)} -->\n`
 
   for (const file of files) {
-    result += `<!-- FILECONTENT:${file.name} -->\n`
+    result += `<!-- FILECONTENT:${sanitizeFilename(file.name)} -->\n`
     result += file.textContent
     result += `\n<!-- /FILECONTENT -->\n`
   }

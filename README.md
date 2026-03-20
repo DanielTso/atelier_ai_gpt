@@ -12,7 +12,7 @@ Atelier AI is designed for individuals, small teams, and companies who want a un
 - **Multi-Provider:** Switch between local models (Ollama), Google Gemini, Alibaba Qwen, or bring your own fine-tuned models
 - **Persona System:** 6 built-in presets and custom system prompts for different workflows
 - **Google Search Grounding:** Gemini text models can search the web and cite sources inline
-- **Image Generation (Nano Banana 2):** Native AI image generation via Gemini `gemini-3.1-flash-image-preview`
+- **Image Generation (Nano Banana 2):** Native AI image generation via Gemini `gemini-3.1-flash-image-preview` with persistent storage and fullscreen lightbox preview
 - **Deep Think:** Extended reasoning mode using Gemini 3.1 Pro with high thinking level
 - **Streaming:** Real-time response streaming with animated cursor
 
@@ -77,7 +77,7 @@ npm run test:e2e     # Run E2E tests (Playwright + Chromium)
 npm run test:all     # Run all tests
 ```
 
-- **Vitest:** 105 unit/integration tests covering utilities, server actions, API routes, and React hooks. Uses in-memory SQLite for isolated DB tests.
+- **Vitest:** 132 unit/integration tests covering utilities, server actions, API routes, embeddings, chunking, settings, and React hooks. Uses in-memory SQLite for isolated DB tests.
 - **Playwright:** 8 E2E tests covering chat flow, project management, and command palette.
 
 ## Tech Stack

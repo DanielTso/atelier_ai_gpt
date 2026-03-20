@@ -17,8 +17,13 @@ export function chunkText(
   const chunks: { index: number; content: string }[] = []
   let start = 0
   let chunkIndex = 0
+  let previousStart = -1
 
   while (start < text.length) {
+    // Safety: break if no forward progress
+    if (start <= previousStart) break
+    previousStart = start
+
     let end = start + maxSize
 
     if (end >= text.length) {
@@ -46,9 +51,9 @@ export function chunkText(
     chunkIndex++
     start = end - overlap
 
-    // Prevent infinite loop if overlap >= chunk size
-    if (start <= chunks[chunks.length - 1].index && start + overlap >= text.length) {
-      break
+    // Clamp overlap so start always advances
+    if (start <= previousStart) {
+      start = previousStart + 1
     }
   }
 

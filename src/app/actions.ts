@@ -208,6 +208,8 @@ export async function getSettings(keys: string[]) {
 }
 
 export async function setSetting(key: string, value: string) {
+  const { clearSettingsCache } = await import('@/lib/settings')
+  clearSettingsCache()
   return await db.insert(settings)
     .values({ key, value, updatedAt: new Date() })
     .onConflictDoUpdate({ target: settings.key, set: { value, updatedAt: new Date() } })
@@ -215,6 +217,8 @@ export async function setSetting(key: string, value: string) {
 }
 
 export async function setSettings(entries: { key: string; value: string }[]) {
+  const { clearSettingsCache } = await import('@/lib/settings')
+  clearSettingsCache()
   const results = []
   for (const entry of entries) {
     const result = await db.insert(settings)

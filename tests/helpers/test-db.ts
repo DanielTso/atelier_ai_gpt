@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS message_embeddings (
 
 CREATE INDEX IF NOT EXISTS idx_embeddings_chat_id ON message_embeddings(chat_id);
 CREATE INDEX IF NOT EXISTS idx_embeddings_project_id ON message_embeddings(project_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_embeddings_message_id ON message_embeddings(message_id);
 
 CREATE TABLE IF NOT EXISTS persona_usage (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -92,6 +93,7 @@ CREATE TABLE IF NOT EXISTS chat_topics (
 );
 
 CREATE INDEX IF NOT EXISTS idx_chat_topics_chat_id ON chat_topics(chat_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_topics_chat_id_topic ON chat_topics(chat_id, topic);
 
 PRAGMA foreign_keys = ON;
 `

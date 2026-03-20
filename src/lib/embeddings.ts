@@ -8,11 +8,22 @@ const GEMINI_EMBEDDING_MODEL = 'text-embedding-004'
 
 export type EmbeddingProvider = 'ollama' | 'gemini' | null
 
+let embeddingModelCache: { result: { available: boolean; provider: EmbeddingProvider }; expiresAt: number } | null = null
+const EMBEDDING_CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+
+export function clearEmbeddingModelCache() {
+  embeddingModelCache = null
+}
+
 /**
  * Check if an embedding provider is available.
  * Returns the provider name ('ollama' or 'gemini') or null if none available.
  */
 export async function ensureEmbeddingModel(): Promise<{ available: boolean; provider: EmbeddingProvider }> {
+  if (embeddingModelCache && Date.now() < embeddingModelCache.expiresAt) {
+    return embeddingModelCache.result
+  }
+
   // Skip Ollama on cloud — go straight to Gemini
   if (!isCloudEnvironment()) {
     try {
@@ -24,7 +35,9 @@ export async function ensureEmbeddingModel(): Promise<{ available: boolean; prov
         const data = await res.json()
         const models: { name: string }[] = data.models || []
         if (models.some(m => m.name.startsWith(EMBEDDING_MODEL))) {
-          return { available: true, provider: 'ollama' }
+          const result = { available: true, provider: 'ollama' as EmbeddingProvider }
+          embeddingModelCache = { result, expiresAt: Date.now() + EMBEDDING_CACHE_TTL }
+          return result
         }
       }
     } catch {
@@ -35,10 +48,14 @@ export async function ensureEmbeddingModel(): Promise<{ available: boolean; prov
   // Gemini fallback (or primary on cloud)
   const apiKey = await getGeminiApiKey()
   if (apiKey) {
-    return { available: true, provider: 'gemini' }
+    const result = { available: true, provider: 'gemini' as EmbeddingProvider }
+    embeddingModelCache = { result, expiresAt: Date.now() + EMBEDDING_CACHE_TTL }
+    return result
   }
 
-  return { available: false, provider: null }
+  const result = { available: false, provider: null }
+  embeddingModelCache = { result, expiresAt: Date.now() + EMBEDDING_CACHE_TTL }
+  return result
 }
 
 /**
@@ -119,7 +136,10 @@ export async function generateEmbedding(
  * Returns a value between -1 and 1 (1 = identical direction).
  */
 export function cosineSimilarity(a: number[], b: number[]): number {
-  if (a.length !== b.length) return 0
+  if (a.length !== b.length) {
+    console.warn(`[Embeddings] Vector dimension mismatch: ${a.length} vs ${b.length}`)
+    return 0
+  }
 
   let dotProduct = 0
   let normA = 0

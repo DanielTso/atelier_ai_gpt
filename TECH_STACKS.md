@@ -16,7 +16,7 @@ This document outlines the final technology choices used in the "Atelier AI" app
     *   `@radix-ui/react-dialog` - Modal dialogs (delete confirm, rename, system prompt, settings)
     *   `@radix-ui/react-select` - Accessible select dropdowns (model selector in settings)
     *   `@radix-ui/react-tooltip` - Tooltips for message timestamps and collapsed sidebar icons
-*   **Framer Motion:** For smooth message animations and transitions.
+*   **Framer Motion:** For smooth message animations, transitions, and image lightbox overlay.
 
 ## AI & Streaming
 *   **Vercel AI SDK v6 (`ai@^6.0`, `@ai-sdk/react@^3.0`):** A powerful library for handling streaming responses from LLMs. Upgraded to v6 for latest features.

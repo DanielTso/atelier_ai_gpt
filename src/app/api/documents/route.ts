@@ -110,25 +110,29 @@ export async function POST(request: NextRequest) {
         }))
       )
 
-      // Generate and store embeddings for each chunk
-      for (const chunk of savedChunks) {
-        try {
+      // Generate and store embeddings for each chunk (parallelized)
+      const embeddingResults = await Promise.allSettled(
+        savedChunks.map(async (chunk) => {
           const embedding = await generateEmbedding(chunk.content, 'document')
           await updateChunkEmbedding(chunk.id, embedding)
-        } catch (e) {
-          console.error(`[Documents] Failed to embed chunk ${chunk.id}:`, e)
-          // Continue with other chunks even if one fails
-        }
+        })
+      )
+
+      const embeddedCount = embeddingResults.filter(r => r.status === 'fulfilled').length
+      const failedCount = embeddingResults.filter(r => r.status === 'rejected').length
+      if (failedCount > 0) {
+        console.warn(`[Documents] ${failedCount}/${savedChunks.length} chunks failed to embed`)
       }
 
-      // Update document status to ready
-      await updateDocumentStatus(doc.id, 'ready', { chunkCount: savedChunks.length })
+      const status = embeddedCount === 0 && savedChunks.length > 0 ? 'error' : 'ready'
+      await updateDocumentStatus(doc.id, status, { chunkCount: savedChunks.length })
 
       // Return the updated document
       return NextResponse.json({
         ...doc,
-        status: 'ready',
+        status,
         chunkCount: savedChunks.length,
+        embeddedCount,
       })
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Processing failed'

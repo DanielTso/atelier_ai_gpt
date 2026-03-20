@@ -1,6 +1,6 @@
 "use client"
 
-import { memo, useState, useCallback } from "react"
+import { memo, useState, useCallback, useEffect } from "react"
 import { Folder, MessageSquare, ExternalLink, Globe, Paperclip } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
@@ -156,6 +156,15 @@ export const MessagesList = memo(function MessagesList({
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
   const onImageClick = useCallback((url: string) => setLightboxUrl(url), [])
   const closeLightbox = useCallback(() => setLightboxUrl(null), [])
+
+  useEffect(() => {
+    if (!lightboxUrl) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeLightbox()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [lightboxUrl, closeLightbox])
 
   if (!activeChatId) {
     return (
@@ -344,7 +353,6 @@ export const MessagesList = memo(function MessagesList({
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm cursor-zoom-out"
             onClick={closeLightbox}
-            onKeyDown={(e) => e.key === 'Escape' && closeLightbox()}
             role="dialog"
             aria-label="Image preview"
             tabIndex={0}

@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, index } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 export const projects = sqliteTable('projects', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -52,6 +52,7 @@ export const messageEmbeddings = sqliteTable('message_embeddings', {
 }, (table) => ({
   chatIdIdx: index('idx_embeddings_chat_id').on(table.chatId),
   projectIdIdx: index('idx_embeddings_project_id').on(table.projectId),
+  messageIdIdx: uniqueIndex('idx_embeddings_message_id').on(table.messageId),
 }));
 
 // Document RAG: uploaded documents per project
@@ -122,4 +123,5 @@ export const chatTopics = sqliteTable('chat_topics', {
   detectedAt: integer('detected_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
 }, (table) => ({
   chatIdIdx: index('idx_chat_topics_chat_id').on(table.chatId),
+  chatIdTopicIdx: uniqueIndex('idx_chat_topics_chat_id_topic').on(table.chatId, table.topic),
 }));

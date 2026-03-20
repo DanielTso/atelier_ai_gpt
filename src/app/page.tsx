@@ -178,16 +178,20 @@ export default function Home() {
               p.type === 'file' && typeof (p as Record<string, unknown>).mediaType === 'string'
           )
           if (fileParts.length > 0) {
-            saveMessageAttachments(
-              result[0].id,
-              currentChatId,
-              fileParts.map((p, i) => ({
-                filename: `generated-image-${i + 1}.png`,
-                mediaType: p.mediaType,
-                dataUrl: p.url,
-                fileSize: p.url.length,
-              }))
-            ).catch(() => {}) // Best-effort
+            try {
+              await saveMessageAttachments(
+                result[0].id,
+                currentChatId,
+                fileParts.map((p, i) => ({
+                  filename: `generated-image-${i + 1}.png`,
+                  mediaType: p.mediaType,
+                  dataUrl: p.url,
+                  fileSize: p.url.length,
+                }))
+              )
+            } catch (err) {
+              console.error('[onFinish] Failed to save image attachments:', err)
+            }
           }
         }
 

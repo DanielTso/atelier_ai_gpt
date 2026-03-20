@@ -2,6 +2,41 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.0] - 2026-03-19
+
+### Bug Fixes
+- **Image Persistence:** AI-generated images now persist across page refreshes (`await` added to `saveMessageAttachments` in `onFinish` callback).
+- **Lightbox Escape Key:** Fixed unreliable Escape key handling by using `window` event listener instead of `onKeyDown` on unfocused div.
+- **Invalid Model IDs:** Fixed `gemini-2.0-flash` (nonexistent) in summarize, generate-title, and classify routes → `gemini-3-flash-preview`.
+- **Classify Message Format:** Fixed classification reading `m.text` instead of SDK v6 `m.parts[]` — classification was always getting empty context.
+- **Chunking Infinite Loop:** Fixed broken loop guard that compared char positions to array indices. Now tracks forward progress correctly.
+
+### Security
+- **Image Size Limit:** Added 10MB cap on image uploads in `fileToAttachedImage()`.
+- **Filename Sanitization:** `buildFileMessage()` now sanitizes filenames to prevent HTML comment injection.
+- **Modern Image Formats:** Added `image/avif`, `image/heic`, `image/svg+xml` to recognized MIME types.
+
+### Performance
+- **Settings Caching:** `getServerSetting()` now caches results for 5 minutes (3+ fewer DB queries per chat request). Cache clears automatically when settings are saved.
+- **Embedding Provider Caching:** `ensureEmbeddingModel()` caches availability for 5 minutes (no more 1s network probe per request).
+- **Parallel Document Embedding:** Document chunks are now embedded concurrently via `Promise.allSettled()` instead of serially.
+- **Embedding Failure Tracking:** Documents with all chunks failing to embed are marked `'error'` instead of `'ready'`.
+
+### Data Integrity
+- **UNIQUE constraint on `messageEmbeddings.messageId`:** Prevents duplicate embeddings per message.
+- **UNIQUE index on `chatTopics(chatId, topic)`:** Prevents duplicate topic entries per chat.
+- **Vector Dimension Warning:** `cosineSimilarity()` now logs a warning when vectors have mismatched dimensions instead of silently returning 0.
+
+### Tests
+- Added 27 new tests (105 → 132): classify route, embeddings, chunking, settings, file attachments security.
+
+## [1.4.1] - 2026-03-19
+
+### Image Viewing & Persistence
+- **Image Lightbox:** Clicking any image (user-attached or AI-generated) now opens a fullscreen lightbox overlay with backdrop blur instead of opening a broken `data:` URL in a new tab. Click backdrop or press Escape to close.
+- **Larger Generated Images:** AI-generated images render at 512px (up from 300px) in chat. User-attached images remain at 300px.
+- **Image Persistence Fix:** AI-generated images from Nano Banana 2 now persist across page refreshes. The `onFinish` callback saves `file` parts to the `messageAttachments` table (previously only text parts were saved).
+
 ## [1.4.0] - 2026-03-19
 
 ### Nano Banana 2 (Image Generation)

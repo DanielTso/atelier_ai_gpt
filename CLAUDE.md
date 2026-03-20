@@ -115,7 +115,7 @@ Model name prefixes determine the provider: `gemini` → `@ai-sdk/google`, `qwen
 
 **Input**: Images sent as `FileUIPart` via `sendMessage({ text, files })`, persisted in `message_attachments` table (base64 data URLs), reloaded as `file` parts on page load. `convertToModelMessages()` handles format conversion automatically. Gemini and Qwen have vision support; Ollama requires multimodal models (llava, bakllava).
 
-**Output (Nano Banana 2)**: Gemini image models (`gemini-3.1-flash-image-preview`) return generated images as `file` parts in assistant messages. Both user-attached and AI-generated images render inline in `MessagesList`.
+**Output (Nano Banana 2)**: Gemini image models (`gemini-3.1-flash-image-preview`) return generated images as `file` parts in assistant messages. The `onFinish` callback extracts these `file` parts and persists them to `messageAttachments` (same table as user-attached images). Both user-attached and AI-generated images render inline in `MessagesList` with a click-to-expand lightbox overlay (Framer Motion animated, fullscreen with backdrop blur). Generated images display at 512px; user images at 300px.
 
 ## AI SDK v6 Gotchas
 
@@ -134,6 +134,8 @@ Model name prefixes determine the provider: `gemini` → `@ai-sdk/google`, `qwen
 13. **Gemini image generation**: Image models (name contains `image`) require `providerOptions: { google: { responseModalities: ['TEXT', 'IMAGE'] } }` — without this, no images are returned. Must NOT have Google Search grounding tools (incompatible).
 14. **Deep Think virtual model**: `gemini-3.1-pro-preview-deep-think` is a virtual model ID — the chat route strips `-deep-think` and routes to `gemini-3.1-pro-preview` with `thinkingConfig: { thinkingLevel: 'high' }`.
 15. **Gemini model IDs**: Use `gemini-3-flash-preview` (not `gemini-3.1-flash-preview` — 3.1 Flash doesn't exist). Valid 3.1 models: `gemini-3.1-pro-preview`, `gemini-3.1-flash-lite-preview`, `gemini-3.1-flash-image-preview`.
+16. **AI-generated image persistence**: The `onFinish` callback must save `file` parts (not just `text` parts) from assistant messages to `messageAttachments` via `saveMessageAttachments()`. Without this, generated images are lost on page refresh. The load flow (`loadMessages`) already reconstructs `file` parts from attachments.
+17. **Image data URLs in new tabs**: Browsers block `data:` URLs opened via `<a target="_blank">` for security. Use a lightbox overlay instead of linking to `data:` URLs directly.
 
 ## Testing
 
