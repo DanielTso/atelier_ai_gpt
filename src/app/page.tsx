@@ -173,10 +173,12 @@ export default function Home() {
 
         // Save AI-generated images (file parts) to messageAttachments
         if (result?.[0]?.id) {
+          console.log('[onFinish] message.parts types:', message.parts.map(p => ({ type: p.type, keys: Object.keys(p) })))
           const fileParts = message.parts.filter(
             (p): p is { type: 'file'; mediaType: string; url: string } =>
               p.type === 'file' && typeof (p as Record<string, unknown>).mediaType === 'string'
           )
+          console.log('[onFinish] fileParts found:', fileParts.length)
           if (fileParts.length > 0) {
             try {
               await saveMessageAttachments(
