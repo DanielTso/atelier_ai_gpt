@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [1.5.0] - 2026-03-19
 
 ### Bug Fixes
-- **Image Persistence:** AI-generated images now persist across page refreshes (`await` added to `saveMessageAttachments` in `onFinish` callback).
+- **Image Persistence:** AI-generated images now persist across page refreshes (`await` added to `saveMessageAttachments` in `onFinish` callback). Also increased Next.js server action body size limit from 1MB to 10MB — Gemini-generated base64 images exceed the default limit.
 - **Lightbox Escape Key:** Fixed unreliable Escape key handling by using `window` event listener instead of `onKeyDown` on unfocused div.
 - **Invalid Model IDs:** Fixed `gemini-2.0-flash` (nonexistent) in summarize, generate-title, and classify routes → `gemini-3-flash-preview`.
 - **Classify Message Format:** Fixed classification reading `m.text` instead of SDK v6 `m.parts[]` — classification was always getting empty context.
