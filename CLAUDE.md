@@ -42,7 +42,7 @@ API keys and Ollama URL can also be configured at runtime via the **Settings dia
 
 Three providers are supported — all optional, the app works with any combination:
 - **Google Gemini** (cloud): Requires a Gemini API key
-- **Alibaba Cloud Qwen** (cloud): Requires a DashScope API key from [Alibaba Cloud Model Studio](https://modelstudio.console.alibabacloud.com). Uses the US Virginia region endpoint (`dashscope-us.aliyuncs.com`)
+- **Alibaba Cloud Qwen** (cloud): Requires a DashScope API key from [Alibaba Cloud Model Studio](https://modelstudio.console.alibabacloud.com). Uses the Singapore international endpoint (`dashscope-intl.aliyuncs.com`)
 - **Ollama** (local): Run `ollama serve` (default port 11434)
 
 ### Database
@@ -66,7 +66,7 @@ Atelier AI is a Next.js 16 App Router chat application with hybrid AI backend (G
    - `POST /api/chat` — Streams LLM responses. Routes to provider based on model name prefix (`gemini` → Google, `qwen` → DashScope, else → Ollama). Applies five-layer context (see below). Gemini text models have Google Search grounding enabled automatically. Image models (`*image*`) get `responseModalities: ['TEXT', 'IMAGE']` instead of grounding. Deep Think (`*deep-think*`) routes to `gemini-3.1-pro-preview` with `thinkingConfig: { thinkingLevel: 'high' }`.
    - `GET /api/models` — Lists available models from all providers. Skips Ollama in cloud environments (`isCloudEnvironment()`). Caches 5 minutes.
    - `POST /api/summarize` — Compresses older messages. Auto-triggers at 30+ messages, keeps last 10 in full.
-   - `POST /api/embed` — Async 768-dim embedding generation via Ollama `nomic-embed-text` or Gemini `text-embedding-004` (cloud fallback). Best-effort after each exchange.
+   - `POST /api/embed` — Async 768-dim embedding generation via Ollama `nomic-embed-text` or Gemini `gemini-embedding-001` (cloud fallback). Best-effort after each exchange.
    - `POST /api/generate-title` — Auto-generates chat title (3-6 words) after first AI response.
    - `POST /api/extract` — Extracts text from files (PDF via `unpdf`, DOCX via `mammoth`, text/code via UTF-8). Max 10MB.
    - `POST /api/documents` — Upload + process: extract text → chunk (2000 chars, 400 overlap, sentence-aware) → embed → store.
@@ -94,7 +94,7 @@ Five layers, in order (all degrade gracefully if providers unavailable):
 4. **Summary** — Compressed older messages (auto-triggers at 30+ messages, keeps last 10 in full)
 5. **Recent messages** — Last 20 messages in full detail
 
-Embeddings: 768-dim vectors via Ollama `nomic-embed-text` (primary) or Gemini `text-embedding-004` (fallback). Both providers produce cross-compatible vectors. `generateEmbedding()` accepts `taskType` (`'query'`/`'document'`) — Gemini uses this for optimization, Ollama ignores it. Brute-force cosine similarity (fast up to ~50K vectors).
+Embeddings: 768-dim vectors via Ollama `nomic-embed-text` (primary) or Gemini `gemini-embedding-001` (fallback). Both providers produce cross-compatible vectors. `generateEmbedding()` accepts `taskType` (`'query'`/`'document'`) — Gemini uses this for optimization, Ollama ignores it. Brute-force cosine similarity (fast up to ~50K vectors).
 
 ### State Management
 
@@ -128,7 +128,7 @@ Model name prefixes determine the provider: `gemini` → `@ai-sdk/google`, `qwen
 6. **libSQL client**: Uses `@libsql/client` (not `better-sqlite3`) — bundles natively in serverless
 7. **Google Search tool name**: Must be exactly `google_search` in the `tools` object
 8. **AI SDK v6 naming**: Use `maxOutputTokens` (not `maxTokens`) in `generateText()`/`streamText()`
-9. **DashScope**: Uses `@ai-sdk/openai` with `createOpenAI({ baseURL: 'https://dashscope-us.aliyuncs.com/compatible-mode/v1' })`. Must use `.chat(modelName)` (not `provider(modelName)`) — DashScope doesn't support the Responses API. API keys are region-specific (US Virginia, Singapore, Beijing use different hostnames).
+9. **DashScope**: Uses `@ai-sdk/openai` with `createOpenAI({ baseURL: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1' })`. Must use `.chat(modelName)` (not `provider(modelName)`) — DashScope doesn't support the Responses API. API keys are region-specific (US Virginia, Singapore, Beijing use different hostnames).
 10. **Qwen model prefix**: Use `startsWith('qwen')` (not `startsWith('qwen-')`) to match both `qwen-flash` and `qwen3-max` patterns
 11. **Source deduplication**: Google Search grounding sends `source-url` parts in `message.parts[]` — deduplicate by URL before rendering
 12. **Multimodal images**: `sendMessage({ text, files: FileUIPart[] })` on client, `convertToModelMessages()` on server handles data URL → inline base64 automatically

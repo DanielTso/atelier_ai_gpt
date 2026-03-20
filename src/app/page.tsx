@@ -58,10 +58,10 @@ export default function Home() {
 
   // Data State
   const [projects, setProjects] = useState<Project[]>([])
-  const [activeProjectId, setActiveProjectId] = useState<number | null>(null)
+  const [activeProjectId, setActiveProjectId] = useLocalStorage<number | null>('activeProjectId', null)
   const [chats, setChats] = useState<Chat[]>([])
   const [standaloneChats, setStandaloneChats] = useState<Chat[]>([])
-  const [activeChatId, setActiveChatId] = useState<number | null>(null)
+  const [activeChatId, setActiveChatId] = useLocalStorage<number | null>('activeChatId', null)
 
   // Project landing page state
   const [chatPreviews, setChatPreviews] = useState<{ id: number; title: string; preview: string | null; createdAt: Date | null }[]>([])
@@ -424,6 +424,21 @@ export default function Home() {
     fetchModels()
   }, [loadProjects, loadStandaloneChats, loadAllProjectChats, loadArchivedChats, fetchModels])
 
+  // Validate persisted activeChatId/activeProjectId after data loads
+  useEffect(() => {
+    if (activeChatId !== null) {
+      const allChats = [...chats, ...standaloneChats]
+      if (allChats.length > 0 && !allChats.find(c => c.id === activeChatId)) {
+        setActiveChatId(null)
+      }
+    }
+    if (activeProjectId !== null) {
+      if (projects.length > 0 && !projects.find(p => p.id === activeProjectId)) {
+        setActiveProjectId(null)
+      }
+    }
+  }, [projects, chats, standaloneChats]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Load chat previews when viewing a project (no active chat)
   useEffect(() => {
     if (activeProjectId && !activeChatId) {
@@ -781,13 +796,13 @@ export default function Home() {
     try {
       await updateChatTitle(id, title)
       // Update local state for both types of chats
-      setChats(chats.map(c => c.id === id ? { ...c, title } : c))
-      setStandaloneChats(standaloneChats.map(c => c.id === id ? { ...c, title } : c))
+      setChats(prev => prev.map(c => c.id === id ? { ...c, title } : c))
+      setStandaloneChats(prev => prev.map(c => c.id === id ? { ...c, title } : c))
     } catch (e) {
       console.error(e)
       setError("Failed to update chat title.")
     }
-  }, [chats, standaloneChats])
+  }, [])
 
   const handleSaveSystemPrompt = useCallback(async (prompt: string | null) => {
     if (!activeChatId) return

@@ -4,7 +4,7 @@ import { getOllamaBaseUrl, getGeminiApiKey, isCloudEnvironment } from './setting
 import { saveMessageEmbedding, getEmbeddingsForChat, getEmbeddingsForProject, getAllEmbeddings, getDocumentChunksForProject } from '@/app/actions'
 
 const EMBEDDING_MODEL = 'nomic-embed-text'
-const GEMINI_EMBEDDING_MODEL = 'text-embedding-004'
+const GEMINI_EMBEDDING_MODEL = 'gemini-embedding-001'
 
 export type EmbeddingProvider = 'ollama' | 'gemini' | null
 
@@ -83,7 +83,7 @@ async function generateEmbeddingWithOllama(text: string): Promise<number[]> {
 }
 
 /**
- * Generate an embedding using Google Gemini text-embedding-004.
+ * Generate an embedding using Google Gemini gemini-embedding-001.
  * Returns a 768-dimensional float array (matching nomic-embed-text).
  */
 async function generateEmbeddingWithGemini(

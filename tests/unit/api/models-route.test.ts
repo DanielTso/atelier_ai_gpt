@@ -38,12 +38,17 @@ describe('GET /api/models', () => {
   })
 
   it('combines Gemini and Ollama models', async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () =>
-        Promise.resolve({
-          models: [{ name: 'llama3', model: 'llama3', digest: 'abc123' }],
-        }),
+    globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+      if (typeof url === 'string' && url.includes('/api/tags')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            models: [{ name: 'llama3', model: 'llama3', digest: 'abc123' }],
+          }),
+        })
+      }
+      // DashScope or other fetches
+      return Promise.reject(new Error('not mocked'))
     })
     mockSettings()
 
@@ -51,7 +56,7 @@ describe('GET /api/models', () => {
     const response = await GET()
     const data = await response.json()
 
-    // 5 Gemini + 1 Ollama
+    // 5 Gemini + 1 Ollama (no DashScope key = no Qwen)
     expect(data.models).toHaveLength(6)
     expect(data.models.some((m: { name: string }) => m.name === 'llama3')).toBe(true)
   })
@@ -78,7 +83,7 @@ describe('GET /api/models', () => {
   })
 
   it('skips Ollama fetch entirely on cloud environment', async () => {
-    const mockFetch = vi.fn()
+    const mockFetch = vi.fn().mockRejectedValue(new Error('not mocked'))
     globalThis.fetch = mockFetch
     mockSettings('test-key', 'http://localhost:11434', null, true)
 
@@ -86,7 +91,7 @@ describe('GET /api/models', () => {
     const response = await GET()
     const data = await response.json()
 
-    // Should NOT have called fetch at all (Ollama skipped)
+    // Should NOT have called fetch for Ollama (no DashScope key either, so no fetches)
     expect(mockFetch).not.toHaveBeenCalled()
     // Should still return Gemini models
     expect(data.models.length).toBeGreaterThanOrEqual(3)

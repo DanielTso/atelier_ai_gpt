@@ -131,7 +131,7 @@ function SourcesList({ sources }: { sources: SourceUrl[] }) {
 // Move markdown components outside to prevent recreation on every render
 const MARKDOWN_COMPONENTS = {
   pre: ({children, ...props}: React.HTMLAttributes<HTMLPreElement>) => (
-    <CodeBlock className="overflow-x-auto w-full my-2 bg-black/50 p-3 rounded-lg [&_code]:whitespace-pre-wrap [&_code]:break-words" {...props}>
+    <CodeBlock className="overflow-x-auto max-w-full my-2 bg-black/50 p-3 rounded-lg [&_code]:whitespace-pre-wrap [&_code]:wrap-break-word [&_code]:break-all" {...props}>
       {children}
     </CodeBlock>
   ),

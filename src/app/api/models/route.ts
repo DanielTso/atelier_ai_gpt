@@ -18,13 +18,31 @@ export async function GET() {
     { name: 'Nano Banana 2', model: 'gemini-3.1-flash-image-preview', digest: 'gemini-3.1-flash-image-preview' },
   ] : [];
 
-  // Only include Qwen models if a DashScope API key is configured
-  const qwenModels = dashScopeApiKey ? [
-    { name: 'Qwen Flash', model: 'qwen-flash', digest: 'qwen-flash' },
-    { name: 'Qwen Plus', model: 'qwen-plus', digest: 'qwen-plus' },
-    { name: 'Qwen Max', model: 'qwen3-max', digest: 'qwen3-max' },
-    { name: 'Qwen Coder Plus', model: 'qwen3-coder-plus', digest: 'qwen3-coder-plus' },
-  ] : [];
+  // Fetch Qwen models dynamically from DashScope if API key is configured
+  let qwenModels: { name: string; model: string; digest: string }[] = [];
+  if (dashScopeApiKey) {
+    try {
+      const dashRes = await fetch('https://dashscope-intl.aliyuncs.com/compatible-mode/v1/models', {
+        headers: { 'Authorization': `Bearer ${dashScopeApiKey}` },
+        signal: AbortSignal.timeout(3000),
+      });
+      if (dashRes.ok) {
+        const data = await dashRes.json();
+        const models = data?.data || [];
+        qwenModels = models
+          .filter((m: { id: string; owned_by?: string }) =>
+            m.id.startsWith('qwen') && !m.id.includes('embed') && !m.id.includes('audio') && !m.id.includes('vl') && !m.id.includes('omni')
+          )
+          .map((m: { id: string }) => ({
+            name: m.id.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+            model: m.id,
+            digest: m.id,
+          }));
+      }
+    } catch {
+      // DashScope models API unavailable, skip
+    }
+  }
 
   // Try to fetch local Ollama models — skip entirely on cloud (no Ollama available)
   let ollamaModels: { name: string; model: string; digest: string }[] = [];
