@@ -43,7 +43,7 @@ export async function POST(req: Request) {
         throw new Error('DashScope API Key is missing.');
       }
       const dashscope = createOpenAI({
-        baseURL: 'https://dashscope-us.aliyuncs.com/compatible-mode/v1',
+        baseURL: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
         apiKey,
       });
       selectedModel = dashscope.chat(modelName);

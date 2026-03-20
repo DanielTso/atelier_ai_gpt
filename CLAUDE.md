@@ -77,7 +77,8 @@ Atelier AI is a Next.js 16 App Router chat application with hybrid AI backend (G
 - `src/app/page.tsx` — Single-page client; all application state lives here
 - `src/app/actions.ts` — Server actions for all DB reads/writes
 - `src/app/api/` — API routes (chat, models, embed, summarize, documents, etc.)
-- `src/components/chat/` — Chat-specific components (Sidebar, MessagesList, ChatInputArea, ProjectLandingPage, etc.)
+- `src/components/chat/sidebar/` — Decomposed sidebar: `Sidebar.tsx` (orchestrator), `types.ts` + `SidebarActionsContext.tsx` (shared types/context), section components (`QuickChatsSection`, `ProjectsSection`, `ArchivedSection`), item components (`ChatItem`, `ProjectItem`), layout (`SidebarHeader`, `SidebarFooter`, `CollapsedSidebar`, `SmartChatMenu`)
+- `src/components/chat/` — Other chat components (MessagesList, ChatInputArea, ChatContextMenu, ProjectLandingPage, etc.)
 - `src/components/ui/` — Reusable UI (dialogs, selectors, command palette)
 - `src/components/settings/` — Settings tab components
 - `src/hooks/` — Custom hooks (useLocalStorage, usePersonas, useAppearanceSettings, etc.)

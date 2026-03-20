@@ -8,7 +8,8 @@ import { useEffect, useState, useRef, useCallback, useMemo } from "react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { getProjects, createProject, getAllProjectChats, createChat, getChatMessages, saveMessage, deleteProject, updateProjectName, updateChatTitle, getStandaloneChats, createStandaloneChat, deleteChat, moveChatToProject, archiveChat, restoreChat, getArchivedChats, getMessageCount, getChatWithContext, updateChatSystemPrompt, getProjectDefaults, recordPersonaUsage, incrementUsageMessageCount, getProjectChatPreviews, saveMessageAttachments, getChatAttachments } from "./actions"
-import { Sidebar } from "@/components/chat/Sidebar"
+import { Sidebar } from "@/components/chat/sidebar"
+import type { SidebarActions } from "@/components/chat/sidebar"
 import { ChatHeader } from "@/components/chat/ChatHeader"
 import { ChatInputArea } from "@/components/chat/ChatInputArea"
 import { MessagesList, type ChatMessage } from "@/components/chat/MessagesList"
@@ -835,6 +836,28 @@ export default function Home() {
     toast.success(`Switched to ${suggestedPersona.name}`)
   }, [suggestedPersona, handleSaveSystemPrompt, dismissSuggestion])
 
+  const sidebarActions = useMemo<SidebarActions>(() => ({
+    createProject: handleCreateProject,
+    renameProject: handleRenameProject,
+    deleteProject: handleDeleteProject,
+    selectProject: handleSelectProject,
+    openProjectDocuments: handleOpenProjectDocuments,
+    openProjectSettings: handleOpenProjectSettings,
+    createChat: handleCreateChat,
+    createStandaloneChat: handleCreateStandaloneChat,
+    createChatInProject: handleCreateChatInProject,
+    selectChat: setActiveChatId,
+    selectStandaloneChat: handleSelectStandaloneChat,
+    moveChat: handleMoveChat,
+    renameChat: handleRequestRename,
+    archiveChat: handleArchiveChat,
+    restoreChat: handleRestoreChat,
+    deleteChat: handleRequestDelete,
+    toggleTheme: () => setTheme(theme === "dark" ? "light" : "dark"),
+    toggleCollapse: () => setSidebarCollapsed(!sidebarCollapsed),
+    openSettings: () => setSettingsDialogOpen(true),
+  }), [handleCreateProject, handleRenameProject, handleDeleteProject, handleSelectProject, handleOpenProjectDocuments, handleOpenProjectSettings, handleCreateChat, handleCreateStandaloneChat, handleCreateChatInProject, setActiveChatId, handleSelectStandaloneChat, handleMoveChat, handleRequestRename, handleArchiveChat, handleRestoreChat, handleRequestDelete, theme, sidebarCollapsed])
+
   // Get the current chat title from either chats or standaloneChats
   const currentChatTitle = activeChatId
     ? chats.find(c => c.id === activeChatId)?.title || standaloneChats.find(c => c.id === activeChatId)?.title
@@ -854,25 +877,7 @@ export default function Home() {
         standaloneChats={standaloneChats}
         archivedChats={archivedChats}
         collapsed={sidebarCollapsed}
-        onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
-        onThemeToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
-        onCreateProject={handleCreateProject}
-        onCreateChat={handleCreateChat}
-        onCreateStandaloneChat={handleCreateStandaloneChat}
-        onCreateChatInProject={handleCreateChatInProject}
-        onSelectProject={handleSelectProject}
-        onSelectChat={setActiveChatId}
-        onSelectStandaloneChat={handleSelectStandaloneChat}
-        onRenameProject={handleRenameProject}
-        onDeleteProject={handleDeleteProject}
-        onMoveChat={handleMoveChat}
-        onRenameChat={handleRequestRename}
-        onArchiveChat={handleArchiveChat}
-        onRestoreChat={handleRestoreChat}
-        onDeleteChat={handleRequestDelete}
-        onOpenSettings={() => setSettingsDialogOpen(true)}
-        onProjectSettings={handleOpenProjectSettings}
-        onProjectDocuments={handleOpenProjectDocuments}
+        actions={sidebarActions}
       />
 
       {/* Main Chat Area */}

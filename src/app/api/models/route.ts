@@ -23,7 +23,7 @@ export async function GET() {
     { name: 'Qwen Flash', model: 'qwen-flash', digest: 'qwen-flash' },
     { name: 'Qwen Plus', model: 'qwen-plus', digest: 'qwen-plus' },
     { name: 'Qwen Max', model: 'qwen3-max', digest: 'qwen3-max' },
-    { name: 'Qwen Coder', model: 'qwen3-coder-plus', digest: 'qwen3-coder-plus' },
+    { name: 'Qwen Coder Plus', model: 'qwen3-coder-plus', digest: 'qwen3-coder-plus' },
   ] : [];
 
   // Try to fetch local Ollama models — skip entirely on cloud (no Ollama available)
