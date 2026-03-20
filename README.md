@@ -9,11 +9,11 @@ Atelier AI is designed for individuals, small teams, and companies who want a un
 ## Features
 
 ### AI Chat
-- **Multi-Provider:** Switch between local models (Ollama), Google Gemini, Alibaba Qwen, or bring your own fine-tuned models
+- **Multi-Provider:** Switch between Google Gemini and Alibaba Cloud Qwen models
 - **Persona System:** 6 built-in presets and custom system prompts for different workflows
 - **Google Search Grounding:** Gemini text models can search the web and cite sources inline
 - **Image Generation (Nano Banana 2):** Native AI image generation via Gemini `gemini-3.1-flash-image-preview` with persistent storage and fullscreen lightbox preview
-- **Deep Think:** Extended reasoning mode using Gemini 3.1 Pro with high thinking level
+- **Adaptive Thinking:** Per-model thinking level toggle (Off / Min / Low / Med / High) — Flash, Flash-Lite, and Pro all support configurable reasoning depth. Deep Think routes Pro to maximum thinking.
 - **Streaming:** Real-time response streaming with animated cursor
 
 ### Document Intelligence (RAG)
@@ -43,9 +43,8 @@ Atelier AI is designed for individuals, small teams, and companies who want a un
 ## Prerequisites
 
 1. **Node.js**: v18 or higher
-2. **Ollama** (Optional): For local models, install and run `ollama serve`
-3. **Google Gemini API Key** (Optional): For cloud models
-4. **DashScope API Key** (Optional): For Alibaba Qwen models
+2. **Google Gemini API Key**: For Gemini models
+3. **DashScope API Key**: For Alibaba Qwen models
 
 ## Setup
 
@@ -85,8 +84,8 @@ npm run test:all     # Run all tests
 - **Framework:** Next.js 16 (App Router)
 - **Styling:** Tailwind CSS v4
 - **Database:** SQLite (local) / Turso (production) + Drizzle ORM
-- **AI:** Vercel AI SDK v6 + Ollama + Google Gemini + Alibaba Qwen
-- **Embeddings:** Ollama nomic-embed-text (local) / Gemini text-embedding-004 (cloud)
+- **AI:** Vercel AI SDK v6 + Google Gemini + Alibaba Qwen
+- **Embeddings:** Gemini gemini-embedding-001 (768-dim)
 - **Testing:** Vitest + Testing Library (unit/integration), Playwright (E2E)
 - **Deployment:** Vercel + Turso
 

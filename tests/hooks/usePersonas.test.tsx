@@ -67,7 +67,6 @@ describe('usePersonas', () => {
     const { result } = renderHook(() => usePersonas())
     const combos = result.current.comboPresets
     expect(combos.every(p => p.modelConstraint)).toBe(true)
-    expect(combos.filter(p => p.modelConstraint === 'cloud')).toHaveLength(3)
-    expect(combos.filter(p => p.modelConstraint === 'local')).toHaveLength(2)
+    expect(combos.filter(p => p.modelConstraint === 'cloud')).toHaveLength(5)
   })
 })

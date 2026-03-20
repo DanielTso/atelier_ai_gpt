@@ -45,12 +45,16 @@ export const ModelDefaultsSettingsTab = memo(function ModelDefaultsSettingsTab({
         getSetting('default-model'),
         getSetting('default-system-prompt'),
       ])
-      if (model) setDefaultModel(model)
+      if (model) {
+        // Only restore if the model still exists in the available list
+        const isValid = models.some(m => m.model === model)
+        if (isValid) setDefaultModel(model)
+      }
       if (prompt) setDefaultSystemPrompt(prompt)
       setLoaded(true)
     }
     load()
-  }, [])
+  }, [models])
 
   const handleSave = async () => {
     setSaving(true)
@@ -86,9 +90,8 @@ export const ModelDefaultsSettingsTab = memo(function ModelDefaultsSettingsTab({
     )
   }
 
-  const isCloudModel = (m: Model) => m.model.startsWith('gemini') || m.model.startsWith('qwen')
-  const cloudModels = models.filter(isCloudModel)
-  const localModels = models.filter(m => !isCloudModel(m))
+  const geminiModels = models.filter(m => m.model.startsWith('gemini'))
+  const qwenModels = models.filter(m => m.model.startsWith('qwen'))
 
   return (
     <div className="space-y-6">
@@ -104,16 +107,16 @@ export const ModelDefaultsSettingsTab = memo(function ModelDefaultsSettingsTab({
           className="w-full px-3 py-2 bg-black/20 border border-white/10 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all appearance-none"
         >
           <option value="">Use first available</option>
-          {cloudModels.length > 0 && (
-            <optgroup label="Cloud Models">
-              {cloudModels.map(m => (
+          {geminiModels.length > 0 && (
+            <optgroup label="Google Gemini">
+              {geminiModels.map(m => (
                 <option key={m.model} value={m.model}>{m.name}</option>
               ))}
             </optgroup>
           )}
-          {localModels.length > 0 && (
-            <optgroup label="Local Models (Ollama)">
-              {localModels.map(m => (
+          {qwenModels.length > 0 && (
+            <optgroup label="Alibaba Qwen">
+              {qwenModels.map(m => (
                 <option key={m.model} value={m.model}>{m.name}</option>
               ))}
             </optgroup>

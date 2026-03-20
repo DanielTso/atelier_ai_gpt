@@ -1,8 +1,7 @@
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createOpenAI } from '@ai-sdk/openai';
-import { createOllama } from 'ai-sdk-ollama';
 import { generateText } from 'ai';
-import { getGeminiApiKey, getOllamaBaseUrl, getDashScopeApiKey } from '@/lib/settings';
+import { getGeminiApiKey, getDashScopeApiKey } from '@/lib/settings';
 
 const TITLE_PROMPT = `Generate a concise title (3-6 words) for this conversation. Return only the title, no quotes or punctuation.`;
 
@@ -48,9 +47,7 @@ export async function POST(req: Request) {
       });
       selectedModel = dashscope.chat(modelName);
     } else {
-      const baseURL = await getOllamaBaseUrl();
-      const ollama = createOllama({ baseURL });
-      selectedModel = ollama(modelName);
+      throw new Error(`Unknown model provider for model: ${modelName}`);
     }
 
     const result = await generateText({

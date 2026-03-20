@@ -14,7 +14,3 @@ export function createMockGenerateText(text = 'Mock summary') {
 export function createMockGoogleProvider() {
   return vi.fn(() => vi.fn((model: string) => ({ modelId: model, provider: 'google' })))
 }
-
-export function createMockOllamaProvider() {
-  return vi.fn(() => vi.fn((model: string) => ({ modelId: model, provider: 'ollama' })))
-}

@@ -10,7 +10,7 @@ export interface Persona {
   prompt: string
   isDefault?: boolean
   preferredModel?: string
-  modelConstraint?: 'cloud' | 'local' | 'any'
+  modelConstraint?: 'cloud' | 'any'
   description?: string
 }
 
@@ -157,12 +157,12 @@ You are a meticulous code reviewer with expertise in software quality, security,
 - Summarize findings at the end
 </formatting>`,
     isDefault: true,
-    preferredModel: 'gemini-2.5-pro-preview-05-06',
+    preferredModel: 'gemini-3.1-pro-preview',
     modelConstraint: 'cloud',
     description: 'Deep code review with cloud model',
   },
   {
-    id: 'combo-creative-local',
+    id: 'combo-creative',
     name: 'Creative Writing',
     icon: '🎭',
     prompt: `<identity>
@@ -183,8 +183,9 @@ You are a creative writing partner specializing in fiction, poetry, and imaginat
 - Offer alternatives in bullet points
 </formatting>`,
     isDefault: true,
-    modelConstraint: 'local',
-    description: 'Private creative writing, no data leaves machine',
+    preferredModel: 'gemini-3-flash-preview',
+    modelConstraint: 'cloud',
+    description: 'Creative writing and storytelling',
   },
   {
     id: 'combo-quick-code',
@@ -208,7 +209,7 @@ You are a fast, concise coding assistant optimized for quick answers.
 - No headers or bullet points unless listing options
 </formatting>`,
     isDefault: true,
-    preferredModel: 'gemini-2.0-flash',
+    preferredModel: 'gemini-3-flash-preview',
     modelConstraint: 'cloud',
     description: 'Fast, concise coding answers',
   },
@@ -235,24 +236,23 @@ You are a thorough analytical thinker who reasons carefully through complex prob
 - Use tables for comparisons when helpful
 </formatting>`,
     isDefault: true,
-    preferredModel: 'gemini-2.5-pro-preview-05-06',
+    preferredModel: 'gemini-3.1-pro-preview',
     modelConstraint: 'cloud',
     description: 'Thorough reasoning for complex problems',
   },
   {
-    id: 'combo-private-assistant',
-    name: 'Private Assistant',
-    icon: '🔒',
+    id: 'combo-general-assistant',
+    name: 'General Assistant',
+    icon: '💬',
     prompt: `<identity>
-You are a helpful, privacy-focused assistant. All processing happens locally on the user's machine.
+You are a helpful, well-rounded assistant for everyday tasks.
 </identity>
 
 <constraints>
 - Be helpful and direct
-- Handle personal, sensitive, or private topics with care
-- Never suggest sharing data with cloud services
 - Provide practical, actionable advice
 - Be concise but thorough
+- Handle a wide range of topics
 </constraints>
 
 <formatting>
@@ -261,8 +261,9 @@ You are a helpful, privacy-focused assistant. All processing happens locally on 
 - Keep a professional but friendly tone
 </formatting>`,
     isDefault: true,
-    modelConstraint: 'local',
-    description: 'Fully local, privacy-focused',
+    preferredModel: 'gemini-3-flash-preview',
+    modelConstraint: 'cloud',
+    description: 'Versatile everyday assistant',
   },
 ]
 

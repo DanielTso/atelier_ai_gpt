@@ -4,7 +4,7 @@ import { eq } from 'drizzle-orm'
 
 /**
  * Detect cloud environment (Vercel/Turso).
- * When TURSO_DATABASE_URL is set, Ollama can't exist — skip all local network calls.
+ * When TURSO_DATABASE_URL is set, we're running in cloud (Vercel/Turso).
  */
 export function isCloudEnvironment(): boolean {
   return !!process.env.TURSO_DATABASE_URL
@@ -45,11 +45,6 @@ export async function getServerSetting(key: string, envFallback?: string): Promi
 
 export async function getGeminiApiKey(): Promise<string | null> {
   return getServerSetting('gemini-api-key', 'GOOGLE_GENERATIVE_AI_API_KEY')
-}
-
-export async function getOllamaBaseUrl(): Promise<string> {
-  const url = await getServerSetting('ollama-base-url')
-  return url || 'http://localhost:11434'
 }
 
 export async function getDefaultModel(): Promise<string | null> {

@@ -36,14 +36,13 @@ GOOGLE_GENERATIVE_AI_API_KEY=your_key_here
 DASHSCOPE_API_KEY=your_key_here
 ```
 
-API keys and Ollama URL can also be configured at runtime via the **Settings dialog** (stored in the `settings` SQLite table). DB values take priority over `.env.local`.
+API keys can also be configured at runtime via the **Settings dialog** (stored in the `settings` SQLite table). DB values take priority over `.env.local`.
 
 **Note:** `.env*.local` files and `sqlite.db` are gitignored. Never commit secrets or the local database.
 
-Three providers are supported — all optional, the app works with any combination:
+Two providers are supported — both optional, the app works with either or both:
 - **Google Gemini** (cloud): Requires a Gemini API key
 - **Alibaba Cloud Qwen** (cloud): Requires a DashScope API key from [Alibaba Cloud Model Studio](https://modelstudio.console.alibabacloud.com). Uses the Singapore international endpoint (`dashscope-intl.aliyuncs.com`)
-- **Ollama** (local): Run `ollama serve` (default port 11434)
 
 ### Database
 
@@ -56,21 +55,21 @@ Schema at `src/db/schema.ts`, connection at `src/db/index.ts`. Drizzle config us
 
 ## Architecture Overview
 
-Atelier AI is a Next.js 16 App Router chat application with hybrid AI backend (Google Gemini cloud + Alibaba Cloud Qwen cloud + Ollama local models).
+Atelier AI is a Next.js 16 App Router chat application with multi-provider AI backend (Google Gemini + Alibaba Cloud Qwen).
 
 ### Data Flow
 
 1. **Client** (`src/app/page.tsx`) — Single-page chat UI using `useChat` from `@ai-sdk/react`. All application state lives here. Three view states: **active chat**, **project landing page** (two-column: chats + documents), **empty state** (branding with always-visible input toolbar). Sending a message with no active chat auto-creates a standalone quick chat.
 2. **Server Actions** (`src/app/actions.ts`) — "use server" functions for all DB reads/writes (CRUD for projects, chats, messages, settings, chat previews).
 3. **API Routes**:
-   - `POST /api/chat` — Streams LLM responses. Routes to provider based on model name prefix (`gemini` → Google, `qwen` → DashScope, else → Ollama). Applies five-layer context (see below). Gemini text models have Google Search grounding enabled automatically. Image models (`*image*`) get `responseModalities: ['TEXT', 'IMAGE']` instead of grounding. Deep Think (`*deep-think*`) routes to `gemini-3.1-pro-preview` with `thinkingConfig: { thinkingLevel: 'high' }`.
-   - `GET /api/models` — Lists available models from all providers. Skips Ollama in cloud environments (`isCloudEnvironment()`). Caches 5 minutes.
+   - `POST /api/chat` — Streams LLM responses. Routes to provider based on model name prefix (`gemini` → Google, `qwen` → DashScope). Applies five-layer context (see below). Gemini text models have Google Search grounding enabled automatically. Image models (`*image*`) get `responseModalities: ['TEXT', 'IMAGE']` instead of grounding. Deep Think (`*deep-think*`) routes to `gemini-3.1-pro-preview` with `thinkingConfig: { thinkingLevel: 'high' }`. Thinking variants (`*-think-{minimal|low|medium|high}*`) strip the suffix and apply `thinkingConfig` with the matching level (Flash: all 4 levels; Pro: low/medium; Flash-Lite: minimal only).
+   - `GET /api/models` — Lists available models from all providers. Caches 5 minutes.
    - `POST /api/summarize` — Compresses older messages. Auto-triggers at 30+ messages, keeps last 10 in full.
-   - `POST /api/embed` — Async 768-dim embedding generation via Ollama `nomic-embed-text` or Gemini `gemini-embedding-001` (cloud fallback). Best-effort after each exchange.
+   - `POST /api/embed` — Async 768-dim embedding generation via Gemini `gemini-embedding-001`. Best-effort after each exchange.
    - `POST /api/generate-title` — Auto-generates chat title (3-6 words) after first AI response.
    - `POST /api/extract` — Extracts text from files (PDF via `unpdf`, DOCX via `mammoth`, text/code via UTF-8). Max 10MB.
    - `POST /api/documents` — Upload + process: extract text → chunk (2000 chars, 400 overlap, sentence-aware) → embed → store.
-   - `POST /api/classify` — LLM-based topic classification. Gemini or Ollama only. Cached in `chatTopics`.
+   - `POST /api/classify` — LLM-based topic classification. Gemini only. Cached in `chatTopics`.
 
 ### Source Layout
 
@@ -94,12 +93,12 @@ Five layers, in order (all degrade gracefully if providers unavailable):
 4. **Summary** — Compressed older messages (auto-triggers at 30+ messages, keeps last 10 in full)
 5. **Recent messages** — Last 20 messages in full detail
 
-Embeddings: 768-dim vectors via Ollama `nomic-embed-text` (primary) or Gemini `gemini-embedding-001` (fallback). Both providers produce cross-compatible vectors. `generateEmbedding()` accepts `taskType` (`'query'`/`'document'`) — Gemini uses this for optimization, Ollama ignores it. Brute-force cosine similarity (fast up to ~50K vectors).
+Embeddings: 768-dim vectors via Gemini `gemini-embedding-001`. `generateEmbedding()` accepts `taskType` (`'query'`/`'document'`) — Gemini uses this for optimization. Brute-force cosine similarity (fast up to ~50K vectors).
 
 ### State Management
 
 - **Server state**: SQLite via server actions
-- **Settings**: `src/lib/settings.ts` — DB-first, env-fallback pattern. `isCloudEnvironment()` checks `TURSO_DATABASE_URL` to skip local-only features. All API routes create providers **per-request** (not module-level singletons) for runtime config changes without restart.
+- **Settings**: `src/lib/settings.ts` — DB-first, env-fallback pattern. All API routes create providers **per-request** (not module-level singletons) for runtime config changes without restart.
 - **UI persistence**: `useLocalStorage` hook with deferred hydration (reads in `useEffect` to avoid SSR mismatch)
 - **Theme**: `next-themes` with class-based dark/light/system switching
 - **Refs for closures**: Dynamic values (selectedModel, activeChatId, chats) use `useRef` to avoid stale closures in `useChat` transport and `onFinish` callback
@@ -110,11 +109,11 @@ Tailwind CSS v4 with glassmorphism design system. Glass panels: `bg-background/6
 
 ### Provider Routing
 
-Model name prefixes determine the provider: `gemini` → `@ai-sdk/google`, `qwen` → `@ai-sdk/openai` (DashScope OpenAI-compatible endpoint), else → `ai-sdk-ollama`. Google Search grounding is auto-enabled for Gemini text models via `google.tools.googleSearch({})`. Image models (name contains `image`) skip grounding and instead set `providerOptions: { google: { responseModalities: ['TEXT', 'IMAGE'] } }`. Deep Think (name contains `deep-think`) is a virtual model that routes to `gemini-3.1-pro-preview` with `thinkingConfig: { thinkingLevel: 'high' }`. Sources stream as `source-url` parts and render as link chips.
+Model name prefixes determine the provider: `gemini` → `@ai-sdk/google`, `qwen` → `@ai-sdk/openai` (DashScope OpenAI-compatible endpoint). Google Search grounding is auto-enabled for Gemini text models via `google.tools.googleSearch({})`. Image models (name contains `image`) skip grounding and instead set `providerOptions: { google: { responseModalities: ['TEXT', 'IMAGE'] } }`. Deep Think (name contains `deep-think`) is a virtual model that routes to `gemini-3.1-pro-preview` with `thinkingConfig: { thinkingLevel: 'high' }`. Sources stream as `source-url` parts and render as link chips.
 
 ### Multimodal
 
-**Input**: Images sent as `FileUIPart` via `sendMessage({ text, files })`, persisted in `message_attachments` table (base64 data URLs), reloaded as `file` parts on page load. `convertToModelMessages()` handles format conversion automatically. Gemini and Qwen have vision support; Ollama requires multimodal models (llava, bakllava).
+**Input**: Images sent as `FileUIPart` via `sendMessage({ text, files })`, persisted in `message_attachments` table (base64 data URLs), reloaded as `file` parts on page load. `convertToModelMessages()` handles format conversion automatically. Both Gemini and Qwen have vision support.
 
 **Output (Nano Banana 2)**: Gemini image models (`gemini-3.1-flash-image-preview`) return generated images as `file` parts in assistant messages. The `onFinish` callback extracts these `file` parts and persists them to `messageAttachments` (same table as user-attached images). Both user-attached and AI-generated images render inline in `MessagesList` with a click-to-expand lightbox overlay (Framer Motion animated, fullscreen with backdrop blur). Generated images display at 512px; user images at 300px.
 
@@ -124,20 +123,20 @@ Model name prefixes determine the provider: `gemini` → `@ai-sdk/google`, `qwen
 2. **Message format**: Use `convertToModelMessages()` on server; messages use `parts` array, not `content` string
 3. **Response format**: Use `toUIMessageStreamResponse({ sendSources: true })` for Google Search sources
 4. **SDK v6 API changes**: No `input`/`handleInputChange`/`handleSubmit` — manage input state yourself. No `isLoading` — use `status === 'streaming' || status === 'submitted'`. Send with `sendMessage({ text })`.
-5. **Ollama provider**: Use `baseURL` (not `baseUrl`) in `createOllama()`
-6. **libSQL client**: Uses `@libsql/client` (not `better-sqlite3`) — bundles natively in serverless
-7. **Google Search tool name**: Must be exactly `google_search` in the `tools` object
-8. **AI SDK v6 naming**: Use `maxOutputTokens` (not `maxTokens`) in `generateText()`/`streamText()`
-9. **DashScope**: Uses `@ai-sdk/openai` with `createOpenAI({ baseURL: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1' })`. Must use `.chat(modelName)` (not `provider(modelName)`) — DashScope doesn't support the Responses API. API keys are region-specific (US Virginia, Singapore, Beijing use different hostnames).
-10. **Qwen model prefix**: Use `startsWith('qwen')` (not `startsWith('qwen-')`) to match both `qwen-flash` and `qwen3-max` patterns
-11. **Source deduplication**: Google Search grounding sends `source-url` parts in `message.parts[]` — deduplicate by URL before rendering
-12. **Multimodal images**: `sendMessage({ text, files: FileUIPart[] })` on client, `convertToModelMessages()` on server handles data URL → inline base64 automatically
-13. **Gemini image generation**: Image models (name contains `image`) require `providerOptions: { google: { responseModalities: ['TEXT', 'IMAGE'] } }` — without this, no images are returned. Must NOT have Google Search grounding tools (incompatible).
-14. **Deep Think virtual model**: `gemini-3.1-pro-preview-deep-think` is a virtual model ID — the chat route strips `-deep-think` and routes to `gemini-3.1-pro-preview` with `thinkingConfig: { thinkingLevel: 'high' }`.
-15. **Gemini model IDs**: Use `gemini-3-flash-preview` (not `gemini-3.1-flash-preview` — 3.1 Flash doesn't exist). Valid 3.1 models: `gemini-3.1-pro-preview`, `gemini-3.1-flash-lite-preview`, `gemini-3.1-flash-image-preview`.
-16. **AI-generated image persistence**: The `onFinish` callback must save `file` parts (not just `text` parts) from assistant messages to `messageAttachments` via `saveMessageAttachments()`. Without this, generated images are lost on page refresh. The load flow (`loadMessages`) already reconstructs `file` parts from attachments.
-17. **Image data URLs in new tabs**: Browsers block `data:` URLs opened via `<a target="_blank">` for security. Use a lightbox overlay instead of linking to `data:` URLs directly.
-18. **Server action body size limit**: `next.config.ts` sets `experimental.serverActions.bodySizeLimit` to `'10mb'`. Without this, `saveMessageAttachments()` fails silently for Gemini-generated images (base64 data URLs are 1-2MB+, exceeding the default 1MB limit).
+5. **libSQL client**: Uses `@libsql/client` (not `better-sqlite3`) — bundles natively in serverless
+6. **Google Search tool name**: Must be exactly `google_search` in the `tools` object
+7. **AI SDK v6 naming**: Use `maxOutputTokens` (not `maxTokens`) in `generateText()`/`streamText()`
+8. **DashScope**: Uses `@ai-sdk/openai` with `createOpenAI({ baseURL: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1' })`. Must use `.chat(modelName)` (not `provider(modelName)`) — DashScope doesn't support the Responses API. API keys are region-specific (US Virginia, Singapore, Beijing use different hostnames).
+9. **Qwen model prefix**: Use `startsWith('qwen')` (not `startsWith('qwen-')`) to match `qwen-plus`, `qwen3-max`, `qwen3.5-plus`, etc.
+10. **Source deduplication**: Google Search grounding sends `source-url` parts in `message.parts[]` — deduplicate by URL before rendering
+11. **Multimodal images**: `sendMessage({ text, files: FileUIPart[] })` on client, `convertToModelMessages()` on server handles data URL → inline base64 automatically
+12. **Gemini image generation**: Image models (name contains `image`) require `providerOptions: { google: { responseModalities: ['TEXT', 'IMAGE'] } }` — without this, no images are returned. Must NOT have Google Search grounding tools (incompatible).
+13. **Deep Think virtual model**: `gemini-3.1-pro-preview-deep-think` is a virtual model ID — the chat route strips `-deep-think` and routes to `gemini-3.1-pro-preview` with `thinkingConfig: { thinkingLevel: 'high' }`.
+18. **Thinking variant virtual models**: Any Gemini model suffixed with `-think-{minimal|low|medium|high}` is a virtual ID — the chat route strips the suffix, resolves to the base model, and sets `thinkingConfig: { thinkingLevel }`. Supported levels per model: Flash (`gemini-3-flash-preview`) → minimal/low/medium/high; Pro (`gemini-3.1-pro-preview`) → low/medium (high = Deep Think); Flash-Lite (`gemini-3.1-flash-lite-preview`) → minimal/low/medium/high. Image models do not support thinking.
+14. **Gemini model IDs**: Use `gemini-3-flash-preview` (not `gemini-3.1-flash-preview` — 3.1 Flash doesn't exist). Valid 3.1 models: `gemini-3.1-pro-preview`, `gemini-3.1-flash-lite-preview`, `gemini-3.1-flash-image-preview`.
+15. **AI-generated image persistence**: The `onFinish` callback must save `file` parts (not just `text` parts) from assistant messages to `messageAttachments` via `saveMessageAttachments()`. Without this, generated images are lost on page refresh. The load flow (`loadMessages`) already reconstructs `file` parts from attachments.
+16. **Image data URLs in new tabs**: Browsers block `data:` URLs opened via `<a target="_blank">` for security. Use a lightbox overlay instead of linking to `data:` URLs directly.
+17. **Server action body size limit**: `next.config.ts` sets `experimental.serverActions.bodySizeLimit` to `'10mb'`. Without this, `saveMessageAttachments()` fails silently for Gemini-generated images (base64 data URLs are 1-2MB+, exceeding the default 1MB limit).
 
 ## Testing
 

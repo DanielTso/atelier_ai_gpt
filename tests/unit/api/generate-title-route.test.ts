@@ -21,10 +21,6 @@ vi.mock('@ai-sdk/openai', () => ({
   createOpenAI: () => ({ chat: vi.fn((model: string) => ({ modelId: model })) }),
 }))
 
-vi.mock('ai-sdk-ollama', () => ({
-  createOllama: () => vi.fn((model: string) => ({ modelId: model })),
-}))
-
 function makeRequest(body: Record<string, unknown>) {
   return new Request('http://localhost/api/generate-title', {
     method: 'POST',
@@ -44,12 +40,8 @@ async function importRoute() {
   vi.doMock('@ai-sdk/openai', () => ({
     createOpenAI: () => ({ chat: vi.fn((model: string) => ({ modelId: model })) }),
   }))
-  vi.doMock('ai-sdk-ollama', () => ({
-    createOllama: () => vi.fn((model: string) => ({ modelId: model })),
-  }))
   vi.doMock('@/lib/settings', () => ({
     getGeminiApiKey: () => Promise.resolve('test-key'),
-    getOllamaBaseUrl: () => Promise.resolve('http://localhost:11434'),
     getDashScopeApiKey: () => Promise.resolve('test-dashscope-key'),
   }))
   const mod = await import('@/app/api/generate-title/route')

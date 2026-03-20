@@ -1,9 +1,8 @@
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createOpenAI } from '@ai-sdk/openai';
-import { createOllama } from 'ai-sdk-ollama';
 import { streamText, convertToModelMessages, type UIMessage } from 'ai';
 import { getChatWithContext } from '@/app/actions';
-import { getGeminiApiKey, getOllamaBaseUrl, getDashScopeApiKey } from '@/lib/settings';
+import { getGeminiApiKey, getDashScopeApiKey } from '@/lib/settings';
 import { generateEmbedding, findSimilarMessages, findSimilarDocumentChunks } from '@/lib/embeddings';
 
 // Configuration for hybrid context management
@@ -19,9 +18,16 @@ export async function POST(req: Request) {
     const isQwenModel = modelName.startsWith('qwen');
     const isImageModel = modelName.includes('image');
     const isDeepThink = modelName.includes('deep-think');
+    // Generic thinking variant: any gemini model suffixed with -think-{minimal|low|medium|high}
+    const thinkMatch = modelName.match(/^(.+)-think-(minimal|low|medium|high)$/);
+    const thinkLevel = thinkMatch?.[2] ?? null; // 'minimal' | 'low' | 'medium' | 'high'
 
-    // Deep Think uses gemini-3.1-pro-preview with high thinking level
-    const actualModelName = isDeepThink ? 'gemini-3.1-pro-preview' : modelName;
+    // Resolve virtual model IDs to their real counterparts
+    const actualModelName = isDeepThink
+      ? 'gemini-3.1-pro-preview'
+      : thinkMatch
+        ? thinkMatch[1] // base model name without the -think-{level} suffix
+        : modelName;
 
     let selectedModel;
     let googleTools: Record<string, ReturnType<ReturnType<typeof createGoogleGenerativeAI>['tools']['googleSearch']>> | undefined;
@@ -42,6 +48,12 @@ export async function POST(req: Request) {
         googleTools = {
           google_search: google.tools.googleSearch({}),
         };
+      } else if (thinkLevel) {
+        // Generic thinking variant — applies to Flash, Pro Think (Low/Medium), Flash-Lite (Minimal)
+        providerOptions = { google: { thinkingConfig: { thinkingLevel: thinkLevel } } };
+        googleTools = {
+          google_search: google.tools.googleSearch({}),
+        };
       } else {
         // Enable Google Search grounding for non-image Gemini models
         googleTools = {
@@ -59,9 +71,7 @@ export async function POST(req: Request) {
       });
       selectedModel = dashscope.chat(modelName);
     } else {
-      const baseURL = await getOllamaBaseUrl();
-      const ollama = createOllama({ baseURL });
-      selectedModel = ollama(modelName);
+      throw new Error(`Unknown model provider for model: ${modelName}. Only Gemini and Qwen models are supported.`);
     }
 
     // Build context with hybrid approach: system prompt + semantic context + summary + recent messages

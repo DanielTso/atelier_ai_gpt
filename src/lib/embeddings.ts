@@ -1,12 +1,11 @@
 import { embed } from 'ai'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
-import { getOllamaBaseUrl, getGeminiApiKey, isCloudEnvironment } from './settings'
+import { getGeminiApiKey } from './settings'
 import { saveMessageEmbedding, getEmbeddingsForChat, getEmbeddingsForProject, getAllEmbeddings, getDocumentChunksForProject } from '@/app/actions'
 
-const EMBEDDING_MODEL = 'nomic-embed-text'
 const GEMINI_EMBEDDING_MODEL = 'gemini-embedding-001'
 
-export type EmbeddingProvider = 'ollama' | 'gemini' | null
+export type EmbeddingProvider = 'gemini' | null
 
 let embeddingModelCache: { result: { available: boolean; provider: EmbeddingProvider }; expiresAt: number } | null = null
 const EMBEDDING_CACHE_TTL = 5 * 60 * 1000 // 5 minutes
@@ -17,35 +16,13 @@ export function clearEmbeddingModelCache() {
 
 /**
  * Check if an embedding provider is available.
- * Returns the provider name ('ollama' or 'gemini') or null if none available.
+ * Returns 'gemini' if a Gemini API key is configured, null otherwise.
  */
 export async function ensureEmbeddingModel(): Promise<{ available: boolean; provider: EmbeddingProvider }> {
   if (embeddingModelCache && Date.now() < embeddingModelCache.expiresAt) {
     return embeddingModelCache.result
   }
 
-  // Skip Ollama on cloud — go straight to Gemini
-  if (!isCloudEnvironment()) {
-    try {
-      const baseUrl = await getOllamaBaseUrl()
-      const res = await fetch(`${baseUrl}/api/tags`, {
-        signal: AbortSignal.timeout(1000),
-      })
-      if (res.ok) {
-        const data = await res.json()
-        const models: { name: string }[] = data.models || []
-        if (models.some(m => m.name.startsWith(EMBEDDING_MODEL))) {
-          const result = { available: true, provider: 'ollama' as EmbeddingProvider }
-          embeddingModelCache = { result, expiresAt: Date.now() + EMBEDDING_CACHE_TTL }
-          return result
-        }
-      }
-    } catch {
-      // Ollama unavailable, try Gemini
-    }
-  }
-
-  // Gemini fallback (or primary on cloud)
   const apiKey = await getGeminiApiKey()
   if (apiKey) {
     const result = { available: true, provider: 'gemini' as EmbeddingProvider }
@@ -59,34 +36,10 @@ export async function ensureEmbeddingModel(): Promise<{ available: boolean; prov
 }
 
 /**
- * Generate an embedding using Ollama's nomic-embed-text model.
+ * Generate an embedding using Google Gemini gemini-embedding-001.
  * Returns a 768-dimensional float array.
  */
-async function generateEmbeddingWithOllama(text: string): Promise<number[]> {
-  const baseUrl = await getOllamaBaseUrl()
-  const res = await fetch(`${baseUrl}/api/embeddings`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: EMBEDDING_MODEL,
-      prompt: text,
-    }),
-    signal: AbortSignal.timeout(10000),
-  })
-
-  if (!res.ok) {
-    throw new Error(`Ollama embedding failed: ${res.status} ${res.statusText}`)
-  }
-
-  const data = await res.json()
-  return data.embedding
-}
-
-/**
- * Generate an embedding using Google Gemini gemini-embedding-001.
- * Returns a 768-dimensional float array (matching nomic-embed-text).
- */
-async function generateEmbeddingWithGemini(
+export async function generateEmbedding(
   text: string,
   taskType: 'query' | 'document' = 'document'
 ): Promise<number[]> {
@@ -108,27 +61,6 @@ async function generateEmbeddingWithGemini(
   })
 
   return embedding
-}
-
-/**
- * Generate an embedding vector for the given text.
- * Tries Ollama first, falls back to Gemini if unavailable.
- * Returns a 768-dimensional float array.
- */
-export async function generateEmbedding(
-  text: string,
-  taskType: 'query' | 'document' = 'document'
-): Promise<number[]> {
-  // Skip Ollama on cloud — use Gemini directly
-  if (!isCloudEnvironment()) {
-    try {
-      return await generateEmbeddingWithOllama(text)
-    } catch {
-      // Ollama unavailable, try Gemini
-    }
-  }
-
-  return generateEmbeddingWithGemini(text, taskType)
 }
 
 /**
@@ -167,7 +99,6 @@ export async function findSimilarMessages(
   topK: number = 5,
   threshold: number = 0.7
 ): Promise<{ content: string; similarity: number; chatId: number; messageId: number }[]> {
-  // Load embeddings based on scope
   let embeddings
   if (scope.projectId) {
     embeddings = await getEmbeddingsForProject(scope.projectId)
@@ -177,7 +108,6 @@ export async function findSimilarMessages(
     embeddings = await getAllEmbeddings()
   }
 
-  // Compute similarities
   const scored = embeddings.map(e => {
     const vector = JSON.parse(e.embedding) as number[]
     return {
@@ -188,7 +118,6 @@ export async function findSimilarMessages(
     }
   })
 
-  // Filter and sort
   return scored
     .filter(s => s.similarity >= threshold)
     .sort((a, b) => b.similarity - a.similarity)

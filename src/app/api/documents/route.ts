@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
     const { available } = await ensureEmbeddingModel()
     if (!available) {
       return NextResponse.json(
-        { error: 'No embedding provider available. Configure Ollama with nomic-embed-text or set a Gemini API key.' },
+        { error: 'No embedding provider available. Set a Gemini API key in Settings or .env.local.' },
         { status: 503 }
       )
     }

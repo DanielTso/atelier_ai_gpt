@@ -11,7 +11,7 @@ import { formatFileSize, getFileTypeLabel, isImageFile, fileToAttachedImage } fr
 
 interface EmbedStatus {
   available: boolean
-  provider: 'ollama' | 'gemini' | null
+  provider: 'gemini' | null
   embeddingCount: number
 }
 
@@ -296,13 +296,13 @@ export const ChatInputArea = memo(function ChatInputArea({
             <div
               className="ml-auto flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs text-muted-foreground"
               title={embedStatus.available
-                ? `Semantic memory active via ${embedStatus.provider === 'gemini' ? 'Gemini' : 'Ollama'} — ${embedStatus.embeddingCount} embeddings stored`
-                : 'Semantic memory offline — configure Ollama or Gemini API key'}
+                ? `Semantic memory active via Gemini — ${embedStatus.embeddingCount} embeddings stored`
+                : 'Semantic memory offline — configure Gemini API key'}
             >
               <Brain className={`h-3.5 w-3.5 ${embedStatus.available ? 'text-emerald-400' : 'text-muted-foreground/50'}`} />
               <span className="hidden sm:inline">
                 {embedStatus.available
-                  ? `${embedStatus.embeddingCount} memories (${embedStatus.provider === 'gemini' ? 'Gemini' : 'Ollama'})`
+                  ? `${embedStatus.embeddingCount} memories (Gemini)`
                   : 'Memory off'}
               </span>
             </div>

@@ -17,10 +17,6 @@ vi.mock('@ai-sdk/google', () => ({
   createGoogleGenerativeAI: () => vi.fn((model: string) => ({ modelId: model })),
 }))
 
-vi.mock('ai-sdk-ollama', () => ({
-  createOllama: () => vi.fn((model: string) => ({ modelId: model })),
-}))
-
 import {
   createProject,
   createChat,
@@ -46,12 +42,8 @@ async function importRoute() {
   vi.doMock('@ai-sdk/google', () => ({
     createGoogleGenerativeAI: () => vi.fn((model: string) => ({ modelId: model })),
   }))
-  vi.doMock('ai-sdk-ollama', () => ({
-    createOllama: () => vi.fn((model: string) => ({ modelId: model })),
-  }))
   vi.doMock('@/lib/settings', () => ({
     getGeminiApiKey: () => Promise.resolve('test-key'),
-    getOllamaBaseUrl: () => Promise.resolve('http://localhost:11434'),
   }))
   const mod = await import('@/app/api/summarize/route')
   return mod.POST

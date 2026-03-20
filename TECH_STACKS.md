@@ -23,9 +23,8 @@ This document outlines the final technology choices used in the "Atelier AI" app
     *   Uses `DefaultChatTransport` for API communication
     *   Uses `UIMessage` format with `parts` array (not `content` string)
     *   Server uses `convertToModelMessages()` and `toUIMessageStreamResponse()`
-*   **Ollama AI Provider (`ai-sdk-ollama`):** For connecting to locally hosted models (Llama 3, Mistral, Qwen, etc.).
-*   **Google Generative AI SDK (`@ai-sdk/google`):** For integrating Gemini cloud models (Gemini 3 Flash, 3.1 Pro, 3.1 Flash-Lite, 3.1 Flash Image / Nano Banana 2). Supports `providerOptions` for image generation (`responseModalities: ['TEXT', 'IMAGE']`) and deep thinking (`thinkingConfig: { thinkingLevel: 'high' }`).
-*   **Alibaba Cloud DashScope (`@ai-sdk/openai`):** For Qwen cloud models via OpenAI-compatible endpoint (`dashscope-us.aliyuncs.com`).
+*   **Google Generative AI SDK (`@ai-sdk/google`):** For integrating Gemini cloud models (Gemini 3 Flash, 3.1 Pro, 3.1 Flash-Lite, 3.1 Flash Image / Nano Banana 2). Supports `providerOptions` for image generation (`responseModalities: ['TEXT', 'IMAGE']`) and adaptive thinking (`thinkingConfig: { thinkingLevel: 'minimal' | 'low' | 'medium' | 'high' }`). Virtual model IDs suffixed with `-think-{level}` resolve to the base model with the corresponding thinking config; Pro's `high` uses the `-deep-think` suffix.
+*   **Alibaba Cloud DashScope (`@ai-sdk/openai`):** For Qwen cloud models via OpenAI-compatible endpoint (`dashscope-intl.aliyuncs.com`).
 
 ## Data Persistence
 *   **SQLite (`@libsql/client`):** Supports both local SQLite files (`file:sqlite.db`) and remote Turso databases. Bundles natively in serverless — no `serverExternalPackages` needed.
@@ -35,7 +34,7 @@ This document outlines the final technology choices used in the "Atelier AI" app
 *   **Hybrid storage strategy:**
     *   **Server-accessible settings** (API keys, provider URLs, default model/prompt) → SQLite `settings` key-value table with DB-first / environment variable fallback.
     *   **Client-only preferences** (theme, font size, message density, sidebar collapse state) → `localStorage` via `useLocalStorage` hook.
-*   **Per-request provider creation:** API routes dynamically create Google/Ollama providers per request using DB-stored settings, replacing module-level singletons. Enables runtime configuration changes without server restart.
+*   **Per-request provider creation:** API routes dynamically create Google/Qwen providers per request using DB-stored settings. Enables runtime configuration changes without server restart.
 *   **Collapsible sidebar:** Icon-only strip with Radix tooltips when collapsed, full navigation when expanded. State persisted in localStorage.
 
 ## Deployment / Runtime

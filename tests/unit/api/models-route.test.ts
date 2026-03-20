@@ -1,68 +1,44 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 describe('GET /api/models', () => {
-  const originalFetch = globalThis.fetch
-
   beforeEach(() => {
     vi.resetModules()
   })
 
-  afterEach(() => {
-    globalThis.fetch = originalFetch
-  })
-
   function mockSettings(
     apiKey: string | null = 'test-key',
-    ollamaUrl: string = 'http://localhost:11434',
     dashScopeApiKey: string | null = null,
-    cloud: boolean = false
   ) {
     vi.doMock('@/lib/settings', () => ({
       getGeminiApiKey: () => Promise.resolve(apiKey),
-      getOllamaBaseUrl: () => Promise.resolve(ollamaUrl),
       getDashScopeApiKey: () => Promise.resolve(dashScopeApiKey),
-      isCloudEnvironment: () => cloud,
     }))
   }
 
-  it('returns Gemini models even when Ollama is unavailable', async () => {
-    globalThis.fetch = vi.fn().mockRejectedValue(new Error('ECONNREFUSED'))
+  it('returns Gemini models when API key is set', async () => {
     mockSettings()
 
     const { GET } = await import('@/app/api/models/route')
     const response = await GET()
     const data = await response.json()
 
-    expect(data.models.length).toBeGreaterThanOrEqual(3)
+    expect(data.models.length).toBeGreaterThanOrEqual(5)
     expect(data.models.some((m: { model: string }) => m.model.startsWith('gemini'))).toBe(true)
   })
 
-  it('combines Gemini and Ollama models', async () => {
-    globalThis.fetch = vi.fn().mockImplementation((url: string) => {
-      if (typeof url === 'string' && url.includes('/api/tags')) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({
-            models: [{ name: 'llama3', model: 'llama3', digest: 'abc123' }],
-          }),
-        })
-      }
-      // DashScope or other fetches
-      return Promise.reject(new Error('not mocked'))
-    })
-    mockSettings()
+  it('returns Qwen models when DashScope key is set', async () => {
+    mockSettings('test-key', 'ds-test-key')
 
     const { GET } = await import('@/app/api/models/route')
     const response = await GET()
     const data = await response.json()
 
-    // 5 Gemini + 1 Ollama (no DashScope key = no Qwen)
-    expect(data.models).toHaveLength(6)
-    expect(data.models.some((m: { name: string }) => m.name === 'llama3')).toBe(true)
+    // 5 Gemini + 7 Qwen
+    expect(data.models).toHaveLength(12)
+    expect(data.models.some((m: { model: string }) => m.model.startsWith('qwen'))).toBe(true)
   })
 
   it('excludes Gemini models when no API key', async () => {
-    globalThis.fetch = vi.fn().mockRejectedValue(new Error('ECONNREFUSED'))
     mockSettings(null)
 
     const { GET } = await import('@/app/api/models/route')
@@ -73,7 +49,6 @@ describe('GET /api/models', () => {
   })
 
   it('sets cache-control header', async () => {
-    globalThis.fetch = vi.fn().mockRejectedValue(new Error('ECONNREFUSED'))
     mockSettings()
 
     const { GET } = await import('@/app/api/models/route')
@@ -82,20 +57,13 @@ describe('GET /api/models', () => {
     expect(response.headers.get('Cache-Control')).toBe('public, max-age=300')
   })
 
-  it('skips Ollama fetch entirely on cloud environment', async () => {
-    const mockFetch = vi.fn().mockRejectedValue(new Error('not mocked'))
-    globalThis.fetch = mockFetch
-    mockSettings('test-key', 'http://localhost:11434', null, true)
+  it('returns empty array when no API keys configured', async () => {
+    mockSettings(null, null)
 
     const { GET } = await import('@/app/api/models/route')
     const response = await GET()
     const data = await response.json()
 
-    // Should NOT have called fetch for Ollama (no DashScope key either, so no fetches)
-    expect(mockFetch).not.toHaveBeenCalled()
-    // Should still return Gemini models
-    expect(data.models.length).toBeGreaterThanOrEqual(3)
-    expect(data.models.some((m: { model: string }) => m.model.startsWith('gemini'))).toBe(true)
-    expect(data.models.every((m: { name: string }) => !m.name?.includes('llama'))).toBe(true)
+    expect(data.models).toHaveLength(0)
   })
 })

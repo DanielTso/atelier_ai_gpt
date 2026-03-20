@@ -7,7 +7,7 @@ import { DefaultChatTransport } from "ai"
 import { useEffect, useState, useRef, useCallback, useMemo } from "react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
-import { getProjects, createProject, getAllProjectChats, createChat, getChatMessages, saveMessage, deleteProject, updateProjectName, updateChatTitle, getStandaloneChats, createStandaloneChat, deleteChat, moveChatToProject, archiveChat, restoreChat, getArchivedChats, getMessageCount, getChatWithContext, updateChatSystemPrompt, getProjectDefaults, recordPersonaUsage, incrementUsageMessageCount, getProjectChatPreviews, saveMessageAttachments, getChatAttachments } from "./actions"
+import { getProjects, createProject, getAllProjectChats, createChat, getChatMessages, saveMessage, deleteProject, updateProjectName, updateChatTitle, getStandaloneChats, createStandaloneChat, deleteChat, moveChatToProject, archiveChat, restoreChat, getArchivedChats, getMessageCount, getChatWithContext, updateChatSystemPrompt, getProjectDefaults, recordPersonaUsage, incrementUsageMessageCount, getProjectChatPreviews, saveMessageAttachments, getChatAttachments, getSetting } from "./actions"
 import { Sidebar } from "@/components/chat/sidebar"
 import type { SidebarActions } from "@/components/chat/sidebar"
 import { ChatHeader } from "@/components/chat/ChatHeader"
@@ -314,9 +314,12 @@ export default function Home() {
       const data = await res.json()
       if (data.models) setModels(data.models)
       if (data.models?.length > 0) {
-         setSelectedModel(data.models[0].model)
+         // Use configured default model if it exists in the available models
+         const defaultModel = await getSetting('default-model')
+         const modelExists = defaultModel && data.models.some((m: { model: string }) => m.model === defaultModel)
+         setSelectedModel(modelExists ? defaultModel : data.models[0].model)
       } else {
-         setError("No models found. Please check your Gemini API key or start Ollama.")
+         setError("No models found. Please check your API keys in Settings.")
       }
     } catch (e) {
       console.error(e)
@@ -804,6 +807,11 @@ export default function Home() {
     }
   }, [])
 
+  // Only switch model if it exists in the loaded list (guards against stale persona prefs)
+  const handleModelChange = useCallback((model: string) => {
+    if (models.some(m => m.model === model)) setSelectedModel(model)
+  }, [models])
+
   const handleSaveSystemPrompt = useCallback(async (prompt: string | null) => {
     if (!activeChatId) return
     try {
@@ -960,7 +968,7 @@ export default function Home() {
               onSystemPromptClick={() => setSystemPromptDialogOpen(true)}
               models={models}
               selectedModel={selectedModel}
-              onModelChange={setSelectedModel}
+              onModelChange={handleModelChange}
               attachedFiles={attachedFiles}
               onFilesChange={setAttachedFiles}
               attachedImages={attachedImages}
@@ -999,7 +1007,7 @@ export default function Home() {
               onSystemPromptClick={() => setSystemPromptDialogOpen(true)}
               models={models}
               selectedModel={selectedModel}
-              onModelChange={setSelectedModel}
+              onModelChange={handleModelChange}
               attachedFiles={attachedFiles}
               onFilesChange={setAttachedFiles}
               attachedImages={attachedImages}
@@ -1017,7 +1025,7 @@ export default function Home() {
         onToggleTheme={() => setTheme(theme === "dark" ? "light" : "dark")}
         models={models}
         selectedModel={selectedModel}
-        onModelChange={setSelectedModel}
+        onModelChange={handleModelChange}
         projects={projects}
         standaloneChats={standaloneChats}
         chats={chats}

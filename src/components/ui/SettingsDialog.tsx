@@ -2,9 +2,8 @@
 
 import { memo, useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
-import { X, Key, Palette, SlidersHorizontal } from 'lucide-react'
+import { X, Palette, SlidersHorizontal } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { ApiSettingsTab } from '@/components/settings/ApiSettingsTab'
 import { AppearanceSettingsTab } from '@/components/settings/AppearanceSettingsTab'
 import { ModelDefaultsSettingsTab } from '@/components/settings/ModelDefaultsSettingsTab'
 import type { FontSize, MessageDensity } from '@/hooks/useAppearanceSettings'
@@ -15,7 +14,7 @@ interface Model {
   digest: string
 }
 
-type SettingsTab = 'api' | 'appearance' | 'defaults'
+type SettingsTab = 'appearance' | 'defaults'
 
 interface SettingsDialogProps {
   open: boolean
@@ -28,8 +27,7 @@ interface SettingsDialogProps {
   onMessageDensityChange: (density: MessageDensity) => void
 }
 
-const tabs: { id: SettingsTab; label: string; icon: typeof Key }[] = [
-  { id: 'api', label: 'API & Providers', icon: Key },
+const tabs: { id: SettingsTab; label: string; icon: typeof Palette }[] = [
   { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'defaults', label: 'Model Defaults', icon: SlidersHorizontal },
 ]
@@ -44,7 +42,7 @@ export const SettingsDialog = memo(function SettingsDialog({
   messageDensity,
   onMessageDensityChange,
 }: SettingsDialogProps) {
-  const [activeTab, setActiveTab] = useState<SettingsTab>('api')
+  const [activeTab, setActiveTab] = useState<SettingsTab>('appearance')
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -62,7 +60,7 @@ export const SettingsDialog = memo(function SettingsDialog({
               </button>
             </Dialog.Close>
             <Dialog.Description className="sr-only">
-              Configure API keys, appearance, and model defaults
+              Configure appearance and model defaults
             </Dialog.Description>
           </div>
 
@@ -92,9 +90,6 @@ export const SettingsDialog = memo(function SettingsDialog({
 
             {/* Tab Content */}
             <div className="flex-1 overflow-y-auto p-6">
-              {activeTab === 'api' && (
-                <ApiSettingsTab onSettingsChanged={onSettingsChanged} />
-              )}
               {activeTab === 'appearance' && (
                 <AppearanceSettingsTab
                   fontSize={fontSize}

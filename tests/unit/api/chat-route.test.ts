@@ -30,26 +30,18 @@ vi.mock('@ai-sdk/google', () => ({
   createGoogleGenerativeAI: () => mockGoogleFn,
 }))
 
-const mockOllamaFn = vi.fn((model: string) => ({ modelId: model, provider: 'ollama' }))
-vi.mock('ai-sdk-ollama', () => ({
-  createOllama: () => mockOllamaFn,
-}))
-
 import { createProject, createChat, updateChatSystemPrompt, updateChatSummary } from '@/app/actions'
 
 describe('POST /api/chat', () => {
   beforeEach(async () => {
     await createTestDb()
     vi.clearAllMocks()
-    // Set API key so google provider is created
     process.env.GOOGLE_GENERATIVE_AI_API_KEY = 'test-key'
   })
 
   async function postChat(body: Record<string, unknown>) {
-    // Re-import to pick up fresh mocks each time
     vi.resetModules()
 
-    // Re-apply mocks after resetModules
     vi.doMock('@/db', () => ({
       get db() { return testDb },
     }))
@@ -63,15 +55,11 @@ describe('POST /api/chat', () => {
         { tools: { googleSearch: mockGoogleSearch } }
       ),
     }))
-    vi.doMock('ai-sdk-ollama', () => ({
-      createOllama: () => mockOllamaFn,
-    }))
     vi.doMock('@ai-sdk/openai', () => ({
       createOpenAI: () => vi.fn((model: string) => ({ modelId: model, provider: 'openai' })),
     }))
     vi.doMock('@/lib/settings', () => ({
       getGeminiApiKey: () => Promise.resolve('test-key'),
-      getOllamaBaseUrl: () => Promise.resolve('http://localhost:11434'),
       getDashScopeApiKey: () => Promise.resolve(null),
     }))
     vi.doMock('@/lib/embeddings', () => ({
@@ -98,13 +86,14 @@ describe('POST /api/chat', () => {
     expect(mockGoogleFn).toHaveBeenCalledWith('gemini-3-flash-preview')
   })
 
-  it('routes non-gemini models to Ollama provider', async () => {
+  it('returns 500 for unknown model provider', async () => {
     const response = await postChat({
       messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] }],
       model: 'llama3',
     })
-    expect(response.status).toBe(200)
-    expect(mockOllamaFn).toHaveBeenCalledWith('llama3')
+    expect(response.status).toBe(500)
+    const data = await response.json()
+    expect(data.error).toContain('Unknown model provider')
   })
 
   it('injects summary context when chat has summary', async () => {
@@ -118,7 +107,6 @@ describe('POST /api/chat', () => {
       chatId: chat.id,
     })
     expect(response.status).toBe(200)
-    // convertToModelMessages should have been called with summary + ack + recent messages
     expect(mockConvertToModelMessages).toHaveBeenCalled()
     const passedMessages = mockConvertToModelMessages.mock.calls[0][0]
     expect(passedMessages[0].id).toBe('summary-context')

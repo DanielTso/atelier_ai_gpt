@@ -1,9 +1,8 @@
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createOpenAI } from '@ai-sdk/openai';
-import { createOllama } from 'ai-sdk-ollama';
 import { generateText } from 'ai';
 import { getMessagesForSummarization, updateChatSummary, getChatWithSummary } from '@/app/actions';
-import { getGeminiApiKey, getOllamaBaseUrl, getDashScopeApiKey } from '@/lib/settings';
+import { getGeminiApiKey, getDashScopeApiKey } from '@/lib/settings';
 
 const SUMMARIZATION_PROMPT = `You are a conversation summarizer. Your task is to create a concise summary of the conversation that preserves:
 - Key topics discussed
@@ -79,9 +78,7 @@ export async function POST(req: Request) {
       });
       selectedModel = dashscope.chat(modelName);
     } else {
-      const baseURL = await getOllamaBaseUrl();
-      const ollama = createOllama({ baseURL });
-      selectedModel = ollama(modelName);
+      throw new Error(`Unknown model provider for model: ${modelName}`);
     }
 
     // Generate summary

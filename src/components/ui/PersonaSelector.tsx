@@ -129,12 +129,6 @@ export const PersonaSelector = memo(function PersonaSelector({
                           Cloud
                         </span>
                       )}
-                      {persona.modelConstraint === 'local' && (
-                        <span className="shrink-0 flex items-center gap-0.5 text-[10px] px-1 py-0.5 bg-green-500/15 text-green-300 rounded">
-                          <Monitor className="h-2.5 w-2.5" />
-                          Local
-                        </span>
-                      )}
                     </div>
                     {persona.description && (
                       <p className="text-[10px] text-muted-foreground mt-0.5 truncate">{persona.description}</p>

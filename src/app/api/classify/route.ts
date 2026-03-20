@@ -1,7 +1,6 @@
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import { createOllama } from 'ai-sdk-ollama';
 import { generateText } from 'ai';
-import { getGeminiApiKey, getOllamaBaseUrl } from '@/lib/settings';
+import { getGeminiApiKey } from '@/lib/settings';
 import { saveChatTopics, getChatTopics } from '@/app/actions';
 
 const CLASSIFICATION_PROMPT = `Classify the following conversation into one or more topics. Return ONLY a JSON array of objects with "topic" and "confidence" (0-100) fields.
@@ -52,26 +51,17 @@ export async function POST(req: Request) {
       })
       .join('\n');
 
-    // Use cheapest available model
+    // Use Gemini for classification
     const modelName = model || 'gemini-3-flash-preview';
-    const isGeminiModel = modelName.startsWith('gemini');
-
-    let selectedModel;
-    if (isGeminiModel) {
-      const apiKey = await getGeminiApiKey();
-      if (!apiKey) {
-        return new Response(JSON.stringify({ error: 'No API key available' }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-      const google = createGoogleGenerativeAI({ apiKey });
-      selectedModel = google(modelName);
-    } else {
-      const baseURL = await getOllamaBaseUrl();
-      const ollama = createOllama({ baseURL });
-      selectedModel = ollama(modelName);
+    const apiKey = await getGeminiApiKey();
+    if (!apiKey) {
+      return new Response(JSON.stringify({ error: 'No API key available' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
+    const google = createGoogleGenerativeAI({ apiKey });
+    const selectedModel = google(modelName.startsWith('gemini') ? modelName : 'gemini-3-flash-preview');
 
     const result = await generateText({
       model: selectedModel,
