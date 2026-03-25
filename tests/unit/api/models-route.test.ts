@@ -33,8 +33,8 @@ describe('GET /api/models', () => {
     const response = await GET()
     const data = await response.json()
 
-    // 5 Gemini + 7 Qwen
-    expect(data.models).toHaveLength(12)
+    // 15 Gemini (base + thinking variants) + 7 Qwen
+    expect(data.models).toHaveLength(22)
     expect(data.models.some((m: { model: string }) => m.model.startsWith('qwen'))).toBe(true)
   })
 

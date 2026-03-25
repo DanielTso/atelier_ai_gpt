@@ -5,19 +5,11 @@
 - **Language:** TypeScript
 - **Styling:** Tailwind CSS v4 (with `backdrop-blur` for Glassmorphism)
 - **Icons:** Lucide React
-- **AI Integration:** Vercel AI SDK v6 (Ollama + Google Gemini + Alibaba Qwen)
+- **AI Integration:** Vercel AI SDK v6 (Google Gemini + Alibaba Cloud Qwen)
 - **Database:** SQLite via `@libsql/client` + `drizzle-orm/libsql` (local) / Turso (production)
 - **Theme:** `next-themes` for Dark/Light mode
 - **Deployment:** Vercel + Turso
 - **CI:** GitHub Actions (lint → build → vitest → playwright)
-
-## Hardware Context
-- **GPU:** AMD 6650XT (8GB)
-- **RAM:** 32GB
-- **Recommended Models:**
-    - **General:** `llama3` (8B) or `mistral` (7B) - Fast, fits in VRAM.
-    - **Coding:** `deepseek-coder` (6.7B or similar).
-    - **Vision:** `llava` (7B or 13B) - Fits in 8GB (just barely for 13B, 7B is safe).
 
 ## Phases
 
@@ -30,11 +22,11 @@
 - [x] Implement Dark/Light mode toggle.
 - [x] **Test:** App starts, Theme toggle works, responsive layout.
 
-### Phase 2: Ollama Integration
-**Goal:** Chat with the local LLM.
-- [x] Install `ai` SDK and `ollama-ai-provider` (or create custom API route).
+### Phase 2: AI Provider Integration
+**Goal:** Chat with cloud LLMs.
+- [x] Install `ai` SDK and provider packages.
 - [x] Create `api/chat` route for streaming responses.
-- [x] Create `api/models` route to fetch installed models from Ollama (`GET /api/tags`).
+- [x] Create `api/models` route with curated model list (gated by API key presence).
 - [x] Implement `ChatInterface` component with Input and Message list.
 - [x] Implement Model Selector (Dropdown).
 - [x] **Test:** Can select a model, send a message, and receive a streaming response.
@@ -85,7 +77,7 @@
 - [x] Create server-side settings helper with DB-first / env-fallback pattern.
 - [x] Migrate API routes to per-request provider creation (no more module-level singletons).
 - [x] Build Settings dialog with three tabs:
-  - **API & Providers:** Gemini API key (password field), Ollama URL with Test Connection button.
+  - **API & Providers:** Gemini API key, DashScope API key (password fields).
   - **Appearance:** Theme cards (Light/Dark/System), font size, message density.
   - **Model Defaults:** Default model selector, default system prompt, persona management.
 - [x] Implement collapsible sidebar (icon-only strip with tooltips when collapsed, localStorage-persisted).
@@ -117,7 +109,7 @@
 **Goal:** Production deployment with continuous integration.
 - [x] Deploy to Vercel with Turso remote database.
 - [x] Migrate from `better-sqlite3` to `@libsql/client` for serverless compatibility.
-- [x] Add Alibaba Cloud Qwen (DashScope) as third AI provider.
+- [x] Add Alibaba Cloud Qwen (DashScope) as second AI provider.
 - [x] GitHub Actions CI pipeline (lint, build, vitest, playwright).
 - [x] Vercel CLI setup for direct deployments.
 - [x] **Test:** All 105 Vitest + 8 Playwright tests pass in CI.
