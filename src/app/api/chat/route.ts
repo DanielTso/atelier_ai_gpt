@@ -1,9 +1,8 @@
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import { createOpenAI } from '@ai-sdk/openai';
 import { streamText, convertToModelMessages, type UIMessage } from 'ai';
 import { getChatWithContext } from '@/app/actions';
-import { getGeminiApiKey, getDashScopeApiKey } from '@/lib/settings';
 import { generateEmbedding, findSimilarMessages, findSimilarDocumentChunks } from '@/lib/embeddings';
+import { createProvider } from '@/lib/providers';
+import { apiError } from '@/lib/errors';
 
 // Configuration for hybrid context management
 const RECENT_MESSAGES_LIMIT = 20; // Keep last N messages in full detail
@@ -13,66 +12,8 @@ export async function POST(req: Request) {
     const { messages, model, chatId } = await req.json();
     const modelName = model || 'gemini-3-flash-preview';
 
-    // Determine which provider to use based on model name
-    const isGeminiModel = modelName.startsWith('gemini');
-    const isQwenModel = modelName.startsWith('qwen');
-    const isImageModel = modelName.includes('image');
-    const isDeepThink = modelName.includes('deep-think');
-    // Generic thinking variant: any gemini model suffixed with -think-{minimal|low|medium|high}
-    const thinkMatch = modelName.match(/^(.+)-think-(minimal|low|medium|high)$/);
-    const thinkLevel = thinkMatch?.[2] ?? null; // 'minimal' | 'low' | 'medium' | 'high'
-
-    // Resolve virtual model IDs to their real counterparts
-    const actualModelName = isDeepThink
-      ? 'gemini-3.1-pro-preview'
-      : thinkMatch
-        ? thinkMatch[1] // base model name without the -think-{level} suffix
-        : modelName;
-
-    let selectedModel;
-    let googleTools: Record<string, ReturnType<ReturnType<typeof createGoogleGenerativeAI>['tools']['googleSearch']>> | undefined;
-    let providerOptions: Record<string, Record<string, string | string[] | Record<string, string>>> | undefined;
-    if (isGeminiModel) {
-      const apiKey = await getGeminiApiKey();
-      if (!apiKey) {
-        throw new Error("Google Gemini API Key is missing. Set it in Settings or .env.local.");
-      }
-      const google = createGoogleGenerativeAI({ apiKey });
-      selectedModel = google(actualModelName);
-      if (isImageModel) {
-        // Image models need TEXT+IMAGE response modalities, no search grounding
-        providerOptions = { google: { responseModalities: ['TEXT', 'IMAGE'] } };
-      } else if (isDeepThink) {
-        // Deep Think uses high thinking level for extended reasoning
-        providerOptions = { google: { thinkingConfig: { thinkingLevel: 'high' } } };
-        googleTools = {
-          google_search: google.tools.googleSearch({}),
-        };
-      } else if (thinkLevel) {
-        // Generic thinking variant — applies to Flash, Pro Think (Low/Medium), Flash-Lite (Minimal)
-        providerOptions = { google: { thinkingConfig: { thinkingLevel: thinkLevel } } };
-        googleTools = {
-          google_search: google.tools.googleSearch({}),
-        };
-      } else {
-        // Enable Google Search grounding for non-image Gemini models
-        googleTools = {
-          google_search: google.tools.googleSearch({}),
-        };
-      }
-    } else if (isQwenModel) {
-      const apiKey = await getDashScopeApiKey();
-      if (!apiKey) {
-        throw new Error("DashScope API Key is missing. Set it in Settings or .env.local.");
-      }
-      const dashscope = createOpenAI({
-        baseURL: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
-        apiKey,
-      });
-      selectedModel = dashscope.chat(modelName);
-    } else {
-      throw new Error(`Unknown model provider for model: ${modelName}. Only Gemini and Qwen models are supported.`);
-    }
+    // Create provider (handles virtual model resolution, tools, and options)
+    const { model: selectedModel, tools: googleTools, providerOptions } = await createProvider(modelName);
 
     // Build context with hybrid approach: system prompt + semantic context + summary + recent messages
     let contextMessages = messages as UIMessage[];
@@ -272,11 +213,13 @@ export async function POST(req: Request) {
     return result.toUIMessageStreamResponse({ sendSources: true });
 
   } catch (error) {
-    console.error("❌ [API Error]:", error);
-    const errorMessage = error instanceof Error ? error.message : "An error occurred during text generation.";
-    return new Response(JSON.stringify({ error: errorMessage }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    // Preserve specific API-key / provider errors for user feedback
+    if (error instanceof Error && (error.message.includes('API Key') || error.message.includes('Unknown model provider'))) {
+      return new Response(JSON.stringify({ error: error.message }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    return apiError(error, 'An error occurred during text generation.');
   }
 }

@@ -8,17 +8,12 @@ import { PersonaSelector } from '@/components/ui/PersonaSelector'
 import { ModelSelect } from '@/components/ui/ModelSelect'
 import type { AttachedFile, AttachedImage } from '@/lib/fileAttachments'
 import { formatFileSize, getFileTypeLabel, isImageFile, fileToAttachedImage } from '@/lib/fileAttachments'
+import type { Model } from '@/types'
 
 interface EmbedStatus {
   available: boolean
   provider: 'gemini' | null
   embeddingCount: number
-}
-
-interface Model {
-  name: string
-  model: string
-  digest: string
 }
 
 interface ChatInputAreaProps {

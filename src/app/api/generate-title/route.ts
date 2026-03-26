@@ -1,7 +1,6 @@
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import { createOpenAI } from '@ai-sdk/openai';
 import { generateText } from 'ai';
-import { getGeminiApiKey, getDashScopeApiKey } from '@/lib/settings';
+import { createProvider } from '@/lib/providers';
+import { apiError } from '@/lib/errors';
 
 const TITLE_PROMPT = `Generate a concise title (3-6 words) for this conversation. Return only the title, no quotes or punctuation.`;
 
@@ -23,32 +22,9 @@ export async function POST(req: Request) {
       )
       .join('\n\n');
 
-    // Select model (same provider routing as /api/summarize)
+    // Select model
     const modelName = model || 'gemini-3-flash-preview';
-    const isGeminiModel = modelName.startsWith('gemini');
-    const isQwenModel = modelName.startsWith('qwen');
-
-    let selectedModel;
-    if (isGeminiModel) {
-      const apiKey = await getGeminiApiKey();
-      if (!apiKey) {
-        throw new Error('Google Gemini API Key is missing.');
-      }
-      const google = createGoogleGenerativeAI({ apiKey });
-      selectedModel = google(modelName);
-    } else if (isQwenModel) {
-      const apiKey = await getDashScopeApiKey();
-      if (!apiKey) {
-        throw new Error('DashScope API Key is missing.');
-      }
-      const dashscope = createOpenAI({
-        baseURL: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
-        apiKey,
-      });
-      selectedModel = dashscope.chat(modelName);
-    } else {
-      throw new Error(`Unknown model provider for model: ${modelName}`);
-    }
+    const { model: selectedModel } = await createProvider(modelName);
 
     const result = await generateText({
       model: selectedModel,
@@ -72,11 +48,12 @@ export async function POST(req: Request) {
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (error) {
-    console.error('Title generation error:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Title generation failed';
-    return new Response(JSON.stringify({ error: errorMessage }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    if (error instanceof Error && (error.message.includes('API Key') || error.message.includes('Unknown model provider'))) {
+      return new Response(JSON.stringify({ error: error.message }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    return apiError(error, 'Title generation failed');
   }
 }

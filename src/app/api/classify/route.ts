@@ -2,6 +2,7 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { generateText } from 'ai';
 import { getGeminiApiKey } from '@/lib/settings';
 import { saveChatTopics, getChatTopics } from '@/app/actions';
+import { apiError } from '@/lib/errors';
 
 const CLASSIFICATION_PROMPT = `Classify the following conversation into one or more topics. Return ONLY a JSON array of objects with "topic" and "confidence" (0-100) fields.
 
@@ -90,12 +91,6 @@ export async function POST(req: Request) {
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (error) {
-    console.error('[Classify] Error:', error);
-    return new Response(JSON.stringify({
-      error: error instanceof Error ? error.message : 'Classification failed',
-    }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return apiError(error, 'Classification failed', 200);
   }
 }

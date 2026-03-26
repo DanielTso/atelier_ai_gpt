@@ -4,12 +4,7 @@ import { Command } from "cmdk"
 import { useState } from "react"
 import { MessageSquare, Sun, Moon, Plus, Folder, Cpu, Search } from "lucide-react"
 import { cn } from "@/lib/utils"
-
-interface Model {
-  name: string
-  model: string
-  digest: string
-}
+import type { Model } from "@/types"
 
 interface Project {
   id: number

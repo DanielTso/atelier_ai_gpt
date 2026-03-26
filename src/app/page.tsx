@@ -30,12 +30,7 @@ import { ProjectLandingPage } from "@/components/chat/ProjectLandingPage"
 import type { AttachedFile, AttachedImage } from "@/lib/fileAttachments"
 import { buildFileMessage } from "@/lib/fileAttachments"
 import type { FileUIPart } from "ai"
-
-interface Model {
-  name: string
-  model: string
-  digest: string
-}
+import type { Model } from "@/types"
 
 // Types matching DB schema roughly
 type Project = { id: number; name: string }

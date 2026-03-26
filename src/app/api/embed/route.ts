@@ -1,5 +1,6 @@
 import { embedAndStore, ensureEmbeddingModel } from '@/lib/embeddings';
 import { getEmbeddingCount } from '@/app/actions';
+import { apiError } from '@/lib/errors';
 
 export async function GET(req: Request) {
   try {
@@ -58,13 +59,6 @@ export async function POST(req: Request) {
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (error) {
-    console.error('[Embed API] Error:', error);
-    return new Response(JSON.stringify({
-      success: false,
-      error: error instanceof Error ? error.message : 'Embedding failed',
-    }), {
-      status: 200, // Return 200 even on error since embedding is best-effort
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return apiError(error, 'Embedding failed', 200);
   }
 }

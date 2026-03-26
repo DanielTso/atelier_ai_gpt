@@ -1,8 +1,7 @@
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import { createOpenAI } from '@ai-sdk/openai';
 import { generateText } from 'ai';
 import { getMessagesForSummarization, updateChatSummary, getChatWithSummary } from '@/app/actions';
-import { getGeminiApiKey, getDashScopeApiKey } from '@/lib/settings';
+import { createProvider } from '@/lib/providers';
+import { apiError } from '@/lib/errors';
 
 const SUMMARIZATION_PROMPT = `You are a conversation summarizer. Your task is to create a concise summary of the conversation that preserves:
 - Key topics discussed
@@ -56,30 +55,7 @@ export async function POST(req: Request) {
 
     // Select model for summarization
     const modelName = model || 'gemini-3-flash-preview';
-    const isGeminiModel = modelName.startsWith('gemini');
-    const isQwenModel = modelName.startsWith('qwen');
-
-    let selectedModel;
-    if (isGeminiModel) {
-      const apiKey = await getGeminiApiKey();
-      if (!apiKey) {
-        throw new Error("Google Gemini API Key is missing. Set it in Settings or .env.local.");
-      }
-      const google = createGoogleGenerativeAI({ apiKey });
-      selectedModel = google(modelName);
-    } else if (isQwenModel) {
-      const apiKey = await getDashScopeApiKey();
-      if (!apiKey) {
-        throw new Error("DashScope API Key is missing. Set it in Settings or .env.local.");
-      }
-      const dashscope = createOpenAI({
-        baseURL: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
-        apiKey,
-      });
-      selectedModel = dashscope.chat(modelName);
-    } else {
-      throw new Error(`Unknown model provider for model: ${modelName}`);
-    }
+    const { model: selectedModel } = await createProvider(modelName);
 
     // Generate summary
     const result = await generateText({
@@ -106,11 +82,12 @@ export async function POST(req: Request) {
     });
 
   } catch (error) {
-    console.error("Summarization error:", error);
-    const errorMessage = error instanceof Error ? error.message : "Summarization failed";
-    return new Response(JSON.stringify({ error: errorMessage }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    if (error instanceof Error && (error.message.includes('API Key') || error.message.includes('Unknown model provider'))) {
+      return new Response(JSON.stringify({ error: error.message }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    return apiError(error, 'Summarization failed');
   }
 }
