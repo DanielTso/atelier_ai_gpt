@@ -51,7 +51,11 @@ SQLite via `@libsql/client` + `drizzle-orm/libsql`. Supports both local SQLite f
 - **Local dev** (default): No env vars needed — uses `file:sqlite.db`
 - **Vercel/Production**: Set `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` in Vercel dashboard
 
-Schema at `src/db/schema.ts`, connection at `src/db/index.ts`. Drizzle config uses `dialect: "turso"`. Ten tables: `projects` → `chats` → `messages` (cascade deletes), `settings`, `messageEmbeddings`, `documents`, `documentChunks`, `messageAttachments`, `personaUsage`, `chatTopics`. See schema file for field details.
+Schema at `src/db/schema.ts`, connection at `src/db/index.ts` (with `PRAGMA foreign_keys = ON` for local SQLite). Drizzle config uses `dialect: "turso"`. Ten tables: `projects` → `chats` → `messages` (cascade deletes), `settings`, `messageEmbeddings`, `documents`, `documentChunks`, `messageAttachments`, `personaUsage`, `chatTopics`. See schema file for field details.
+
+### Security
+
+`getSetting()` and `getSettings()` server actions block sensitive keys (`gemini-api-key`, `dashscope-api-key`) from being read by client code. API keys are only accessed server-side via `src/lib/settings.ts` (`getGeminiApiKey()`, `getDashScopeApiKey()`). All POST API routes validate request bodies with Zod schemas; error responses are sanitized via `apiError()` helper (no raw error messages to clients).
 
 ## Architecture Overview
 
@@ -81,8 +85,9 @@ Atelier AI is a Next.js 16 App Router chat application with multi-provider AI ba
 - `src/components/ui/` — Reusable UI (dialogs, selectors, command palette)
 - `src/components/settings/` — Settings tab components
 - `src/hooks/` — Custom hooks (useLocalStorage, usePersonas, useAppearanceSettings, etc.)
-- `src/lib/` — Utilities: `settings.ts` (DB-first/env-fallback config), `embeddings.ts` (vector search), `chunking.ts` (document chunker), `fileAttachments.ts` (image/file handling)
-- `src/db/` — `schema.ts` (Drizzle schema), `index.ts` (connection)
+- `src/lib/` — Utilities: `settings.ts` (DB-first/env-fallback config), `embeddings.ts` (vector search), `chunking.ts` (document chunker), `fileAttachments.ts` (image/file handling), `providers.ts` (shared AI provider factory), `fileExtraction.ts` (shared file parsing), `errors.ts` (API error helper), `validation.ts` (Zod request schemas)
+- `src/types.ts` — Shared TypeScript interfaces (`Model`)
+- `src/db/` — `schema.ts` (Drizzle schema), `index.ts` (connection with FK enforcement)
 
 ### Context Pipeline (`/api/chat`)
 
@@ -109,7 +114,7 @@ Tailwind CSS v4 with glassmorphism design system. Glass panels: `bg-background/6
 
 ### Provider Routing
 
-Model name prefixes determine the provider: `gemini` → `@ai-sdk/google`, `qwen` → `@ai-sdk/openai` (DashScope OpenAI-compatible endpoint). Google Search grounding is auto-enabled for all Gemini text models (including thinking variants and Deep Think) via `google.tools.googleSearch({})`. Image models (name contains `image`) are the exception — they skip grounding and instead set `providerOptions: { google: { responseModalities: ['TEXT', 'IMAGE'] } }`. Deep Think (name contains `deep-think`) is a virtual model that routes to `gemini-3.1-pro-preview` with `thinkingConfig: { thinkingLevel: 'high' }` plus grounding. Sources stream as `source-url` parts and render as link chips.
+Centralized in `src/lib/providers.ts` via `createProvider(modelName)`. Model name prefixes determine the provider: `gemini` → `@ai-sdk/google`, `qwen` → `@ai-sdk/openai` (DashScope OpenAI-compatible endpoint, URL constant `DASHSCOPE_BASE_URL`). Google Search grounding is auto-enabled for all Gemini text models (including thinking variants and Deep Think) via `google.tools.googleSearch({})`. Image models (name contains `image`) are the exception — they skip grounding and instead set `providerOptions: { google: { responseModalities: ['TEXT', 'IMAGE'] } }`. Deep Think (name contains `deep-think`) is a virtual model that routes to `gemini-3.1-pro-preview` with `thinkingConfig: { thinkingLevel: 'high' }` plus grounding. Sources stream as `source-url` parts and render as link chips. All POST routes validate request bodies with Zod schemas (`src/lib/validation.ts`).
 
 ### Multimodal
 

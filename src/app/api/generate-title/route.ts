@@ -15,8 +15,8 @@ export async function POST(req: Request) {
 
     // Format conversation for title generation
     const conversationText = messages
-      .map((m: { role: string; content: string }) =>
-        `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`
+      .map((m) =>
+        `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content ?? ''}`
       )
       .join('\n\n');
 

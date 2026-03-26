@@ -4,10 +4,11 @@ import { getGeminiApiKey, getDashScopeApiKey } from '@/lib/settings';
 
 export const DASHSCOPE_BASE_URL = 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export interface ProviderResult {
-  model: ReturnType<ReturnType<typeof createGoogleGenerativeAI>> | ReturnType<ReturnType<typeof createOpenAI>['chat']>;
-  tools?: Record<string, unknown>;
-  providerOptions?: Record<string, Record<string, unknown>>;
+  model: any;
+  tools?: Record<string, any>;
+  providerOptions?: Record<string, Record<string, any>>;
 }
 
 export async function createProvider(modelName: string): Promise<ProviderResult> {
@@ -34,8 +35,8 @@ export async function createProvider(modelName: string): Promise<ProviderResult>
     const google = createGoogleGenerativeAI({ apiKey });
     const model = google(actualModelName);
 
-    let tools: Record<string, unknown> | undefined;
-    let providerOptions: Record<string, Record<string, unknown>> | undefined;
+    let tools: Record<string, any> | undefined;
+    let providerOptions: Record<string, Record<string, any>> | undefined;
 
     if (isImageModel) {
       // Image models need TEXT+IMAGE response modalities, no search grounding
