@@ -4,12 +4,13 @@ import { getGeminiApiKey, getDashScopeApiKey } from '@/lib/settings';
 
 export const DASHSCOPE_BASE_URL = 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+/* eslint-disable @typescript-eslint/no-explicit-any */
 export interface ProviderResult {
   model: any;
   tools?: Record<string, any>;
   providerOptions?: Record<string, Record<string, any>>;
 }
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 export async function createProvider(modelName: string): Promise<ProviderResult> {
   const isGeminiModel = modelName.startsWith('gemini');
@@ -35,7 +36,9 @@ export async function createProvider(modelName: string): Promise<ProviderResult>
     const google = createGoogleGenerativeAI({ apiKey });
     const model = google(actualModelName);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let tools: Record<string, any> | undefined;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let providerOptions: Record<string, Record<string, any>> | undefined;
 
     if (isImageModel) {
