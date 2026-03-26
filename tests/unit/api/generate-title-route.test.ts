@@ -82,7 +82,7 @@ describe('POST /api/generate-title', () => {
     const res = await POST(makeRequest({ chatId: 1 }))
     expect(res.status).toBe(400)
     const data = await res.json()
-    expect(data.error).toContain('Missing')
+    expect(data.error).toContain('Invalid request body')
   })
 
   it('returns 400 when messages array is empty', async () => {
@@ -90,7 +90,7 @@ describe('POST /api/generate-title', () => {
     const res = await POST(makeRequest({ chatId: 1, messages: [] }))
     expect(res.status).toBe(400)
     const data = await res.json()
-    expect(data.error).toContain('Missing')
+    expect(data.error).toContain('Invalid request body')
   })
 
   it('returns 500 on generation error', async () => {

@@ -1,19 +1,17 @@
 import { generateText } from 'ai';
 import { createProvider } from '@/lib/providers';
 import { apiError } from '@/lib/errors';
+import { generateTitleRequestSchema } from '@/lib/validation';
 
 const TITLE_PROMPT = `Generate a concise title (3-6 words) for this conversation. Return only the title, no quotes or punctuation.`;
 
 export async function POST(req: Request) {
   try {
-    const { chatId, messages, model } = await req.json();
-
-    if (!chatId || !messages || !Array.isArray(messages) || messages.length === 0) {
-      return new Response(JSON.stringify({ error: 'Missing chatId or messages' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+    const body = generateTitleRequestSchema.safeParse(await req.json());
+    if (!body.success) {
+      return apiError(body.error, 'Invalid request body', 400);
     }
+    const { chatId, messages, model } = body.data;
 
     // Format conversation for title generation
     const conversationText = messages

@@ -3,6 +3,7 @@ import { getChatWithContext } from '@/app/actions';
 import { generateEmbedding, findSimilarMessages, findSimilarDocumentChunks } from '@/lib/embeddings';
 import { createProvider } from '@/lib/providers';
 import { apiError } from '@/lib/errors';
+import { chatRequestSchema } from '@/lib/validation';
 
 // Configuration for hybrid context management
 const RECENT_MESSAGES_LIMIT = 20; // Keep last N messages in full detail
@@ -36,7 +37,11 @@ function buildContextPrefix(
 
 export async function POST(req: Request) {
   try {
-    const { messages, model, chatId } = await req.json();
+    const body = chatRequestSchema.safeParse(await req.json());
+    if (!body.success) {
+      return apiError(body.error, 'Invalid request body', 400);
+    }
+    const { messages, model, chatId } = body.data;
     const modelName = model || 'gemini-3-flash-preview';
 
     // Create provider (handles virtual model resolution, tools, and options)

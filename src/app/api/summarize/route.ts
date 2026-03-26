@@ -2,6 +2,7 @@ import { generateText } from 'ai';
 import { getMessagesForSummarization, updateChatSummary, getChatWithSummary } from '@/app/actions';
 import { createProvider } from '@/lib/providers';
 import { apiError } from '@/lib/errors';
+import { summarizeRequestSchema } from '@/lib/validation';
 
 const SUMMARIZATION_PROMPT = `You are a conversation summarizer. Your task is to create a concise summary of the conversation that preserves:
 - Key topics discussed
@@ -15,14 +16,11 @@ Format: Write a brief paragraph (2-4 sentences) summarizing the key points. Be c
 
 export async function POST(req: Request) {
   try {
-    const { chatId, cutoffMessageId, model } = await req.json();
-
-    if (!chatId || !cutoffMessageId) {
-      return new Response(JSON.stringify({ error: 'Missing chatId or cutoffMessageId' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
+    const body = summarizeRequestSchema.safeParse(await req.json());
+    if (!body.success) {
+      return apiError(body.error, 'Invalid request body', 400);
     }
+    const { chatId, cutoffMessageId, model } = body.data;
 
     // Get chat to check for existing summary
     const chat = await getChatWithSummary(chatId);

@@ -67,7 +67,7 @@ describe('POST /api/summarize', () => {
     const res = await POST(makeRequest({ chatId: 1 }))
     expect(res.status).toBe(400)
     const data = await res.json()
-    expect(data.error).toContain('Missing')
+    expect(data.error).toContain('Invalid request body')
   })
 
   it('returns 404 when chat does not exist', async () => {
