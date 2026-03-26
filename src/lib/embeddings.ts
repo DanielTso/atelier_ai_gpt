@@ -10,10 +10,6 @@ export type EmbeddingProvider = 'gemini' | null
 let embeddingModelCache: { result: { available: boolean; provider: EmbeddingProvider }; expiresAt: number } | null = null
 const EMBEDDING_CACHE_TTL = 5 * 60 * 1000 // 5 minutes
 
-export function clearEmbeddingModelCache() {
-  embeddingModelCache = null
-}
-
 /**
  * Check if an embedding provider is available.
  * Returns 'gemini' if a Gemini API key is configured, null otherwise.

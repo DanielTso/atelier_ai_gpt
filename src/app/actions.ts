@@ -2,7 +2,7 @@
 
 import { db } from '@/db'
 import { projects, chats, messages, settings, messageEmbeddings, personaUsage, chatTopics, documents, documentChunks, messageAttachments } from '@/db/schema'
-import { eq, desc, isNull, isNotNull, and, gt, lte, asc, count, inArray, sql } from 'drizzle-orm'
+import { eq, desc, isNull, isNotNull, and, lte, asc, count, inArray, sql } from 'drizzle-orm'
 
 const SENSITIVE_KEYS = new Set(['gemini-api-key', 'dashscope-api-key'])
 
@@ -173,27 +173,6 @@ export async function getMessagesForSummarization(chatId: number, upToMessageId:
     .where(and(
       eq(messages.chatId, chatId),
       lte(messages.id, upToMessageId),
-    ))
-    .orderBy(asc(messages.createdAt))
-    .all()
-}
-
-export async function getRecentMessagesAfterSummary(chatId: number, afterMessageId: number | null) {
-  // Get messages after the summary point (these stay in full detail)
-  if (afterMessageId === null) {
-    // No summary yet, return all messages
-    return await db.select()
-      .from(messages)
-      .where(eq(messages.chatId, chatId))
-      .orderBy(asc(messages.createdAt))
-      .all()
-  }
-
-  return await db.select()
-    .from(messages)
-    .where(and(
-      eq(messages.chatId, chatId),
-      gt(messages.id, afterMessageId)
     ))
     .orderBy(asc(messages.createdAt))
     .all()

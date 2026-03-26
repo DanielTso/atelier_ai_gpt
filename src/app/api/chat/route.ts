@@ -7,6 +7,33 @@ import { apiError } from '@/lib/errors';
 // Configuration for hybrid context management
 const RECENT_MESSAGES_LIMIT = 20; // Keep last N messages in full detail
 
+function buildContextPrefix(
+  documentContext: string | null,
+  semanticContext: string | null,
+  summary: string | null
+): UIMessage[] {
+  const prefix: UIMessage[] = [];
+  if (documentContext) {
+    prefix.push(
+      { id: 'document-context', role: 'user', parts: [{ type: 'text', text: `[Relevant information from project documents]:\n${documentContext}` }] },
+      { id: 'document-ack', role: 'assistant', parts: [{ type: 'text', text: "I'll use this document context to inform my response." }] }
+    );
+  }
+  if (semanticContext) {
+    prefix.push(
+      { id: 'semantic-context', role: 'user', parts: [{ type: 'text', text: `[Relevant context from previous conversations]:\n${semanticContext}` }] },
+      { id: 'semantic-ack', role: 'assistant', parts: [{ type: 'text', text: "I understand, I'll use this context to inform my response." }] }
+    );
+  }
+  if (summary) {
+    prefix.push(
+      { id: 'summary-context', role: 'user', parts: [{ type: 'text', text: `[Previous conversation context: ${summary}]` }] },
+      { id: 'summary-ack', role: 'assistant', parts: [{ type: 'text', text: 'I understand the previous context. How can I continue helping you?' }] }
+    );
+  }
+  return prefix;
+}
+
 export async function POST(req: Request) {
   try {
     const { messages, model, chatId } = await req.json();
@@ -76,126 +103,13 @@ export async function POST(req: Request) {
         // Embedding unavailable — silently skip
       }
 
-      // 3. Summary context (existing behavior)
-      if (chat?.summary) {
-        // Apply sliding window to recent messages
-        const recentMessages = contextMessages.slice(-RECENT_MESSAGES_LIMIT);
-
-        // Build context messages array
-        const contextPrefix: UIMessage[] = [];
-
-        // Add document context first (highest priority supplemental context)
-        if (documentContext) {
-          contextPrefix.push(
-            {
-              id: 'document-context',
-              role: 'user',
-              parts: [{
-                type: 'text',
-                text: `[Relevant information from project documents]:\n${documentContext}`
-              }]
-            },
-            {
-              id: 'document-ack',
-              role: 'assistant',
-              parts: [{
-                type: 'text',
-                text: "I'll use this document context to inform my response."
-              }]
-            }
-          );
-        }
-
-        // Add semantic context if available
-        if (semanticContext) {
-          contextPrefix.push(
-            {
-              id: 'semantic-context',
-              role: 'user',
-              parts: [{
-                type: 'text',
-                text: `[Relevant context from previous conversations]:\n${semanticContext}`
-              }]
-            },
-            {
-              id: 'semantic-ack',
-              role: 'assistant',
-              parts: [{
-                type: 'text',
-                text: "I understand, I'll use this context to inform my response."
-              }]
-            }
-          );
-        }
-
-        // Add summary context
-        contextPrefix.push(
-          {
-            id: 'summary-context',
-            role: 'user',
-            parts: [{
-              type: 'text',
-              text: `[Previous conversation context: ${chat.summary}]`
-            }]
-          },
-          {
-            id: 'summary-ack',
-            role: 'assistant',
-            parts: [{
-              type: 'text',
-              text: 'I understand the previous context. How can I continue helping you?'
-            }]
-          }
-        );
-
+      // 3. Build context prefix (document chunks + semantic context + summary)
+      const contextPrefix = buildContextPrefix(documentContext, semanticContext, chat?.summary ?? null);
+      if (contextPrefix.length > 0) {
+        const recentMessages = chat?.summary
+          ? contextMessages.slice(-RECENT_MESSAGES_LIMIT)
+          : contextMessages;
         contextMessages = [...contextPrefix, ...recentMessages];
-      } else if (documentContext || semanticContext) {
-        // No summary but document/semantic context available
-        const contextPrefix: UIMessage[] = [];
-
-        if (documentContext) {
-          contextPrefix.push(
-            {
-              id: 'document-context',
-              role: 'user',
-              parts: [{
-                type: 'text',
-                text: `[Relevant information from project documents]:\n${documentContext}`
-              }]
-            },
-            {
-              id: 'document-ack',
-              role: 'assistant',
-              parts: [{
-                type: 'text',
-                text: "I'll use this document context to inform my response."
-              }]
-            }
-          );
-        }
-
-        if (semanticContext) {
-          contextPrefix.push(
-            {
-              id: 'semantic-context',
-              role: 'user',
-              parts: [{
-                type: 'text',
-                text: `[Relevant context from previous conversations]:\n${semanticContext}`
-              }]
-            },
-            {
-              id: 'semantic-ack',
-              role: 'assistant',
-              parts: [{
-                type: 'text',
-                text: "I understand, I'll use this context to inform my response."
-              }]
-            }
-          );
-        }
-
-        contextMessages = [...contextPrefix, ...contextMessages];
       }
     }
 
