@@ -4,6 +4,8 @@ import { db } from '@/db'
 import { projects, chats, messages, settings, messageEmbeddings, personaUsage, chatTopics, documents, documentChunks, messageAttachments } from '@/db/schema'
 import { eq, desc, isNull, isNotNull, and, gt, asc, count, inArray } from 'drizzle-orm'
 
+const SENSITIVE_KEYS = new Set(['gemini-api-key', 'dashscope-api-key'])
+
 export async function getProjects() {
   return await db.select().from(projects).all()
 }
@@ -193,13 +195,17 @@ export async function getRecentMessagesAfterSummary(chatId: number, afterMessage
 // Settings Actions
 
 export async function getSetting(key: string) {
+  if (SENSITIVE_KEYS.has(key)) {
+    throw new Error('Access denied: this setting cannot be read from the client')
+  }
   const result = await db.select().from(settings).where(eq(settings.key, key)).get()
   return result?.value ?? null
 }
 
 export async function getSettings(keys: string[]) {
-  if (keys.length === 0) return {}
-  const results = await db.select().from(settings).where(inArray(settings.key, keys)).all()
+  const safeKeys = keys.filter(k => !SENSITIVE_KEYS.has(k))
+  if (safeKeys.length === 0) return {}
+  const results = await db.select().from(settings).where(inArray(settings.key, safeKeys)).all()
   const map: Record<string, string> = {}
   for (const row of results) {
     map[row.key] = row.value
