@@ -13,7 +13,8 @@ import { SmoothStreamingWrapper } from "./SmoothStreamingWrapper"
 import { MessageActions } from "./MessageActions"
 import { TypingIndicator } from "@/components/ui/TypingIndicator"
 import { formatMessageTime, formatFullTime } from "@/lib/formatTime"
-import { parseFileMetadata, stripFilePrefix, getFileTypeLabel, formatFileSize, type FileMetadata } from "@/lib/fileAttachments"
+import { parseFileMetadata, stripFilePrefix, getFileTypeLabel, type FileMetadata } from "@/lib/fileAttachments"
+import { formatFileSize } from "@/lib/fileUtils"
 
 export type ChatMessage = UIMessage & { createdAt?: Date }
 

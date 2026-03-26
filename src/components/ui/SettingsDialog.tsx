@@ -7,12 +7,7 @@ import { cn } from '@/lib/utils'
 import { AppearanceSettingsTab } from '@/components/settings/AppearanceSettingsTab'
 import { ModelDefaultsSettingsTab } from '@/components/settings/ModelDefaultsSettingsTab'
 import type { FontSize, MessageDensity } from '@/hooks/useAppearanceSettings'
-
-interface Model {
-  name: string
-  model: string
-  digest: string
-}
+import type { Model } from '@/types'
 
 type SettingsTab = 'appearance' | 'defaults'
 

@@ -2,14 +2,6 @@ import { db } from '@/db'
 import { settings } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 
-/**
- * Detect cloud environment (Vercel/Turso).
- * When TURSO_DATABASE_URL is set, we're running in cloud (Vercel/Turso).
- */
-export function isCloudEnvironment(): boolean {
-  return !!process.env.TURSO_DATABASE_URL
-}
-
 const settingsCache = new Map<string, { value: string | null; expiresAt: number }>()
 const SETTINGS_CACHE_TTL = 5 * 60 * 1000 // 5 minutes
 
@@ -45,14 +37,6 @@ export async function getServerSetting(key: string, envFallback?: string): Promi
 
 export async function getGeminiApiKey(): Promise<string | null> {
   return getServerSetting('gemini-api-key', 'GOOGLE_GENERATIVE_AI_API_KEY')
-}
-
-export async function getDefaultModel(): Promise<string | null> {
-  return getServerSetting('default-model')
-}
-
-export async function getDefaultSystemPrompt(): Promise<string | null> {
-  return getServerSetting('default-system-prompt')
 }
 
 export async function getDashScopeApiKey(): Promise<string | null> {

@@ -1,78 +1,51 @@
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import { createOpenAI } from '@ai-sdk/openai';
 import { streamText, convertToModelMessages, type UIMessage } from 'ai';
 import { getChatWithContext } from '@/app/actions';
-import { getGeminiApiKey, getDashScopeApiKey } from '@/lib/settings';
 import { generateEmbedding, findSimilarMessages, findSimilarDocumentChunks } from '@/lib/embeddings';
+import { createProvider } from '@/lib/providers';
+import { apiError } from '@/lib/errors';
+import { chatRequestSchema } from '@/lib/validation';
 
 // Configuration for hybrid context management
 const RECENT_MESSAGES_LIMIT = 20; // Keep last N messages in full detail
 
+function buildContextPrefix(
+  documentContext: string | null,
+  semanticContext: string | null,
+  summary: string | null
+): UIMessage[] {
+  const prefix: UIMessage[] = [];
+  if (documentContext) {
+    prefix.push(
+      { id: 'document-context', role: 'user', parts: [{ type: 'text', text: `[Relevant information from project documents]:\n${documentContext}` }] },
+      { id: 'document-ack', role: 'assistant', parts: [{ type: 'text', text: "I'll use this document context to inform my response." }] }
+    );
+  }
+  if (semanticContext) {
+    prefix.push(
+      { id: 'semantic-context', role: 'user', parts: [{ type: 'text', text: `[Relevant context from previous conversations]:\n${semanticContext}` }] },
+      { id: 'semantic-ack', role: 'assistant', parts: [{ type: 'text', text: "I understand, I'll use this context to inform my response." }] }
+    );
+  }
+  if (summary) {
+    prefix.push(
+      { id: 'summary-context', role: 'user', parts: [{ type: 'text', text: `[Previous conversation context: ${summary}]` }] },
+      { id: 'summary-ack', role: 'assistant', parts: [{ type: 'text', text: 'I understand the previous context. How can I continue helping you?' }] }
+    );
+  }
+  return prefix;
+}
+
 export async function POST(req: Request) {
   try {
-    const { messages, model, chatId } = await req.json();
+    const body = chatRequestSchema.safeParse(await req.json());
+    if (!body.success) {
+      return apiError(body.error, 'Invalid request body', 400);
+    }
+    const { messages, model, chatId } = body.data;
     const modelName = model || 'gemini-3-flash-preview';
 
-    // Determine which provider to use based on model name
-    const isGeminiModel = modelName.startsWith('gemini');
-    const isQwenModel = modelName.startsWith('qwen');
-    const isImageModel = modelName.includes('image');
-    const isDeepThink = modelName.includes('deep-think');
-    // Generic thinking variant: any gemini model suffixed with -think-{minimal|low|medium|high}
-    const thinkMatch = modelName.match(/^(.+)-think-(minimal|low|medium|high)$/);
-    const thinkLevel = thinkMatch?.[2] ?? null; // 'minimal' | 'low' | 'medium' | 'high'
-
-    // Resolve virtual model IDs to their real counterparts
-    const actualModelName = isDeepThink
-      ? 'gemini-3.1-pro-preview'
-      : thinkMatch
-        ? thinkMatch[1] // base model name without the -think-{level} suffix
-        : modelName;
-
-    let selectedModel;
-    let googleTools: Record<string, ReturnType<ReturnType<typeof createGoogleGenerativeAI>['tools']['googleSearch']>> | undefined;
-    let providerOptions: Record<string, Record<string, string | string[] | Record<string, string>>> | undefined;
-    if (isGeminiModel) {
-      const apiKey = await getGeminiApiKey();
-      if (!apiKey) {
-        throw new Error("Google Gemini API Key is missing. Set it in Settings or .env.local.");
-      }
-      const google = createGoogleGenerativeAI({ apiKey });
-      selectedModel = google(actualModelName);
-      if (isImageModel) {
-        // Image models need TEXT+IMAGE response modalities, no search grounding
-        providerOptions = { google: { responseModalities: ['TEXT', 'IMAGE'] } };
-      } else if (isDeepThink) {
-        // Deep Think uses high thinking level for extended reasoning
-        providerOptions = { google: { thinkingConfig: { thinkingLevel: 'high' } } };
-        googleTools = {
-          google_search: google.tools.googleSearch({}),
-        };
-      } else if (thinkLevel) {
-        // Generic thinking variant — applies to Flash, Pro Think (Low/Medium), Flash-Lite (Minimal)
-        providerOptions = { google: { thinkingConfig: { thinkingLevel: thinkLevel } } };
-        googleTools = {
-          google_search: google.tools.googleSearch({}),
-        };
-      } else {
-        // Enable Google Search grounding for non-image Gemini models
-        googleTools = {
-          google_search: google.tools.googleSearch({}),
-        };
-      }
-    } else if (isQwenModel) {
-      const apiKey = await getDashScopeApiKey();
-      if (!apiKey) {
-        throw new Error("DashScope API Key is missing. Set it in Settings or .env.local.");
-      }
-      const dashscope = createOpenAI({
-        baseURL: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
-        apiKey,
-      });
-      selectedModel = dashscope.chat(modelName);
-    } else {
-      throw new Error(`Unknown model provider for model: ${modelName}. Only Gemini and Qwen models are supported.`);
-    }
+    // Create provider (handles virtual model resolution, tools, and options)
+    const { model: selectedModel, tools: googleTools, providerOptions } = await createProvider(modelName);
 
     // Build context with hybrid approach: system prompt + semantic context + summary + recent messages
     let contextMessages = messages as UIMessage[];
@@ -135,126 +108,13 @@ export async function POST(req: Request) {
         // Embedding unavailable — silently skip
       }
 
-      // 3. Summary context (existing behavior)
-      if (chat?.summary) {
-        // Apply sliding window to recent messages
-        const recentMessages = contextMessages.slice(-RECENT_MESSAGES_LIMIT);
-
-        // Build context messages array
-        const contextPrefix: UIMessage[] = [];
-
-        // Add document context first (highest priority supplemental context)
-        if (documentContext) {
-          contextPrefix.push(
-            {
-              id: 'document-context',
-              role: 'user',
-              parts: [{
-                type: 'text',
-                text: `[Relevant information from project documents]:\n${documentContext}`
-              }]
-            },
-            {
-              id: 'document-ack',
-              role: 'assistant',
-              parts: [{
-                type: 'text',
-                text: "I'll use this document context to inform my response."
-              }]
-            }
-          );
-        }
-
-        // Add semantic context if available
-        if (semanticContext) {
-          contextPrefix.push(
-            {
-              id: 'semantic-context',
-              role: 'user',
-              parts: [{
-                type: 'text',
-                text: `[Relevant context from previous conversations]:\n${semanticContext}`
-              }]
-            },
-            {
-              id: 'semantic-ack',
-              role: 'assistant',
-              parts: [{
-                type: 'text',
-                text: "I understand, I'll use this context to inform my response."
-              }]
-            }
-          );
-        }
-
-        // Add summary context
-        contextPrefix.push(
-          {
-            id: 'summary-context',
-            role: 'user',
-            parts: [{
-              type: 'text',
-              text: `[Previous conversation context: ${chat.summary}]`
-            }]
-          },
-          {
-            id: 'summary-ack',
-            role: 'assistant',
-            parts: [{
-              type: 'text',
-              text: 'I understand the previous context. How can I continue helping you?'
-            }]
-          }
-        );
-
+      // 3. Build context prefix (document chunks + semantic context + summary)
+      const contextPrefix = buildContextPrefix(documentContext, semanticContext, chat?.summary ?? null);
+      if (contextPrefix.length > 0) {
+        const recentMessages = chat?.summary
+          ? contextMessages.slice(-RECENT_MESSAGES_LIMIT)
+          : contextMessages;
         contextMessages = [...contextPrefix, ...recentMessages];
-      } else if (documentContext || semanticContext) {
-        // No summary but document/semantic context available
-        const contextPrefix: UIMessage[] = [];
-
-        if (documentContext) {
-          contextPrefix.push(
-            {
-              id: 'document-context',
-              role: 'user',
-              parts: [{
-                type: 'text',
-                text: `[Relevant information from project documents]:\n${documentContext}`
-              }]
-            },
-            {
-              id: 'document-ack',
-              role: 'assistant',
-              parts: [{
-                type: 'text',
-                text: "I'll use this document context to inform my response."
-              }]
-            }
-          );
-        }
-
-        if (semanticContext) {
-          contextPrefix.push(
-            {
-              id: 'semantic-context',
-              role: 'user',
-              parts: [{
-                type: 'text',
-                text: `[Relevant context from previous conversations]:\n${semanticContext}`
-              }]
-            },
-            {
-              id: 'semantic-ack',
-              role: 'assistant',
-              parts: [{
-                type: 'text',
-                text: "I understand, I'll use this context to inform my response."
-              }]
-            }
-          );
-        }
-
-        contextMessages = [...contextPrefix, ...contextMessages];
       }
     }
 
@@ -272,11 +132,13 @@ export async function POST(req: Request) {
     return result.toUIMessageStreamResponse({ sendSources: true });
 
   } catch (error) {
-    console.error("❌ [API Error]:", error);
-    const errorMessage = error instanceof Error ? error.message : "An error occurred during text generation.";
-    return new Response(JSON.stringify({ error: errorMessage }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    // Preserve specific API-key / provider errors for user feedback
+    if (error instanceof Error && (error.message.includes('API Key') || error.message.includes('Unknown model provider'))) {
+      return new Response(JSON.stringify({ error: error.message }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    return apiError(error, 'An error occurred during text generation.');
   }
 }

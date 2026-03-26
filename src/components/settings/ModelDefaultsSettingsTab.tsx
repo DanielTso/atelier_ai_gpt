@@ -5,12 +5,7 @@ import { Loader2, Plus, Trash2 } from 'lucide-react'
 import { getSetting, setSettings } from '@/app/actions'
 import { usePersonas, type Persona } from '@/hooks/usePersonas'
 import { cn } from '@/lib/utils'
-
-interface Model {
-  name: string
-  model: string
-  digest: string
-}
+import type { Model } from '@/types'
 
 interface ModelDefaultsSettingsTabProps {
   models: Model[]

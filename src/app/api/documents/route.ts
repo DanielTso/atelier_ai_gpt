@@ -2,31 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createDocument, updateDocumentStatus, saveDocumentChunks, updateChunkEmbedding, getProjectDocuments, deleteDocument } from '@/app/actions'
 import { generateEmbedding, ensureEmbeddingModel } from '@/lib/embeddings'
 import { chunkText } from '@/lib/chunking'
-
-const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
-const MAX_TEXT_LENGTH = 100_000
-
-const SUPPORTED_EXTENSIONS = new Set([
-  'pdf', 'docx',
-  'txt', 'md', 'csv',
-  'py', 'js', 'ts', 'tsx', 'jsx',
-  'json', 'html', 'css',
-  'java', 'c', 'cpp', 'go', 'rs', 'rb', 'php',
-  'sh', 'yaml', 'yml', 'xml', 'sql',
-])
-
-const TEXT_MIME_PREFIXES = ['text/', 'application/json', 'application/xml']
-
-function getExtension(filename: string): string {
-  return filename.split('.').pop()?.toLowerCase() ?? ''
-}
-
-function isSupported(filename: string, mimeType: string): boolean {
-  const ext = getExtension(filename)
-  if (SUPPORTED_EXTENSIONS.has(ext)) return true
-  if (TEXT_MIME_PREFIXES.some(p => mimeType.startsWith(p))) return true
-  return false
-}
+import { MAX_FILE_SIZE, MAX_TEXT_LENGTH, getExtension, isSupported, extractTextFromBuffer } from '@/lib/fileExtraction'
+import { apiError } from '@/lib/errors'
 
 export async function POST(request: NextRequest) {
   try {
@@ -65,19 +42,7 @@ export async function POST(request: NextRequest) {
     // Extract text from file
     const ext = getExtension(file.name)
     const buffer = Buffer.from(await file.arrayBuffer())
-    let textContent = ''
-
-    if (ext === 'pdf') {
-      const { extractText } = await import('unpdf')
-      const result = await extractText(new Uint8Array(buffer))
-      textContent = result.text.join('\n')
-    } else if (ext === 'docx') {
-      const mammoth = await import('mammoth')
-      const result = await mammoth.extractRawText({ buffer })
-      textContent = result.value
-    } else {
-      textContent = buffer.toString('utf-8')
-    }
+    let textContent = await extractTextFromBuffer(buffer, ext)
 
     if (textContent.length > MAX_TEXT_LENGTH) {
       textContent = textContent.slice(0, MAX_TEXT_LENGTH)
@@ -140,11 +105,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Document processing failed: ${message}` }, { status: 500 })
     }
   } catch (error) {
-    console.error('[Documents] Error:', error)
-    return NextResponse.json(
-      { error: 'Failed to process document.' },
-      { status: 500 }
-    )
+    return apiError(error, 'Failed to process document.')
   }
 }
 

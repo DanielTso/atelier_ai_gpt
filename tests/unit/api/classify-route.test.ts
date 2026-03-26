@@ -55,7 +55,7 @@ describe('POST /api/classify', () => {
     const res = await POST(makeRequest({ chatId: 1 }))
     expect(res.status).toBe(400)
     const data = await res.json()
-    expect(data.error).toContain('Missing')
+    expect(data.error).toContain('Invalid request body')
   })
 
   it('extracts text from SDK v6 parts format', async () => {

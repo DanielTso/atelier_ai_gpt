@@ -30,12 +30,7 @@ import { ProjectLandingPage } from "@/components/chat/ProjectLandingPage"
 import type { AttachedFile, AttachedImage } from "@/lib/fileAttachments"
 import { buildFileMessage } from "@/lib/fileAttachments"
 import type { FileUIPart } from "ai"
-
-interface Model {
-  name: string
-  model: string
-  digest: string
-}
+import type { Model } from "@/types"
 
 // Types matching DB schema roughly
 type Project = { id: number; name: string }
@@ -55,6 +50,9 @@ export default function Home() {
   // Use ref to always get current model in transport body function
   const selectedModelRef = useRef(selectedModel)
   selectedModelRef.current = selectedModel
+
+  // Dedup ref for message saving
+  const lastSavedMessageIdRef = useRef<string | null>(null)
 
   // Data State
   const [projects, setProjects] = useState<Project[]>([])
@@ -656,7 +654,8 @@ export default function Home() {
     if (messages.length === 0 || !activeChatId) return
 
     const lastMessage = messages[messages.length - 1]
-    if (lastMessage.role === 'user') {
+    if (lastMessage.role === 'user' && lastMessage.id !== lastSavedMessageIdRef.current) {
+      lastSavedMessageIdRef.current = lastMessage.id
       // Extract text content from message parts
       const textContent = lastMessage.parts
         .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
@@ -702,21 +701,21 @@ export default function Home() {
 
   const handleDeleteProject = useCallback(async (id: number) => {
     await deleteProject(id)
-    setProjects(projects.filter(p => p.id !== id))
+    setProjects(prev => prev.filter(p => p.id !== id))
     if (activeProjectId === id) setActiveProjectId(null)
     toast.success("Project deleted")
-  }, [projects, activeProjectId])
+  }, [activeProjectId])
 
   const handleRenameProject = useCallback(async (id: number, name: string) => {
     try {
       await updateProjectName(id, name)
-      setProjects(projects.map(p => p.id === id ? { ...p, name } : p))
+      setProjects(prev => prev.map(p => p.id === id ? { ...p, name } : p))
       toast.success("Project renamed")
     } catch (e) {
       console.error(e)
       setError("Failed to rename project.")
     }
-  }, [projects])
+  }, [])
 
   const handleRequestDelete = useCallback((id: number) => {
     setDeleteTargetId(id)
@@ -727,9 +726,9 @@ export default function Home() {
     if (!deleteTargetId) return
     try {
       await deleteChat(deleteTargetId)
-      setChats(chats.filter(c => c.id !== deleteTargetId))
-      setStandaloneChats(standaloneChats.filter(c => c.id !== deleteTargetId))
-      setArchivedChats(archivedChats.filter(c => c.id !== deleteTargetId))
+      setChats(prev => prev.filter(c => c.id !== deleteTargetId))
+      setStandaloneChats(prev => prev.filter(c => c.id !== deleteTargetId))
+      setArchivedChats(prev => prev.filter(c => c.id !== deleteTargetId))
       if (activeChatId === deleteTargetId) setActiveChatId(null)
       setDeleteTargetId(null)
       refreshChatPreviews()
@@ -738,7 +737,7 @@ export default function Home() {
       console.error("Delete failed:", e)
       toast.error("Failed to delete chat")
     }
-  }, [deleteTargetId, chats, standaloneChats, archivedChats, activeChatId, refreshChatPreviews])
+  }, [deleteTargetId, activeChatId, refreshChatPreviews])
 
   const handleRequestRename = useCallback((id: number) => {
     const chat = [...chats, ...standaloneChats, ...archivedChats].find(c => c.id === id)
@@ -751,13 +750,13 @@ export default function Home() {
   const handleConfirmRename = useCallback(async (newTitle: string) => {
     if (!renameTarget) return
     await updateChatTitle(renameTarget.id, newTitle)
-    setChats(chats.map(c => c.id === renameTarget.id ? { ...c, title: newTitle } : c))
-    setStandaloneChats(standaloneChats.map(c => c.id === renameTarget.id ? { ...c, title: newTitle } : c))
-    setArchivedChats(archivedChats.map(c => c.id === renameTarget.id ? { ...c, title: newTitle } : c))
+    setChats(prev => prev.map(c => c.id === renameTarget.id ? { ...c, title: newTitle } : c))
+    setStandaloneChats(prev => prev.map(c => c.id === renameTarget.id ? { ...c, title: newTitle } : c))
+    setArchivedChats(prev => prev.map(c => c.id === renameTarget.id ? { ...c, title: newTitle } : c))
     setRenameTarget(null)
     refreshChatPreviews()
     toast.success("Chat renamed")
-  }, [renameTarget, chats, standaloneChats, archivedChats, refreshChatPreviews])
+  }, [renameTarget, refreshChatPreviews])
 
   const handleMoveChat = useCallback(async (chatId: number, projectId: number | null) => {
     await moveChatToProject(chatId, projectId)
@@ -770,12 +769,12 @@ export default function Home() {
 
   const handleArchiveChat = useCallback(async (chatId: number) => {
     await archiveChat(chatId)
-    setChats(chats.filter(c => c.id !== chatId))
-    setStandaloneChats(standaloneChats.filter(c => c.id !== chatId))
+    setChats(prev => prev.filter(c => c.id !== chatId))
+    setStandaloneChats(prev => prev.filter(c => c.id !== chatId))
     if (activeChatId === chatId) setActiveChatId(null)
     loadArchivedChats()
     toast.success("Chat archived")
-  }, [chats, standaloneChats, activeChatId, loadArchivedChats])
+  }, [activeChatId, loadArchivedChats])
 
   const handleRestoreChat = useCallback(async (chatId: number) => {
     await restoreChat(chatId)
@@ -877,9 +876,9 @@ export default function Home() {
     restoreChat: handleRestoreChat,
     deleteChat: handleRequestDelete,
     toggleTheme: () => setTheme(theme === "dark" ? "light" : "dark"),
-    toggleCollapse: () => setSidebarCollapsed(!sidebarCollapsed),
+    toggleCollapse: () => setSidebarCollapsed(prev => !prev),
     openSettings: () => setSettingsDialogOpen(true),
-  }), [handleCreateProject, handleRenameProject, handleDeleteProject, handleSelectProject, handleOpenProjectDocuments, handleOpenProjectSettings, handleCreateChat, handleCreateStandaloneChat, handleCreateChatInProject, setActiveChatId, handleSelectStandaloneChat, handleMoveChat, handleRequestRename, handleArchiveChat, handleRestoreChat, handleRequestDelete, theme, sidebarCollapsed])
+  }), [handleCreateProject, handleRenameProject, handleDeleteProject, handleSelectProject, handleOpenProjectDocuments, handleOpenProjectSettings, handleCreateChat, handleCreateStandaloneChat, handleCreateChatInProject, setActiveChatId, handleSelectStandaloneChat, handleMoveChat, handleRequestRename, handleArchiveChat, handleRestoreChat, handleRequestDelete, theme])
 
   // Get the current chat title from either chats or standaloneChats
   const currentChatTitle = activeChatId
@@ -957,7 +956,6 @@ export default function Home() {
             <ChatInputArea
               input={input}
               onInputChange={setInput}
-              onSend={handleSendMessage}
               onFormSubmit={handleFormSubmit}
               onKeyDown={handleKeyDown}
               isLoading={isLoading}
@@ -996,7 +994,6 @@ export default function Home() {
             <ChatInputArea
               input={input}
               onInputChange={setInput}
-              onSend={handleSendMessage}
               onFormSubmit={handleFormSubmit}
               onKeyDown={handleKeyDown}
               isLoading={isLoading}

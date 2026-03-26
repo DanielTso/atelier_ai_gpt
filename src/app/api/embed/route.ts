@@ -1,5 +1,7 @@
 import { embedAndStore, ensureEmbeddingModel } from '@/lib/embeddings';
 import { getEmbeddingCount } from '@/app/actions';
+import { apiError } from '@/lib/errors';
+import { embedRequestSchema } from '@/lib/validation';
 
 export async function GET(req: Request) {
   try {
@@ -33,14 +35,11 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const { messageId, chatId, projectId, content } = await req.json();
-
-    if (!messageId || !chatId || !content) {
-      return new Response(JSON.stringify({ error: 'Missing required fields' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+    const body = embedRequestSchema.safeParse(await req.json());
+    if (!body.success) {
+      return apiError(body.error, 'Invalid request body', 400);
     }
+    const { messageId, chatId, projectId, content } = body.data;
 
     // Check if any embedding provider is available
     const { available } = await ensureEmbeddingModel();
@@ -58,13 +57,6 @@ export async function POST(req: Request) {
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (error) {
-    console.error('[Embed API] Error:', error);
-    return new Response(JSON.stringify({
-      success: false,
-      error: error instanceof Error ? error.message : 'Embedding failed',
-    }), {
-      status: 200, // Return 200 even on error since embedding is best-effort
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return apiError(error, 'Embedding failed', 200);
   }
 }

@@ -7,12 +7,7 @@ import { cn } from '@/lib/utils'
 import { getProjectDefaults, updateProjectDefaults, getProjectPersonaStats } from '@/app/actions'
 import { usePersonas, type Persona } from '@/hooks/usePersonas'
 import { toast } from 'sonner'
-
-interface Model {
-  name: string
-  model: string
-  digest: string
-}
+import type { Model } from '@/types'
 
 interface ProjectDefaultsDialogProps {
   open: boolean

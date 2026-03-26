@@ -13,8 +13,12 @@ vi.mock('ai', () => ({
   generateText: (...args: unknown[]) => mockGenerateText(...args),
 }))
 
+const mockGoogleSearch = vi.fn(() => ({ type: 'provider-defined', id: 'google_search' }))
 vi.mock('@ai-sdk/google', () => ({
-  createGoogleGenerativeAI: () => vi.fn((model: string) => ({ modelId: model })),
+  createGoogleGenerativeAI: () => Object.assign(
+    vi.fn((model: string) => ({ modelId: model })),
+    { tools: { googleSearch: mockGoogleSearch } }
+  ),
 }))
 
 vi.mock('@ai-sdk/openai', () => ({
@@ -35,7 +39,10 @@ async function importRoute() {
   vi.doMock('@/db', () => ({ get db() { return testDb } }))
   vi.doMock('ai', () => ({ generateText: (...args: unknown[]) => mockGenerateText(...args) }))
   vi.doMock('@ai-sdk/google', () => ({
-    createGoogleGenerativeAI: () => vi.fn((model: string) => ({ modelId: model })),
+    createGoogleGenerativeAI: () => Object.assign(
+      vi.fn((model: string) => ({ modelId: model })),
+      { tools: { googleSearch: mockGoogleSearch } }
+    ),
   }))
   vi.doMock('@ai-sdk/openai', () => ({
     createOpenAI: () => ({ chat: vi.fn((model: string) => ({ modelId: model })) }),
@@ -75,7 +82,7 @@ describe('POST /api/generate-title', () => {
     const res = await POST(makeRequest({ chatId: 1 }))
     expect(res.status).toBe(400)
     const data = await res.json()
-    expect(data.error).toContain('Missing')
+    expect(data.error).toContain('Invalid request body')
   })
 
   it('returns 400 when messages array is empty', async () => {
@@ -83,7 +90,7 @@ describe('POST /api/generate-title', () => {
     const res = await POST(makeRequest({ chatId: 1, messages: [] }))
     expect(res.status).toBe(400)
     const data = await res.json()
-    expect(data.error).toContain('Missing')
+    expect(data.error).toContain('Invalid request body')
   })
 
   it('returns 500 on generation error', async () => {
@@ -99,7 +106,7 @@ describe('POST /api/generate-title', () => {
     }))
     expect(res.status).toBe(500)
     const data = await res.json()
-    expect(data.error).toContain('LLM unavailable')
+    expect(data.error).toContain('Title generation failed')
   })
 
   it('strips surrounding quotes from generated title', async () => {

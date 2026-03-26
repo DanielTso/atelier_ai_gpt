@@ -16,7 +16,6 @@ import {
   updateChatSummary,
   getMessageCount,
   getMessagesForSummarization,
-  getRecentMessagesAfterSummary,
 } from '@/app/actions'
 
 describe('context actions', () => {
@@ -84,21 +83,4 @@ describe('context actions', () => {
     expect(msgs[1].content).toBe('Second')
   })
 
-  it('getRecentMessagesAfterSummary with null returns all', async () => {
-    await saveMessage(chatId, 'user', 'A')
-    await saveMessage(chatId, 'assistant', 'B')
-
-    const msgs = await getRecentMessagesAfterSummary(chatId, null)
-    expect(msgs).toHaveLength(2)
-  })
-
-  it('getRecentMessagesAfterSummary with ID returns only newer messages', async () => {
-    const [m1] = await saveMessage(chatId, 'user', 'Old')
-    const [m2] = await saveMessage(chatId, 'assistant', 'Old too')
-    await saveMessage(chatId, 'user', 'Recent')
-
-    const msgs = await getRecentMessagesAfterSummary(chatId, m2.id)
-    expect(msgs).toHaveLength(1)
-    expect(msgs[0].content).toBe('Recent')
-  })
 })

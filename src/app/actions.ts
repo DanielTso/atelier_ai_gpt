@@ -2,7 +2,9 @@
 
 import { db } from '@/db'
 import { projects, chats, messages, settings, messageEmbeddings, personaUsage, chatTopics, documents, documentChunks, messageAttachments } from '@/db/schema'
-import { eq, desc, isNull, isNotNull, and, gt, asc, count, inArray } from 'drizzle-orm'
+import { eq, desc, isNull, isNotNull, and, lte, asc, count, inArray, sql } from 'drizzle-orm'
+
+const SENSITIVE_KEYS = new Set(['gemini-api-key', 'dashscope-api-key'])
 
 export async function getProjects() {
   return await db.select().from(projects).all()
@@ -31,24 +33,34 @@ export async function getProjectChatPreviews(projectId: number) {
     and(eq(chats.projectId, projectId), eq(chats.archived, false))
   ).orderBy(desc(chats.createdAt)).all()
 
-  const previews = await Promise.all(
-    projectChats.map(async (chat) => {
-      const firstMsg = await db.select({ content: messages.content })
-        .from(messages)
-        .where(and(eq(messages.chatId, chat.id), eq(messages.role, 'user')))
-        .orderBy(asc(messages.createdAt))
-        .limit(1)
-        .get()
+  if (projectChats.length === 0) return []
 
-      return {
-        id: chat.id,
-        title: chat.title,
-        preview: firstMsg?.content?.substring(0, 120) ?? null,
-        createdAt: chat.createdAt,
-      }
-    })
-  )
-  return previews
+  const chatIds = projectChats.map(c => c.id)
+  const allFirstMessages = await db.select({
+    chatId: messages.chatId,
+    content: messages.content,
+  }).from(messages)
+    .where(and(
+      inArray(messages.chatId, chatIds),
+      eq(messages.role, 'user')
+    ))
+    .orderBy(asc(messages.createdAt))
+    .all()
+
+  // Keep only the first message per chat
+  const firstMsgMap = new Map<number, string>()
+  for (const msg of allFirstMessages) {
+    if (!firstMsgMap.has(msg.chatId)) {
+      firstMsgMap.set(msg.chatId, msg.content)
+    }
+  }
+
+  return projectChats.map(chat => ({
+    id: chat.id,
+    title: chat.title,
+    preview: firstMsgMap.get(chat.id)?.substring(0, 120) ?? null,
+    createdAt: chat.createdAt,
+  }))
 }
 
 export async function getAllProjectChats() {
@@ -156,35 +168,11 @@ export async function getMessageCount(chatId: number) {
 export async function getMessagesForSummarization(chatId: number, upToMessageId: number) {
   // Get messages up to (and including) the specified message ID for summarization
   // These are the older messages that will be compressed into a summary
-  const result = await db.select()
-    .from(messages)
-    .where(and(
-      eq(messages.chatId, chatId),
-      // Include messages with ID <= upToMessageId
-    ))
-    .orderBy(asc(messages.createdAt))
-    .all()
-
-  // Filter to only include messages up to the cutoff point
-  return result.filter(m => m.id <= upToMessageId)
-}
-
-export async function getRecentMessagesAfterSummary(chatId: number, afterMessageId: number | null) {
-  // Get messages after the summary point (these stay in full detail)
-  if (afterMessageId === null) {
-    // No summary yet, return all messages
-    return await db.select()
-      .from(messages)
-      .where(eq(messages.chatId, chatId))
-      .orderBy(asc(messages.createdAt))
-      .all()
-  }
-
   return await db.select()
     .from(messages)
     .where(and(
       eq(messages.chatId, chatId),
-      gt(messages.id, afterMessageId)
+      lte(messages.id, upToMessageId),
     ))
     .orderBy(asc(messages.createdAt))
     .all()
@@ -193,13 +181,17 @@ export async function getRecentMessagesAfterSummary(chatId: number, afterMessage
 // Settings Actions
 
 export async function getSetting(key: string) {
+  if (SENSITIVE_KEYS.has(key)) {
+    throw new Error('Access denied: this setting cannot be read from the client')
+  }
   const result = await db.select().from(settings).where(eq(settings.key, key)).get()
   return result?.value ?? null
 }
 
 export async function getSettings(keys: string[]) {
-  if (keys.length === 0) return {}
-  const results = await db.select().from(settings).where(inArray(settings.key, keys)).all()
+  const safeKeys = keys.filter(k => !SENSITIVE_KEYS.has(k))
+  if (safeKeys.length === 0) return {}
+  const results = await db.select().from(settings).where(inArray(settings.key, safeKeys)).all()
   const map: Record<string, string> = {}
   for (const row of results) {
     map[row.key] = row.value
@@ -219,15 +211,17 @@ export async function setSetting(key: string, value: string) {
 export async function setSettings(entries: { key: string; value: string }[]) {
   const { clearSettingsCache } = await import('@/lib/settings')
   clearSettingsCache()
-  const results = []
-  for (const entry of entries) {
-    const result = await db.insert(settings)
-      .values({ key: entry.key, value: entry.value, updatedAt: new Date() })
-      .onConflictDoUpdate({ target: settings.key, set: { value: entry.value, updatedAt: new Date() } })
-      .returning()
-    results.push(result)
-  }
-  return results
+  return await db.transaction(async (tx) => {
+    const results = []
+    for (const entry of entries) {
+      const result = await tx.insert(settings)
+        .values({ key: entry.key, value: entry.value, updatedAt: new Date() })
+        .onConflictDoUpdate({ target: settings.key, set: { value: entry.value, updatedAt: new Date() } })
+        .returning()
+      results.push(result)
+    }
+    return results
+  })
 }
 
 // ── Embedding Actions ──
@@ -245,6 +239,9 @@ export async function saveMessageEmbedding(
     projectId,
     content,
     embedding: JSON.stringify(embedding),
+  }).onConflictDoUpdate({
+    target: messageEmbeddings.messageId,
+    set: { content, embedding: JSON.stringify(embedding), createdAt: new Date() },
   }).returning()
 }
 
@@ -328,12 +325,13 @@ export async function incrementUsageMessageCount(chatId: number) {
   if (existing) {
     return await db.update(personaUsage)
       .set({
-        messageCount: (existing.messageCount ?? 0) + 1,
+        messageCount: sql`${personaUsage.messageCount} + 1`,
         lastUsedAt: new Date(),
       })
       .where(eq(personaUsage.id, existing.id))
       .returning()
   }
+  return null
 }
 
 export async function getProjectPersonaStats(projectId: number) {
@@ -346,16 +344,9 @@ export async function getProjectPersonaStats(projectId: number) {
 // ── Chat Topics Actions ──
 
 export async function saveChatTopics(chatId: number, topics: { topic: string; confidence: number }[]) {
-  const results = []
-  for (const t of topics) {
-    const result = await db.insert(chatTopics).values({
-      chatId,
-      topic: t.topic,
-      confidence: t.confidence,
-    }).returning()
-    results.push(result)
-  }
-  return results
+  if (topics.length === 0) return []
+  const rows = topics.map(t => ({ chatId, topic: t.topic, confidence: t.confidence, detectedAt: new Date() }))
+  return await db.insert(chatTopics).values(rows).returning()
 }
 
 export async function getChatTopics(chatId: number) {
@@ -412,12 +403,8 @@ export async function saveDocumentChunks(chunks: {
   chunkIndex: number
   content: string
 }[]) {
-  const results = []
-  for (const chunk of chunks) {
-    const result = await db.insert(documentChunks).values(chunk).returning()
-    results.push(result[0])
-  }
-  return results
+  if (chunks.length === 0) return []
+  return await db.insert(documentChunks).values(chunks).returning()
 }
 
 export async function updateChunkEmbedding(chunkId: number, embedding: number[]) {
@@ -465,19 +452,9 @@ export async function saveMessageAttachments(
   chatId: number,
   attachments: { filename: string; mediaType: string; dataUrl: string; fileSize: number }[]
 ) {
-  const results = []
-  for (const att of attachments) {
-    const result = await db.insert(messageAttachments).values({
-      messageId,
-      chatId,
-      filename: att.filename,
-      mediaType: att.mediaType,
-      dataUrl: att.dataUrl,
-      fileSize: att.fileSize,
-    }).returning()
-    results.push(result[0])
-  }
-  return results
+  if (attachments.length === 0) return []
+  const rows = attachments.map(a => ({ messageId, chatId, ...a }))
+  return await db.insert(messageAttachments).values(rows).returning()
 }
 
 export async function getChatAttachments(chatId: number) {

@@ -7,7 +7,9 @@ import { toast } from 'sonner'
 import { PersonaSelector } from '@/components/ui/PersonaSelector'
 import { ModelSelect } from '@/components/ui/ModelSelect'
 import type { AttachedFile, AttachedImage } from '@/lib/fileAttachments'
-import { formatFileSize, getFileTypeLabel, isImageFile, fileToAttachedImage } from '@/lib/fileAttachments'
+import { getFileTypeLabel, isImageFile, fileToAttachedImage } from '@/lib/fileAttachments'
+import { formatFileSize } from '@/lib/fileUtils'
+import type { Model } from '@/types'
 
 interface EmbedStatus {
   available: boolean
@@ -15,16 +17,9 @@ interface EmbedStatus {
   embeddingCount: number
 }
 
-interface Model {
-  name: string
-  model: string
-  digest: string
-}
-
 interface ChatInputAreaProps {
   input: string
   onInputChange: (value: string) => void
-  onSend?: () => void
   onFormSubmit: (e: React.FormEvent<HTMLFormElement>) => void
   onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void
   isLoading: boolean

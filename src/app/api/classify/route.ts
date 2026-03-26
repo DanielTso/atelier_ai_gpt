@@ -2,6 +2,8 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { generateText } from 'ai';
 import { getGeminiApiKey } from '@/lib/settings';
 import { saveChatTopics, getChatTopics } from '@/app/actions';
+import { apiError } from '@/lib/errors';
+import { classifyRequestSchema } from '@/lib/validation';
 
 const CLASSIFICATION_PROMPT = `Classify the following conversation into one or more topics. Return ONLY a JSON array of objects with "topic" and "confidence" (0-100) fields.
 
@@ -22,14 +24,11 @@ Conversation:
 
 export async function POST(req: Request) {
   try {
-    const { chatId, messages, model } = await req.json();
-
-    if (!chatId || !messages?.length) {
-      return new Response(JSON.stringify({ error: 'Missing chatId or messages' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+    const body = classifyRequestSchema.safeParse(await req.json());
+    if (!body.success) {
+      return apiError(body.error, 'Invalid request body', 400);
     }
+    const { chatId, messages, model } = body.data;
 
     // Check if already classified
     const existing = await getChatTopics(chatId);
@@ -90,12 +89,6 @@ export async function POST(req: Request) {
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (error) {
-    console.error('[Classify] Error:', error);
-    return new Response(JSON.stringify({
-      error: error instanceof Error ? error.message : 'Classification failed',
-    }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return apiError(error, 'Classification failed', 200);
   }
 }

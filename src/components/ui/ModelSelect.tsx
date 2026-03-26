@@ -4,12 +4,7 @@ import { useMemo } from "react"
 import * as Select from "@radix-ui/react-select"
 import { ChevronDown, Check, Cloud, Brain } from "lucide-react"
 import { cn } from "@/lib/utils"
-
-interface Model {
-  name: string
-  model: string
-  digest: string
-}
+import type { Model } from "@/types"
 
 interface ModelSelectProps {
   models: Model[]
