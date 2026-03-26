@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS chats (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
-  archived INTEGER DEFAULT 0,
+  archived INTEGER NOT NULL DEFAULT 0,
   system_prompt TEXT,
   summary TEXT,
   summary_up_to_message_id INTEGER,
@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS chats (
 
 CREATE INDEX IF NOT EXISTS idx_chats_project_id ON chats(project_id);
 CREATE INDEX IF NOT EXISTS idx_chats_created_at ON chats(created_at);
+CREATE INDEX IF NOT EXISTS idx_chats_archived_project ON chats(project_id, archived, created_at);
 
 CREATE TABLE IF NOT EXISTS messages (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

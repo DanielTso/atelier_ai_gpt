@@ -13,7 +13,7 @@ export const chats = sqliteTable('chats', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   projectId: integer('project_id').references(() => projects.id, { onDelete: 'cascade' }),
   title: text('title').notNull(),
-  archived: integer('archived', { mode: 'boolean' }).default(false),
+  archived: integer('archived', { mode: 'boolean' }).notNull().default(false),
   systemPrompt: text('system_prompt'), // Per-chat system instruction (never trimmed)
   summary: text('summary'), // Compressed context from older messages
   summaryUpToMessageId: integer('summary_up_to_message_id'), // Last message ID included in summary
@@ -21,6 +21,7 @@ export const chats = sqliteTable('chats', {
 }, (table) => ({
   projectIdIdx: index('idx_chats_project_id').on(table.projectId),
   createdAtIdx: index('idx_chats_created_at').on(table.createdAt),
+  archivedProjectIdx: index('idx_chats_archived_project').on(table.projectId, table.archived, table.createdAt),
 }));
 
 export const messages = sqliteTable('messages', {
