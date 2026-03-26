@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useLocalStorage } from './useLocalStorage'
 
 export interface Persona {
@@ -271,7 +271,7 @@ export function usePersonas() {
   const [customPersonas, setCustomPersonas] = useLocalStorage<Persona[]>('custom-personas', [])
 
   // Combine default, combo, and custom personas
-  const allPersonas = [...DEFAULT_PERSONAS, ...COMBO_PRESETS, ...customPersonas]
+  const allPersonas = useMemo(() => [...DEFAULT_PERSONAS, ...COMBO_PRESETS, ...customPersonas], [customPersonas])
 
   const addPersona = useCallback((persona: Omit<Persona, 'id'>) => {
     const newPersona: Persona = {

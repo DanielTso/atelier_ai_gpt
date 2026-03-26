@@ -1,7 +1,7 @@
 "use client"
 
 import { Command } from "cmdk"
-import { useState } from "react"
+import { useState, memo } from "react"
 import { MessageSquare, Sun, Moon, Plus, Folder, Cpu, Search } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { Model } from "@/types"
@@ -33,7 +33,7 @@ interface CommandPaletteProps {
   onSelectStandaloneChat: (id: number) => void
 }
 
-export function CommandPalette({
+export const CommandPalette = memo(function CommandPalette({
   open,
   onOpenChange,
   onNewChat,
@@ -211,7 +211,7 @@ export function CommandPalette({
       </div>
     </div>
   )
-}
+})
 
 function CommandItem({
   children,
