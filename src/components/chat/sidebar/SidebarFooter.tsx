@@ -12,7 +12,7 @@ export function SidebarFooter() {
         onClick={actions.openSettings}
         className="flex items-center gap-2 p-2.5 w-full rounded-xl hover:bg-accent text-sm text-muted-foreground hover:text-foreground transition-all group"
       >
-        <Settings className="h-4 w-4 group-hover:text-blue-400 transition-colors" />
+        <Settings className="h-4 w-4 group-hover:text-primary transition-colors" />
         Settings
       </button>
     </div>

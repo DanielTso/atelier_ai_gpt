@@ -26,9 +26,9 @@ export function ArchivedSection({ archivedChats, activeChatId, projects }: Archi
           className="flex items-center gap-2 w-full px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors"
         >
           <ChevronDown className={cn("h-3 w-3 transition-transform", archivedCollapsed && "-rotate-90")} />
-          <Archive className="h-3 w-3 text-amber-400/70" />
+          <Archive className="h-3 w-3 text-stone-sage" />
           Archived
-          <span className="ml-auto text-[10px] bg-amber-500/15 text-amber-300 px-1.5 py-0.5 rounded-full">
+          <span className="ml-auto text-[10px] bg-warm-sand/40 text-ink px-1.5 py-0.5 rounded-full">
             {archivedChats.length}
           </span>
         </button>

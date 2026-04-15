@@ -914,10 +914,10 @@ export default function Home() {
 
             {/* Error Banner */}
             {error && (
-              <div className="bg-red-500/10 border-b border-red-500/20 px-6 py-2 flex items-center gap-2 text-sm text-red-400">
+              <div className="bg-destructive/10 border-b border-destructive/30 px-6 py-2 flex items-center gap-2 text-sm text-destructive">
                 <AlertCircle className="h-4 w-4" />
                 <span>{error}</span>
-                <button onClick={() => setError(null)} className="ml-auto hover:text-red-300">
+                <button onClick={() => setError(null)} className="ml-auto hover:opacity-80">
                   Dismiss
                 </button>
               </div>
