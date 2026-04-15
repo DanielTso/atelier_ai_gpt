@@ -1,10 +1,10 @@
 # Atelier Studio
 
-Your all-in-one AI platform for work, school, and life. Atelier Studio brings together chat, document intelligence, project management, and content generation into a single customizable dashboard — so you can focus on what matters instead of juggling tools.
+A unified workspace for chat, document intelligence, projects, and AI-generated content — built for people who treat their work seriously.
 
 ## Vision
 
-Atelier Studio is designed for individuals, small teams, and companies who want a unified AI workspace they can make their own. Bring your own models (local, cloud, or fine-tuned), connect automation agents, upload documents for RAG-powered knowledge bases, and manage projects — all from one place. Pre-templated themes and sensible defaults eliminate decision fatigue so you can get started immediately.
+Atelier Studio is built for individuals, small teams, and companies who want a single, structured AI workspace they can shape to their own workflow. Bring your own models (local, cloud, or fine-tuned), connect automation agents, upload documents into RAG-powered knowledge bases, and manage projects from one place — with sensible defaults and pre-templated themes so setup stays calm and deliberate.
 
 ## Features
 
@@ -32,7 +32,7 @@ Atelier Studio is designed for individuals, small teams, and companies who want 
 - **Five-Layer Context:** System prompt, document RAG, semantic retrieval, summary, and recent messages
 
 ### Customization
-- **Theming:** Dark, light, and system modes with glassmorphism design
+- **Theming:** Light, dark, and system modes on a calm executive-grade interface
 - **Appearance:** Configurable font size and message density
 - **Settings:** Runtime-configurable API keys, model defaults, and provider URLs — no restarts needed
 

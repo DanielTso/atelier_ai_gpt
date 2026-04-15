@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Atelier Studio",
-  description: "Atelier Studio — Your AI Workshop",
+  description: "Atelier Studio — Structured intelligence for project work",
 };
 
 export default function RootLayout({

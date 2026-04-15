@@ -19,7 +19,7 @@ export function ArchivedSection({ archivedChats, activeChatId, projects }: Archi
 
   return (
     <>
-      <div className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+      <div className="h-px bg-border" />
       <div>
         <button
           onClick={toggleArchived}

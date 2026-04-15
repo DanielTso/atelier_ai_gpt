@@ -7,7 +7,7 @@ This document outlines the final technology choices used in the "Atelier Studio"
 *   **TypeScript:** Used throughout for type safety and developer productivity.
 
 ## User Interface (UI)
-*   **Tailwind CSS v4:** For utility-first styling and easy implementation of the "Glassmorphism" aesthetic.
+*   **Tailwind CSS v4:** For utility-first styling aligned to the Atelier Technologies brand system (light-first, modular cards, layered surfaces).
 *   **Lucide React:** For lightweight, consistent iconography.
 *   **Next-Themes:** For reliable Dark/Light mode switching (also used in Settings Appearance tab).
 *   **React Markdown:** To render AI responses with proper formatting (code blocks, bold text, etc.).

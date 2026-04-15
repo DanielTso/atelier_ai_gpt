@@ -23,7 +23,7 @@ function CollapsedButton({ label, icon: Icon, onClick, className: btnClass }: {
         <Tooltip.Trigger asChild>
           <button
             onClick={onClick}
-            className={cn("p-2 rounded-lg hover:bg-white/10 transition-colors", btnClass)}
+            className={cn("p-2 rounded-lg hover:bg-accent transition-colors", btnClass)}
           >
             <Icon className="h-5 w-5" />
           </button>
@@ -32,7 +32,7 @@ function CollapsedButton({ label, icon: Icon, onClick, className: btnClass }: {
           <Tooltip.Content
             side="right"
             sideOffset={8}
-            className="px-2 py-1 text-xs rounded bg-popover border border-white/10 shadow-lg z-50"
+            className="px-2 py-1 text-xs rounded bg-popover border border-border shadow-lg z-50"
           >
             {label}
             <Tooltip.Arrow className="fill-popover" />
@@ -57,7 +57,7 @@ export function CollapsedSidebar({ sortedProjects }: CollapsedSidebarProps) {
             <Tooltip.Content
               side="right"
               sideOffset={8}
-              className="px-2 py-1 text-xs rounded bg-popover border border-white/10 shadow-lg z-50"
+              className="px-2 py-1 text-xs rounded bg-popover border border-border shadow-lg z-50"
             >
               Atelier Studio
               <Tooltip.Arrow className="fill-popover" />
@@ -66,7 +66,7 @@ export function CollapsedSidebar({ sortedProjects }: CollapsedSidebarProps) {
         </Tooltip.Root>
       </Tooltip.Provider>
       <CollapsedButton label="Expand sidebar" icon={PanelLeftOpen} onClick={actions.toggleCollapse} />
-      <div className="h-px w-full bg-white/10 my-1" />
+      <div className="h-px w-full bg-border my-1" />
       <Tooltip.Provider delayDuration={200}>
         <Tooltip.Root>
           <Tooltip.Trigger asChild>
@@ -75,7 +75,7 @@ export function CollapsedSidebar({ sortedProjects }: CollapsedSidebarProps) {
             </div>
           </Tooltip.Trigger>
           <Tooltip.Portal>
-            <Tooltip.Content side="right" sideOffset={8} className="px-2 py-1 text-xs rounded bg-popover border border-white/10 shadow-lg z-50">
+            <Tooltip.Content side="right" sideOffset={8} className="px-2 py-1 text-xs rounded bg-popover border border-border shadow-lg z-50">
               Smart Chat
               <Tooltip.Arrow className="fill-popover" />
             </Tooltip.Content>
