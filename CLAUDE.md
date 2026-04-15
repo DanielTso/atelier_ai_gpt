@@ -110,7 +110,19 @@ Embeddings: 768-dim vectors via Gemini `gemini-embedding-001`. `generateEmbeddin
 
 ### Styling
 
-Tailwind CSS v4 with glassmorphism design system. Glass panels: `bg-background/60 backdrop-blur-xl` (`.glass-panel` in `globals.css`). Design tokens as CSS custom properties (HSL, light/dark variants). Animations via Framer Motion, CSS keyframes, and `SmoothStreamingWrapper` (ResizeObserver). Radix UI primitives for accessible components.
+Tailwind CSS v4 on the **Atelier Technologies master brand system** (`ATELIER_BRAND_SKILL_V2.md`). Light-first, executive-grade, calm palette. Default theme is `light`; dark mode is re-themed around Ink with Steel Blue accents, not dropped.
+
+Brand tokens live in [src/app/globals.css](src/app/globals.css):
+
+- **Raw swatches** (don't use directly unless semantic tokens don't fit): `--brand-navy` `#1F3447`, `--brand-steel-blue` `#4F7396`, `--brand-ink` `#16202A`, `--brand-canvas-light` `#F7F6F2`, `--brand-pure-surface` `#FFFFFF`, `--brand-warm-sand` `#D9CFBF`, `--brand-stone-sage` `#8C9A86`, `--brand-soft-mist` `#F3F1EC`, `--brand-muted-line` `#E3DDD2`, `--brand-slate-text` `#6F7781`, `--brand-success` `#3F7252`, `--brand-warning` `#A06D2E`.
+- **Semantic tokens (prefer these in components)**: `bg-background`, `bg-card`, `bg-primary` (Steel Blue — CTA color), `bg-secondary`/`bg-muted`/`bg-accent` (all Soft Mist in light mode), `text-foreground` (Ink), `text-muted-foreground` (Slate Text), `border-border` (Muted Line), `ring-ring` (Steel Blue), `bg-destructive`.
+- **Direct brand utilities** (for cases where semantic tokens don't express intent): `bg-navy`, `bg-steel-blue`, `bg-canvas`, `bg-warm-sand`, `bg-stone-sage`, `bg-soft-mist`, `text-ink`, `text-slate-text`, `border-muted-line`, `text-success`, `text-warning`.
+
+**Surfaces.** The legacy `.glass-panel` class is retained (16 consumers across dialogs/menus/sidebar) but **redefined** as a light modular card: Pure Surface bg, Muted Line border, soft layered shadow. Dark mode uses an elevated Ink variant. There is **no backdrop-blur, no bg/60 opacity, no dark translucent glass** anywhere in the system.
+
+**Forbidden patterns** (brand guide): blue→purple gradient text/CTAs, `bg-white/X` / `border-white/X` / `via-white/X` opacity utilities (replace with semantic tokens), oversaturated multi-accent gradients. Hover states use `hover:bg-accent`, not `hover:bg-white/10`.
+
+**Other styling infra**: Animations via Framer Motion, CSS keyframes, and `SmoothStreamingWrapper` (ResizeObserver). Radix UI primitives for accessibility. Typography is Geist Sans / Geist Mono via `next/font/google`.
 
 ### Provider Routing
 
