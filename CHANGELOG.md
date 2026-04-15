@@ -2,6 +2,37 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.9.0] - 2026-04-15
+
+### Atelier Studio Rebrand
+
+Full visual + verbal rebrand under the **Atelier Technologies, Inc.** master brand. Product renamed from _Atelier AI_ to **Atelier Studio**. Light-first, executive-grade, calm palette — glassmorphism retired.
+
+#### Brand identity
+- **Product name:** Atelier AI → Atelier Studio. User-facing strings updated across landing, sidebar, metadata, and docs. Repo / Vercel slugs unchanged (tracked separately).
+- **Copy voice:** README tagline + vision and empty-state CTA rewritten to the Atelier voice (calm, direct, evidence-focused). Removed "all-in-one", "focus on what matters", "decision fatigue", "get started immediately".
+- **Metadata:** `<title>` and `<meta description>` updated.
+
+#### Design system
+- **New palette:** Atelier Navy `#1F3447`, Steel Blue `#4F7396`, Ink `#16202A`, Canvas Light `#F7F6F2`, Pure Surface `#FFFFFF`, Warm Sand `#D9CFBF`, Stone Sage `#8C9A86`, Soft Mist `#F3F1EC`, Muted Line `#E3DDD2`, Slate Text `#6F7781`, plus Success / Warning. Exposed as Tailwind utilities.
+- **Semantic tokens remapped:** `primary` = Steel Blue (CTAs), `background` = Canvas Light, `foreground` = Ink, `border` = Muted Line, `accent`/`secondary`/`muted` = Soft Mist, `ring` = Steel Blue.
+- **Default theme is now `light`** (brand is light-first). Dark mode retained and re-themed around Ink with Steel Blue accents.
+- **`.glass-panel` redefined** as a light modular card (Pure Surface, Muted Line border, soft layered shadow). Same class name; all 16 consumers migrated automatically without per-file edits. Zero `backdrop-blur` / `bg-background/60` dark-translucent glass remains.
+
+#### Component cleanup
+- **Landing:** dropped blue→purple gradient heading; solid `text-foreground` instead.
+- **Sidebar cluster** (`SidebarHeader`, `CollapsedSidebar`, `Sidebar`, `SmartChatMenu`, `ArchivedSection`, `SidebarFooter`): replaced `bg-white/X`, `border-white/X`, `via-white/X` opacity patterns with semantic tokens (`bg-accent`, `border-border`, `bg-border`). Removed inline `borderImage` rgba gradient.
+- **Error banner:** raw red-500 scale → `destructive` token.
+- **Archive chip:** amber utilities → Stone Sage icon + Warm Sand badge.
+- **Settings icon hover:** `text-blue-400` → `text-primary`.
+
+#### Docs
+- **CLAUDE.md:** rewrote the Styling section to document the Atelier brand system, token hierarchy, and forbidden patterns (no blue→purple gradients, no `white/X` utilities).
+- **README / TECH_STACKS / PLAN:** copy + tech-stack descriptions updated to reflect the brand system (glassmorphism references removed except in the Phase 4 historical record).
+
+#### Out of scope (inherited tokens; deferred to a later pass)
+- Message bubbles, settings dialog, command palette, chat input area — render correctly on the new palette via inherited tokens but not hand-tuned.
+
 ## [1.5.0] - 2026-03-19
 
 ### Bug Fixes
