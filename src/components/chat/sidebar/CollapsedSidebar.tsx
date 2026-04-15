@@ -51,7 +51,7 @@ export function CollapsedSidebar({ sortedProjects }: CollapsedSidebarProps) {
       <Tooltip.Provider delayDuration={200}>
         <Tooltip.Root>
           <Tooltip.Trigger asChild>
-            <img src="/logo.svg" alt="Atelier AI" className="h-5 w-5" />
+            <img src="/logo.svg" alt="Atelier Studio" className="h-5 w-5" />
           </Tooltip.Trigger>
           <Tooltip.Portal>
             <Tooltip.Content
@@ -59,7 +59,7 @@ export function CollapsedSidebar({ sortedProjects }: CollapsedSidebarProps) {
               sideOffset={8}
               className="px-2 py-1 text-xs rounded bg-popover border border-white/10 shadow-lg z-50"
             >
-              Atelier AI
+              Atelier Studio
               <Tooltip.Arrow className="fill-popover" />
             </Tooltip.Content>
           </Tooltip.Portal>

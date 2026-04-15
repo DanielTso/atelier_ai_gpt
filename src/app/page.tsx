@@ -985,9 +985,9 @@ export default function Home() {
         ) : (
           <>
             <div className="flex-1 flex flex-col items-center justify-center gap-4">
-              <img src="/logo.svg" alt="Atelier AI" className="h-12 w-12 opacity-60" />
+              <img src="/logo.svg" alt="Atelier Studio" className="h-12 w-12 opacity-60" />
               <h2 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400">
-                Atelier AI
+                Atelier Studio
               </h2>
               <p className="text-sm text-muted-foreground">Start typing to begin a conversation</p>
             </div>

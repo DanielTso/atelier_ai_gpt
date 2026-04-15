@@ -59,7 +59,7 @@ Schema at `src/db/schema.ts`, connection at `src/db/index.ts` (with `PRAGMA fore
 
 ## Architecture Overview
 
-Atelier AI is a Next.js 16 App Router chat application with multi-provider AI backend (Google Gemini + Alibaba Cloud Qwen).
+Atelier Studio is a Next.js 16 App Router chat application with multi-provider AI backend (Google Gemini + Alibaba Cloud Qwen).
 
 ### Data Flow
 

@@ -1,4 +1,4 @@
-# Project Plan: Atelier AI
+# Project Plan: Atelier Studio
 
 ## Tech Stack
 - **Framework:** Next.js 16 (App Router)

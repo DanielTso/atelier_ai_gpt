@@ -9,9 +9,9 @@ export function SidebarHeader() {
   return (
     <div className="flex items-center justify-between px-4 pt-4 pb-3 mb-2 border-b border-white/5 bg-gradient-to-b from-white/[0.03] to-transparent">
       <div className="flex items-center gap-2">
-        <img src="/logo.svg" alt="Atelier AI" className="h-6 w-6" />
+        <img src="/logo.svg" alt="Atelier Studio" className="h-6 w-6" />
         <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400">
-          Atelier AI
+          Atelier Studio
         </h1>
       </div>
       <div className="flex items-center gap-1">
