@@ -65,7 +65,7 @@ export const Sidebar = memo(function Sidebar({
               projects={projects}
             />
 
-            <div className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+            <div className="h-px bg-border" />
 
             <ProjectsSection
               sortedProjects={sortedProjects}

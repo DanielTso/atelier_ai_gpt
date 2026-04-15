@@ -914,10 +914,10 @@ export default function Home() {
 
             {/* Error Banner */}
             {error && (
-              <div className="bg-red-500/10 border-b border-red-500/20 px-6 py-2 flex items-center gap-2 text-sm text-red-400">
+              <div className="bg-destructive/10 border-b border-destructive/30 px-6 py-2 flex items-center gap-2 text-sm text-destructive">
                 <AlertCircle className="h-4 w-4" />
                 <span>{error}</span>
-                <button onClick={() => setError(null)} className="ml-auto hover:text-red-300">
+                <button onClick={() => setError(null)} className="ml-auto hover:opacity-80">
                   Dismiss
                 </button>
               </div>
@@ -985,11 +985,11 @@ export default function Home() {
         ) : (
           <>
             <div className="flex-1 flex flex-col items-center justify-center gap-4">
-              <img src="/logo.svg" alt="Atelier AI" className="h-12 w-12 opacity-60" />
-              <h2 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400">
-                Atelier AI
+              <img src="/logo.svg" alt="Atelier Studio" className="h-12 w-12 opacity-60" />
+              <h2 className="text-2xl font-bold text-foreground">
+                Atelier Studio
               </h2>
-              <p className="text-sm text-muted-foreground">Start typing to begin a conversation</p>
+              <p className="text-sm text-muted-foreground">Create a chat or select a project to begin.</p>
             </div>
             <ChatInputArea
               input={input}

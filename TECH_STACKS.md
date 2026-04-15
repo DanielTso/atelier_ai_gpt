@@ -1,13 +1,13 @@
 # Implemented Tech Stack
 
-This document outlines the final technology choices used in the "Atelier AI" application.
+This document outlines the final technology choices used in the "Atelier Studio" application.
 
 ## Core Framework
 *   **Next.js 16 (App Router):** Chosen for its robust server-side rendering, API route capabilities, and seamless integration with Vercel AI SDK.
 *   **TypeScript:** Used throughout for type safety and developer productivity.
 
 ## User Interface (UI)
-*   **Tailwind CSS v4:** For utility-first styling and easy implementation of the "Glassmorphism" aesthetic.
+*   **Tailwind CSS v4:** For utility-first styling aligned to the Atelier Technologies brand system (light-first, modular cards, layered surfaces).
 *   **Lucide React:** For lightweight, consistent iconography.
 *   **Next-Themes:** For reliable Dark/Light mode switching (also used in Settings Appearance tab).
 *   **React Markdown:** To render AI responses with proper formatting (code blocks, bold text, etc.).

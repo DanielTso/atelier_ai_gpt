@@ -1,9 +1,9 @@
-# Project Plan: Atelier AI
+# Project Plan: Atelier Studio
 
 ## Tech Stack
 - **Framework:** Next.js 16 (App Router)
 - **Language:** TypeScript
-- **Styling:** Tailwind CSS v4 (with `backdrop-blur` for Glassmorphism)
+- **Styling:** Tailwind CSS v4 (Atelier Technologies brand system, light-first)
 - **Icons:** Lucide React
 - **AI Integration:** Vercel AI SDK v6 (Google Gemini + Alibaba Cloud Qwen)
 - **Database:** SQLite via `@libsql/client` + `drizzle-orm/libsql` (local) / Turso (production)
@@ -17,7 +17,7 @@
 **Goal:** A running Next.js app with the basic visual structure (Sidebar + Chat Area) and Theme switching.
 - [x] Initialize Next.js project.
 - [x] Install dependencies (`lucide-react`, `next-themes`, `clsx`, `tailwind-merge`).
-- [x] Configure Tailwind for Glassmorphism (extend colors, background images).
+- [x] Configure Tailwind with the Atelier brand palette (Canvas Light, Steel Blue, Ink, Muted Line, Soft Mist).
 - [x] Create Layout: Sidebar (Projects/History) + Main (Chat).
 - [x] Implement Dark/Light mode toggle.
 - [x] **Test:** App starts, Theme toggle works, responsive layout.

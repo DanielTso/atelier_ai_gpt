@@ -5,72 +5,115 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* ----------------------------------------------------------------
+   Atelier Technologies, Inc. — Master Brand Tokens
+   Light-first, executive-grade. Calm, structured, premium.
+   Palette reference: ATELIER_BRAND_SKILL_V2.md
+---------------------------------------------------------------- */
 :root {
-  --background: 0 0% 100%;
-  --foreground: 222.2 84% 4.9%;
-  --card: 0 0% 100%;
-  --card-foreground: 222.2 84% 4.9%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 222.2 84% 4.9%;
-  --primary: 222.2 47.4% 11.2%;
-  --primary-foreground: 210 40% 98%;
-  --secondary: 210 40% 96.1%;
-  --secondary-foreground: 222.2 47.4% 11.2%;
-  --muted: 210 40% 96.1%;
-  --muted-foreground: 215.4 16.3% 46.9%;
-  --accent: 210 40% 96.1%;
-  --accent-foreground: 222.2 47.4% 11.2%;
-  --destructive: 0 84.2% 60.2%;
-  --destructive-foreground: 210 40% 98%;
-  --border: 214.3 31.8% 91.4%;
-  --input: 214.3 31.8% 91.4%;
-  --ring: 222.2 84% 4.9%;
-  --radius: 0.5rem;
+  /* Brand palette — raw swatches */
+  --brand-navy: #1F3447;
+  --brand-steel-blue: #4F7396;
+  --brand-ink: #16202A;
+  --brand-canvas-light: #F7F6F2;
+  --brand-pure-surface: #FFFFFF;
+  --brand-warm-sand: #D9CFBF;
+  --brand-stone-sage: #8C9A86;
+  --brand-soft-mist: #F3F1EC;
+  --brand-muted-line: #E3DDD2;
+  --brand-slate-text: #6F7781;
+  --brand-success: #3F7252;
+  --brand-warning: #A06D2E;
+
+  /* Semantic tokens — Light mode (primary experience) */
+  --background: var(--brand-canvas-light);
+  --foreground: var(--brand-ink);
+  --card: var(--brand-pure-surface);
+  --card-foreground: var(--brand-ink);
+  --popover: var(--brand-pure-surface);
+  --popover-foreground: var(--brand-ink);
+  --primary: var(--brand-steel-blue);
+  --primary-foreground: var(--brand-pure-surface);
+  --secondary: var(--brand-soft-mist);
+  --secondary-foreground: var(--brand-ink);
+  --muted: var(--brand-soft-mist);
+  --muted-foreground: var(--brand-slate-text);
+  --accent: var(--brand-soft-mist);
+  --accent-foreground: var(--brand-navy);
+  --destructive: #B04D48;
+  --destructive-foreground: var(--brand-pure-surface);
+  --border: var(--brand-muted-line);
+  --input: var(--brand-muted-line);
+  --ring: var(--brand-steel-blue);
+  --radius: 0.625rem;
+
+  /* Layered surfaces — for elevation hierarchy */
+  --surface-raised: var(--brand-pure-surface);
+  --surface-sunken: var(--brand-soft-mist);
+  --surface-divider: var(--brand-muted-line);
 }
 
 .dark {
-  --background: 222.2 84% 4.9%;
-  --foreground: 210 40% 98%;
-  --card: 222.2 84% 4.9%;
-  --card-foreground: 210 40% 98%;
-  --popover: 222.2 84% 4.9%;
-  --popover-foreground: 210 40% 98%;
-  --primary: 210 40% 98%;
-  --primary-foreground: 222.2 47.4% 11.2%;
-  --secondary: 217.2 32.6% 17.5%;
-  --secondary-foreground: 210 40% 98%;
-  --muted: 217.2 32.6% 17.5%;
-  --muted-foreground: 215 20.2% 65.1%;
-  --accent: 217.2 32.6% 17.5%;
-  --accent-foreground: 210 40% 98%;
-  --destructive: 0 62.8% 30.6%;
-  --destructive-foreground: 210 40% 98%;
-  --border: 217.2 32.6% 17.5%;
-  --input: 217.2 32.6% 17.5%;
-  --ring: 212.7 26.8% 83.9%;
+  /* Dark mode — re-themed to the brand. Still secondary; light is primary. */
+  --background: var(--brand-ink);
+  --foreground: var(--brand-canvas-light);
+  --card: #1F2831;
+  --card-foreground: var(--brand-canvas-light);
+  --popover: #1F2831;
+  --popover-foreground: var(--brand-canvas-light);
+  --primary: var(--brand-steel-blue);
+  --primary-foreground: var(--brand-pure-surface);
+  --secondary: var(--brand-navy);
+  --secondary-foreground: var(--brand-canvas-light);
+  --muted: var(--brand-navy);
+  --muted-foreground: #9AA3AE;
+  --accent: #28394A;
+  --accent-foreground: var(--brand-canvas-light);
+  --destructive: #B04D48;
+  --destructive-foreground: var(--brand-canvas-light);
+  --border: #2A3540;
+  --input: #2A3540;
+  --ring: var(--brand-steel-blue);
+
+  --surface-raised: #1F2831;
+  --surface-sunken: var(--brand-ink);
+  --surface-divider: #2A3540;
 }
 
 @theme inline {
-  --color-background: hsl(var(--background));
-  --color-foreground: hsl(var(--foreground));
-  --color-card: hsl(var(--card));
-  --color-card-foreground: hsl(var(--card-foreground));
-  --color-popover: hsl(var(--popover));
-  --color-popover-foreground: hsl(var(--popover-foreground));
-  --color-primary: hsl(var(--primary));
-  --color-primary-foreground: hsl(var(--primary-foreground));
-  --color-secondary: hsl(var(--secondary));
-  --color-secondary-foreground: hsl(var(--secondary-foreground));
-  --color-muted: hsl(var(--muted));
-  --color-muted-foreground: hsl(var(--muted-foreground));
-  --color-accent: hsl(var(--accent));
-  --color-accent-foreground: hsl(var(--accent-foreground));
-  --color-destructive: hsl(var(--destructive));
-  --color-destructive-foreground: hsl(var(--destructive-foreground));
-  --color-border: hsl(var(--border));
-  --color-input: hsl(var(--input));
-  --color-ring: hsl(var(--ring));
-  
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Direct brand palette access — use sparingly, prefer semantic tokens. */
+  --color-navy: var(--brand-navy);
+  --color-steel-blue: var(--brand-steel-blue);
+  --color-ink: var(--brand-ink);
+  --color-canvas: var(--brand-canvas-light);
+  --color-warm-sand: var(--brand-warm-sand);
+  --color-stone-sage: var(--brand-stone-sage);
+  --color-soft-mist: var(--brand-soft-mist);
+  --color-muted-line: var(--brand-muted-line);
+  --color-slate-text: var(--brand-slate-text);
+  --color-success: var(--brand-success);
+  --color-warning: var(--brand-warning);
+
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
@@ -78,23 +121,27 @@
 
 body {
   @apply bg-background text-foreground antialiased;
-  /* Glassmorphism Background Gradient */
-  background-image: 
-    radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%), 
-    radial-gradient(at 50% 0%, hsla(225,39%,30%,1) 0, transparent 50%), 
-    radial-gradient(at 100% 0%, hsla(339,49%,30%,1) 0, transparent 50%);
-  background-attachment: fixed;
 }
 
-.dark body {
-  background-image: 
-    radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%), 
-    radial-gradient(at 50% 0%, hsla(225,39%,25%,1) 0, transparent 50%), 
-    radial-gradient(at 100% 0%, hsla(339,49%,25%,1) 0, transparent 50%);
-}
-
+/* ----------------------------------------------------------------
+   Surface primitives
+   Replaces the legacy .glass-panel (dark translucent + backdrop-blur)
+   with a light, modular card per the Atelier brand:
+   Pure Surface white, Muted Line border, soft layered shadow.
+   Dark mode uses an elevated Ink variant.
+---------------------------------------------------------------- */
 .glass-panel {
-  @apply bg-background/60 backdrop-blur-xl border border-white/10 shadow-xl;
+  background-color: var(--surface-raised);
+  border: 1px solid var(--surface-divider);
+  box-shadow:
+    0 1px 2px rgba(22, 32, 42, 0.04),
+    0 8px 24px rgba(22, 32, 42, 0.06);
+}
+
+.dark .glass-panel {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.25),
+    0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
 /* Streaming cursor animation */
@@ -102,7 +149,7 @@ body {
   content: "▎";
   display: inline-block;
   margin-left: 2px;
-  color: hsl(var(--primary));
+  color: var(--primary);
   animation: cursor-blink 0.8s ease-in-out infinite;
 }
 
@@ -185,24 +232,24 @@ body {
   & strong { font-weight: 700; }
 }
 
-/* Light mode prose borders/colors */
+/* Light mode prose borders/colors — tuned to Muted Line + Slate Text */
 :root .prose {
-  & hr { border-color: rgba(0, 0, 0, 0.1); }
-  & th { border-bottom: 2px solid rgba(0, 0, 0, 0.15); }
-  & td { border-bottom: 1px solid rgba(0, 0, 0, 0.07); }
+  & hr { border-color: var(--border); }
+  & th { border-bottom: 2px solid var(--border); }
+  & td { border-bottom: 1px solid var(--border); }
   & blockquote {
-    border-left: 3px solid rgba(0, 0, 0, 0.2);
-    color: rgba(0, 0, 0, 0.65);
+    border-left: 3px solid var(--brand-warm-sand);
+    color: var(--muted-foreground);
   }
 }
 
 /* Dark mode prose borders/colors */
 .dark .prose {
-  & hr { border-color: rgba(255, 255, 255, 0.1); }
-  & th { border-bottom: 2px solid rgba(255, 255, 255, 0.15); }
-  & td { border-bottom: 1px solid rgba(255, 255, 255, 0.07); }
+  & hr { border-color: var(--border); }
+  & th { border-bottom: 2px solid var(--border); }
+  & td { border-bottom: 1px solid var(--border); }
   & blockquote {
-    border-left: 3px solid rgba(255, 255, 255, 0.2);
-    color: rgba(255, 255, 255, 0.75);
+    border-left: 3px solid var(--brand-warm-sand);
+    color: var(--muted-foreground);
   }
 }
