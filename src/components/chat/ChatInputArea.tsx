@@ -167,21 +167,60 @@ export const ChatInputArea = memo(function ChatInputArea({
     }
   }, [attachedFiles, onFilesChange, attachedImages, onImagesChange])
 
-  const handleDragOver = useCallback((e: React.DragEvent) => {
+  // Prevent the browser's default "open the dropped file" behaviour anywhere on
+  // the window. Without this, a file dropped even slightly outside the input area
+  // makes the browser navigate to / download the file instead of attaching it.
+  useEffect(() => {
+    const prevent = (e: DragEvent) => {
+      if (Array.from(e.dataTransfer?.types ?? []).includes('Files')) {
+        e.preventDefault()
+      }
+    }
+    window.addEventListener('dragover', prevent)
+    window.addEventListener('drop', prevent)
+    return () => {
+      window.removeEventListener('dragover', prevent)
+      window.removeEventListener('drop', prevent)
+    }
+  }, [])
+
+  // Depth counter so isDragOver only toggles when the drag truly enters/leaves
+  // the container — not every time it crosses a child element (textarea, buttons),
+  // which otherwise causes the overlay to flicker on/off rapidly.
+  const dragDepth = useRef(0)
+
+  const isFileDrag = (e: React.DragEvent) =>
+    Array.from(e.dataTransfer.types).includes('Files')
+
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    if (!isFileDrag(e)) return
     e.preventDefault()
     e.stopPropagation()
+    dragDepth.current += 1
     setIsDragOver(true)
   }, [])
 
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    if (!isFileDrag(e)) return
     e.preventDefault()
     e.stopPropagation()
-    setIsDragOver(false)
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    if (!isFileDrag(e)) return
+    e.preventDefault()
+    e.stopPropagation()
+    dragDepth.current -= 1
+    if (dragDepth.current <= 0) {
+      dragDepth.current = 0
+      setIsDragOver(false)
+    }
   }, [])
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
+    dragDepth.current = 0
     setIsDragOver(false)
 
     const files = Array.from(e.dataTransfer.files)
@@ -227,13 +266,15 @@ export const ChatInputArea = memo(function ChatInputArea({
   return (
     <div
       className="p-4 border-t border-white/10 bg-white/5 relative"
+      onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {/* Drag overlay */}
+      {/* Drag overlay — pointer-events-none so it never becomes a drag target
+          itself, which would steal events from the container and cause flicker. */}
       {isDragOver && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-primary/10 border-2 border-dashed border-primary/50 rounded-lg backdrop-blur-sm">
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-primary/10 border-2 border-dashed border-primary/50 rounded-lg backdrop-blur-sm pointer-events-none">
           <div className="flex flex-col items-center gap-2 text-primary">
             <Upload className="h-8 w-8" />
             <span className="text-sm font-medium">Drop files here</span>
