@@ -5,7 +5,7 @@ import * as Dialog from '@radix-ui/react-dialog'
 import { X, BarChart3 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getProjectDefaults, updateProjectDefaults, getProjectPersonaStats } from '@/app/actions'
-import { usePersonas, type Persona } from '@/hooks/usePersonas'
+import { usePersonas, modelShortLabel, type Persona } from '@/hooks/usePersonas'
 import { toast } from 'sonner'
 import type { Model } from '@/types'
 
@@ -88,7 +88,7 @@ export const ProjectDefaultsDialog = memo(function ProjectDefaultsDialog({
                   <option value="">None (use global default)</option>
                   {personas.map(p => (
                     <option key={p.id} value={p.id}>
-                      {p.icon} {p.name}{p.modelConstraint ? ` (${p.modelConstraint})` : ''}
+                      {p.icon} {p.name}{p.isCombo && p.preferredModel ? ` (${modelShortLabel(p.preferredModel)})` : ''}
                     </option>
                   ))}
                 </select>

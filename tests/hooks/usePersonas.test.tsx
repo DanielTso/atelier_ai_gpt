@@ -53,7 +53,8 @@ describe('usePersonas', () => {
     const found = result.current.getPersonaById('combo-code-review')
     expect(found).toBeDefined()
     expect(found!.name).toBe('Code Review')
-    expect(found!.modelConstraint).toBe('cloud')
+    expect(found!.isCombo).toBe(true)
+    expect(found!.preferredModel).toBe('gemini-3.1-pro-preview')
   })
 
   it('getPersonaByPrompt with null returns Default', () => {
@@ -63,10 +64,11 @@ describe('usePersonas', () => {
     expect(found!.id).toBe('default')
   })
 
-  it('combo presets have modelConstraint field', () => {
+  it('combo presets are flagged and pair a current Gemini model', () => {
     const { result } = renderHook(() => usePersonas())
     const combos = result.current.comboPresets
-    expect(combos.every(p => p.modelConstraint)).toBe(true)
-    expect(combos.filter(p => p.modelConstraint === 'cloud')).toHaveLength(5)
+    expect(combos).toHaveLength(5)
+    expect(combos.every(p => p.isCombo)).toBe(true)
+    expect(combos.every(p => p.preferredModel?.startsWith('gemini-'))).toBe(true)
   })
 })

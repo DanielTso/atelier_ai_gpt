@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.0] - 2026-06-07
+
+### Changed
+
+- **Personas / "Model + Persona" combos refreshed for the Gemini-only lineup.** The **Deep Analysis** combo now uses the **Deep Think** model (`gemini-3.1-pro-preview-deep-think`). All five combos pair a current model: Code Review → 3.1 Pro, Creative Writing → 3.5 Flash, Quick Code Help → 3.5 Flash, Deep Analysis → Deep Think, General Assistant → 3.5 Flash.
+- **Persona selector now shows the paired model.** The "Model + Persona" section displays a model-name chip (e.g. `3.1 Pro`, `Deep Think`) and the project-defaults picker labels combos with their model — replacing the now-meaningless "Cloud" badge.
+
+### Removed
+
+- **Dropped the stale `modelConstraint: 'cloud' | 'any'` persona field** (a leftover from when local models were a possibility) in favour of a clear `isCombo` flag. Added a `modelShortLabel()` helper for friendly model names.
+
 ## [2.0.0] - 2026-06-07
 
 ### Removed (Breaking)

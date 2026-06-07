@@ -9,9 +9,24 @@ export interface Persona {
   icon: string
   prompt: string
   isDefault?: boolean
+  /** When set, this persona is a "Model + Persona" combo that also switches the model. */
+  isCombo?: boolean
   preferredModel?: string
-  modelConstraint?: 'cloud' | 'any'
   description?: string
+}
+
+/** Short, human-friendly labels for the curated Gemini models (used on combo chips). */
+const MODEL_SHORT_LABELS: Record<string, string> = {
+  'gemini-3.5-flash': '3.5 Flash',
+  'gemini-3.1-pro-preview': '3.1 Pro',
+  'gemini-3.1-pro-preview-deep-think': 'Deep Think',
+  'gemini-3.1-flash-lite': '3.1 Flash-Lite',
+  'gemini-3.1-flash-image': 'Nano Banana 2',
+}
+
+export function modelShortLabel(modelId?: string): string | null {
+  if (!modelId) return null
+  return MODEL_SHORT_LABELS[modelId] ?? modelId.replace(/^gemini-/, '')
 }
 
 // Default personas that ship with the app
@@ -158,8 +173,8 @@ You are a meticulous code reviewer with expertise in software quality, security,
 </formatting>`,
     isDefault: true,
     preferredModel: 'gemini-3.1-pro-preview',
-    modelConstraint: 'cloud',
-    description: 'Deep code review with cloud model',
+    isCombo: true,
+    description: 'Rigorous review for bugs, security & style',
   },
   {
     id: 'combo-creative',
@@ -184,7 +199,7 @@ You are a creative writing partner specializing in fiction, poetry, and imaginat
 </formatting>`,
     isDefault: true,
     preferredModel: 'gemini-3.5-flash',
-    modelConstraint: 'cloud',
+    isCombo: true,
     description: 'Creative writing and storytelling',
   },
   {
@@ -210,7 +225,7 @@ You are a fast, concise coding assistant optimized for quick answers.
 </formatting>`,
     isDefault: true,
     preferredModel: 'gemini-3.5-flash',
-    modelConstraint: 'cloud',
+    isCombo: true,
     description: 'Fast, concise coding answers',
   },
   {
@@ -236,9 +251,9 @@ You are a thorough analytical thinker who reasons carefully through complex prob
 - Use tables for comparisons when helpful
 </formatting>`,
     isDefault: true,
-    preferredModel: 'gemini-3.1-pro-preview',
-    modelConstraint: 'cloud',
-    description: 'Thorough reasoning for complex problems',
+    preferredModel: 'gemini-3.1-pro-preview-deep-think',
+    isCombo: true,
+    description: 'Step-by-step reasoning with Deep Think',
   },
   {
     id: 'combo-general-assistant',
@@ -262,7 +277,7 @@ You are a helpful, well-rounded assistant for everyday tasks.
 </formatting>`,
     isDefault: true,
     preferredModel: 'gemini-3.5-flash',
-    modelConstraint: 'cloud',
+    isCombo: true,
     description: 'Versatile everyday assistant',
   },
 ]

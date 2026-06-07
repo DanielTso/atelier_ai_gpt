@@ -2,9 +2,9 @@
 
 import { memo, useState } from 'react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
-import { ChevronDown, Check, Settings2, Cloud, Monitor } from 'lucide-react'
+import { ChevronDown, Check, Settings2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { usePersonas, type Persona } from '@/hooks/usePersonas'
+import { usePersonas, modelShortLabel, type Persona } from '@/hooks/usePersonas'
 
 interface PersonaSelectorProps {
   currentPrompt: string | null
@@ -29,9 +29,9 @@ export const PersonaSelector = memo(function PersonaSelector({
   const currentPersona = getPersonaByPrompt(currentPrompt)
   const isCustomPrompt = currentPrompt && !currentPersona
 
-  // Split personas into regular and combo (those with modelConstraint)
-  const regularPersonas = personas.filter(p => !p.modelConstraint)
-  const comboPresets = personas.filter(p => p.modelConstraint)
+  // Split personas into regular and "Model + Persona" combos
+  const regularPersonas = personas.filter(p => !p.isCombo)
+  const comboPresets = personas.filter(p => p.isCombo)
 
   const handleSelect = (persona: Persona) => {
     onSelect(persona.prompt || null)
@@ -123,10 +123,9 @@ export const PersonaSelector = memo(function PersonaSelector({
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
                       <span className="truncate">{persona.name}</span>
-                      {persona.modelConstraint === 'cloud' && (
-                        <span className="shrink-0 flex items-center gap-0.5 text-[10px] px-1 py-0.5 bg-blue-500/15 text-blue-300 rounded">
-                          <Cloud className="h-2.5 w-2.5" />
-                          Cloud
+                      {modelShortLabel(persona.preferredModel) && (
+                        <span className="shrink-0 text-[10px] px-1 py-0.5 bg-primary/15 text-primary rounded">
+                          {modelShortLabel(persona.preferredModel)}
                         </span>
                       )}
                     </div>
