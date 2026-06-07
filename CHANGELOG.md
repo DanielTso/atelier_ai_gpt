@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.9.1] - 2026-06-07
+
+### Fixed
+
+- **File drag-and-drop in the chat input.** Dropping a file onto the chat box flickered and the browser fell back to opening/downloading the file instead of attaching it. Root causes: the drop overlay rendered without `pointer-events-none` (stealing drag events from its container) and the `isDragOver` boolean toggled on every child-boundary crossing, producing a mount/unmount flicker loop; and there was no window-level guard, so a drop landing just outside the input `div` hit the browser's default file handler. Fixed with a drag-depth counter (state flips only on true enter/leave), a `dragenter` handler, `pointer-events-none` on the overlay, a `Files`-type check to ignore text drags, and a window-level `dragover`/`drop` `preventDefault`.
+- **Opaque document-upload failures.** Project document uploads surfaced a generic "Failed to process document." toast that hid the real cause. `apiError()` now takes an optional `includeDetail` flag and the documents route opts in, so the toast reports the actual reason (oversized body, encrypted PDF, etc.).
+
+### Build
+
+- Pinned the Turbopack `root` to the project directory to silence workspace-root inference warnings.
+
 ## [1.9.0] - 2026-04-15
 
 ### Atelier Studio Rebrand
