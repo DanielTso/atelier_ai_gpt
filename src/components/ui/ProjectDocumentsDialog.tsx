@@ -146,7 +146,7 @@ export const ProjectDocumentsDialog = memo(function ProjectDocumentsDialog({
               ref={fileInputRef}
               type="file"
               className="hidden"
-              accept=".pdf,.docx,.txt,.md,.csv,.py,.js,.ts,.tsx,.jsx,.json,.html,.css,.java,.c,.cpp,.go,.rs,.rb,.php,.sh,.yaml,.yml,.xml,.sql"
+              accept=".pdf,.docx,.xlsx,.txt,.md,.csv,.py,.js,.ts,.tsx,.jsx,.json,.html,.css,.java,.c,.cpp,.go,.rs,.rb,.php,.sh,.yaml,.yml,.xml,.sql"
               onChange={handleFileChange}
             />
             {uploading ? (

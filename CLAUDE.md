@@ -71,7 +71,7 @@ Atelier Studio is a Next.js 16 App Router chat application with multi-provider A
    - `POST /api/summarize` — Compresses older messages. Auto-triggers at 30+ messages, keeps last 10 in full.
    - `POST /api/embed` — Async 768-dim embedding generation via Gemini `gemini-embedding-001`. Best-effort after each exchange.
    - `POST /api/generate-title` — Auto-generates chat title (3-6 words) after first AI response.
-   - `POST /api/extract` — Extracts text from files (PDF via `unpdf`, DOCX via `mammoth`, text/code via UTF-8). Max 10MB.
+   - `POST /api/extract` — Extracts text from files (PDF via `unpdf`, DOCX via `mammoth`, XLSX via `exceljs` — one tab-separated block per sheet, text/code via UTF-8). Max 10MB.
    - `POST /api/documents` — Upload + process: extract text → chunk (2000 chars, 400 overlap, sentence-aware) → embed → store.
    - `POST /api/classify` — LLM-based topic classification. Gemini only. Cached in `chatTopics`.
 

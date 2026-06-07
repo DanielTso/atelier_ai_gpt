@@ -134,6 +134,7 @@ export function getFileTypeLabel(mime: string, name: string): string {
 
   if (mime === 'application/pdf' || ext === 'pdf') return 'PDF'
   if (mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || ext === 'docx') return 'DOCX'
+  if (mime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || ext === 'xlsx') return 'XLSX'
   if (ext === 'md') return 'MD'
   if (ext === 'csv') return 'CSV'
   if (ext === 'json') return 'JSON'

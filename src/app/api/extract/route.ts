@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
 
     if (!isSupported(file.name, file.type)) {
       return NextResponse.json(
-        { error: `Unsupported file type: ${file.name}. Supported: PDF, DOCX, and text/code files.` },
+        { error: `Unsupported file type: ${file.name}. Supported: PDF, Word (.docx), Excel (.xlsx), and text/code files.` },
         { status: 400 }
       )
     }
@@ -42,6 +42,6 @@ export async function POST(request: NextRequest) {
       truncated,
     })
   } catch (error) {
-    return apiError(error, 'Failed to extract text from file.')
+    return apiError(error, 'Failed to extract text from file:', 500, true)
   }
 }

@@ -323,7 +323,7 @@ export const ChatInputArea = memo(function ChatInputArea({
             type="file"
             multiple
             className="hidden"
-            accept=".pdf,.docx,.txt,.md,.csv,.py,.js,.ts,.tsx,.jsx,.json,.html,.css,.java,.c,.cpp,.go,.rs,.rb,.php,.sh,.yaml,.yml,.xml,.sql,.png,.jpg,.jpeg,.gif,.webp,image/*"
+            accept=".pdf,.docx,.xlsx,.txt,.md,.csv,.py,.js,.ts,.tsx,.jsx,.json,.html,.css,.java,.c,.cpp,.go,.rs,.rb,.php,.sh,.yaml,.yml,.xml,.sql,.png,.jpg,.jpeg,.gif,.webp,image/*"
             onChange={handleFileInputChange}
           />
 
