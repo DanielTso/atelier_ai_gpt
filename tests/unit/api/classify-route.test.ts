@@ -85,7 +85,7 @@ describe('POST /api/classify', () => {
     expect(callArgs.prompt).toContain('Legacy message')
   })
 
-  it('uses gemini-3-flash-preview as default model', async () => {
+  it('uses gemini-3.5-flash as default model', async () => {
     const POST = await importRoute()
     const messages = [
       { role: 'user', parts: [{ type: 'text', text: 'test' }] },
@@ -93,7 +93,7 @@ describe('POST /api/classify', () => {
     await POST(makeRequest({ chatId: 1, messages }))
 
     const callArgs = mockGenerateText.mock.calls[0][0]
-    expect(callArgs.model.modelId).toBe('gemini-3-flash-preview')
+    expect(callArgs.model.modelId).toBe('gemini-3.5-flash')
   })
 
   it('parses topics from LLM response and saves to DB', async () => {

@@ -52,7 +52,7 @@ export async function POST(req: Request) {
       : '';
 
     // Select model for summarization
-    const modelName = model || 'gemini-3-flash-preview';
+    const modelName = model || 'gemini-3.5-flash';
     const { model: selectedModel } = await createProvider(modelName);
 
     // Generate summary

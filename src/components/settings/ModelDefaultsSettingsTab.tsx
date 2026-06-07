@@ -86,7 +86,6 @@ export const ModelDefaultsSettingsTab = memo(function ModelDefaultsSettingsTab({
   }
 
   const geminiModels = models.filter(m => m.model.startsWith('gemini'))
-  const qwenModels = models.filter(m => m.model.startsWith('qwen'))
 
   return (
     <div className="space-y-6">
@@ -105,13 +104,6 @@ export const ModelDefaultsSettingsTab = memo(function ModelDefaultsSettingsTab({
           {geminiModels.length > 0 && (
             <optgroup label="Google Gemini">
               {geminiModels.map(m => (
-                <option key={m.model} value={m.model}>{m.name}</option>
-              ))}
-            </optgroup>
-          )}
-          {qwenModels.length > 0 && (
-            <optgroup label="Alibaba Qwen">
-              {qwenModels.map(m => (
                 <option key={m.model} value={m.model}>{m.name}</option>
               ))}
             </optgroup>

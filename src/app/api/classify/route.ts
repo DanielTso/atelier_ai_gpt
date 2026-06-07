@@ -51,7 +51,7 @@ export async function POST(req: Request) {
       .join('\n');
 
     // Use Gemini for classification
-    const modelName = model || 'gemini-3-flash-preview';
+    const modelName = model || 'gemini-3.5-flash';
     const apiKey = await getGeminiApiKey();
     if (!apiKey) {
       return new Response(JSON.stringify({ error: 'No API key available' }), {
@@ -60,7 +60,7 @@ export async function POST(req: Request) {
       });
     }
     const google = createGoogleGenerativeAI({ apiKey });
-    const selectedModel = google(modelName.startsWith('gemini') ? modelName : 'gemini-3-flash-preview');
+    const selectedModel = google(modelName.startsWith('gemini') ? modelName : 'gemini-3.5-flash');
 
     const result = await generateText({
       model: selectedModel,

@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.0.0] - 2026-06-07
+
+### Removed (Breaking)
+
+- **Alibaba Cloud Qwen / DashScope provider removed entirely.** The app is now Google Gemini only. Dropped the Qwen branch and `DASHSCOPE_BASE_URL` from `createProvider`, the `getDashScopeApiKey` helper, the `dashscope-api-key` sensitive-key guard, the Qwen option groups in both model selectors, the `DASHSCOPE_API_KEY` env var, and the `@ai-sdk/openai` dependency (it was used only for DashScope). Existing chats created with a Qwen model will need a Gemini model selected to continue.
+
+### Changed (Breaking)
+
+- **Gemini model list updated to the current lineup, with the latest GA IDs.** Two of the previous IDs were dead: `gemini-3.1-flash-lite-preview` was shut down and `gemini-3.1-flash-image-preview` is deprecated (shutdown 2026-06-25). New curated list: **Gemini 3.5 Flash** (`gemini-3.5-flash`, now the default), **Gemini 3.1 Pro** (`gemini-3.1-pro-preview`), **Gemini 3.1 Deep Think** (virtual → Pro at high thinking), **Gemini 3.1 Flash-Lite** (`gemini-3.1-flash-lite`), and **Nano Banana 2** (`gemini-3.1-flash-image`). Default model fallback across the chat/summarize/classify/generate-title routes and the built-in personas moved from `gemini-3-flash-preview` to `gemini-3.5-flash`.
+- **Per-level thinking variants dropped.** The `-think-{minimal|low|medium|high}` model entries and the model-selector "thinking level" strip were removed; the corresponding virtual-model handling in `createProvider` and `ModelSelect` is gone. Deep Think (high reasoning) remains as its own selectable model.
+
 ## [1.10.0] - 2026-06-07
 
 ### Added

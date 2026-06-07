@@ -5,13 +5,9 @@ describe('GET /api/models', () => {
     vi.resetModules()
   })
 
-  function mockSettings(
-    apiKey: string | null = 'test-key',
-    dashScopeApiKey: string | null = null,
-  ) {
+  function mockSettings(apiKey: string | null = 'test-key') {
     vi.doMock('@/lib/settings', () => ({
       getGeminiApiKey: () => Promise.resolve(apiKey),
-      getDashScopeApiKey: () => Promise.resolve(dashScopeApiKey),
     }))
   }
 
@@ -23,29 +19,17 @@ describe('GET /api/models', () => {
     const data = await response.json()
 
     expect(data.models.length).toBeGreaterThanOrEqual(5)
-    expect(data.models.some((m: { model: string }) => m.model.startsWith('gemini'))).toBe(true)
+    expect(data.models.every((m: { model: string }) => m.model.startsWith('gemini'))).toBe(true)
   })
 
-  it('returns Qwen models when DashScope key is set', async () => {
-    mockSettings('test-key', 'ds-test-key')
-
-    const { GET } = await import('@/app/api/models/route')
-    const response = await GET()
-    const data = await response.json()
-
-    // 15 Gemini (base + thinking variants) + 7 Qwen
-    expect(data.models).toHaveLength(22)
-    expect(data.models.some((m: { model: string }) => m.model.startsWith('qwen'))).toBe(true)
-  })
-
-  it('excludes Gemini models when no API key', async () => {
+  it('excludes models when no API key', async () => {
     mockSettings(null)
 
     const { GET } = await import('@/app/api/models/route')
     const response = await GET()
     const data = await response.json()
 
-    expect(data.models.every((m: { model: string }) => !m.model.startsWith('gemini'))).toBe(true)
+    expect(data.models).toHaveLength(0)
   })
 
   it('sets cache-control header', async () => {
@@ -55,15 +39,5 @@ describe('GET /api/models', () => {
     const response = await GET()
 
     expect(response.headers.get('Cache-Control')).toBe('public, max-age=300')
-  })
-
-  it('returns empty array when no API keys configured', async () => {
-    mockSettings(null, null)
-
-    const { GET } = await import('@/app/api/models/route')
-    const response = await GET()
-    const data = await response.json()
-
-    expect(data.models).toHaveLength(0)
   })
 })

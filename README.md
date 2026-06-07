@@ -9,11 +9,11 @@ Atelier Studio is built for individuals, small teams, and companies who want a s
 ## Features
 
 ### AI Chat
-- **Multi-Provider:** Switch between Google Gemini and Alibaba Cloud Qwen models
+- **Google Gemini:** Powered by the latest Gemini models — 3.5 Flash, 3.1 Pro, 3.1 Flash-Lite, and Deep Think
 - **Persona System:** 6 built-in presets and custom system prompts for different workflows
 - **Google Search Grounding:** Gemini text models can search the web and cite sources inline
-- **Image Generation (Nano Banana 2):** Native AI image generation via Gemini `gemini-3.1-flash-image-preview` with persistent storage and fullscreen lightbox preview
-- **Adaptive Thinking:** Per-model thinking level toggle (Off / Min / Low / Med / High) — Flash, Flash-Lite, and Pro all support configurable reasoning depth. Deep Think routes Pro to maximum thinking.
+- **Image Generation (Nano Banana 2):** Native AI image generation via Gemini `gemini-3.1-flash-image` with persistent storage and fullscreen lightbox preview
+- **Deep Think:** A high-reasoning mode that routes to Gemini 3.1 Pro with the maximum thinking level
 - **Streaming:** Real-time response streaming with animated cursor
 
 ### Document Intelligence (RAG)
@@ -43,8 +43,7 @@ Atelier Studio is built for individuals, small teams, and companies who want a s
 ## Prerequisites
 
 1. **Node.js**: v18 or higher
-2. **Google Gemini API Key**: For Gemini models
-3. **DashScope API Key**: For Alibaba Qwen models
+2. **Google Gemini API Key**: Required for all chat and image models
 
 ## Setup
 
@@ -55,7 +54,6 @@ Atelier Studio is built for individuals, small teams, and companies who want a s
 2. Configure environment (create `.env.local`):
     ```bash
     GOOGLE_GENERATIVE_AI_API_KEY=your_gemini_api_key_here
-    DASHSCOPE_API_KEY=your_dashscope_api_key_here
     ```
 3. Initialize the database:
     ```bash
@@ -84,7 +82,7 @@ npm run test:all     # Run all tests
 - **Framework:** Next.js 16 (App Router)
 - **Styling:** Tailwind CSS v4
 - **Database:** SQLite (local) / Turso (production) + Drizzle ORM
-- **AI:** Vercel AI SDK v6 + Google Gemini + Alibaba Qwen
+- **AI:** Vercel AI SDK v6 + Google Gemini
 - **Embeddings:** Gemini gemini-embedding-001 (768-dim)
 - **Testing:** Vitest + Testing Library (unit/integration), Playwright (E2E)
 - **Deployment:** Vercel + Turso

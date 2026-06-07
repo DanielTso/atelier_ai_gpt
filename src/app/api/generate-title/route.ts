@@ -21,7 +21,7 @@ export async function POST(req: Request) {
       .join('\n\n');
 
     // Select model
-    const modelName = model || 'gemini-3-flash-preview';
+    const modelName = model || 'gemini-3.5-flash';
     const { model: selectedModel } = await createProvider(modelName);
 
     const result = await generateText({

@@ -183,7 +183,7 @@ You are a creative writing partner specializing in fiction, poetry, and imaginat
 - Offer alternatives in bullet points
 </formatting>`,
     isDefault: true,
-    preferredModel: 'gemini-3-flash-preview',
+    preferredModel: 'gemini-3.5-flash',
     modelConstraint: 'cloud',
     description: 'Creative writing and storytelling',
   },
@@ -209,7 +209,7 @@ You are a fast, concise coding assistant optimized for quick answers.
 - No headers or bullet points unless listing options
 </formatting>`,
     isDefault: true,
-    preferredModel: 'gemini-3-flash-preview',
+    preferredModel: 'gemini-3.5-flash',
     modelConstraint: 'cloud',
     description: 'Fast, concise coding answers',
   },
@@ -261,7 +261,7 @@ You are a helpful, well-rounded assistant for everyday tasks.
 - Keep a professional but friendly tone
 </formatting>`,
     isDefault: true,
-    preferredModel: 'gemini-3-flash-preview',
+    preferredModel: 'gemini-3.5-flash',
     modelConstraint: 'cloud',
     description: 'Versatile everyday assistant',
   },

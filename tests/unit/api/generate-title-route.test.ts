@@ -21,10 +21,6 @@ vi.mock('@ai-sdk/google', () => ({
   ),
 }))
 
-vi.mock('@ai-sdk/openai', () => ({
-  createOpenAI: () => ({ chat: vi.fn((model: string) => ({ modelId: model })) }),
-}))
-
 function makeRequest(body: Record<string, unknown>) {
   return new Request('http://localhost/api/generate-title', {
     method: 'POST',
@@ -44,12 +40,8 @@ async function importRoute() {
       { tools: { googleSearch: mockGoogleSearch } }
     ),
   }))
-  vi.doMock('@ai-sdk/openai', () => ({
-    createOpenAI: () => ({ chat: vi.fn((model: string) => ({ modelId: model })) }),
-  }))
   vi.doMock('@/lib/settings', () => ({
     getGeminiApiKey: () => Promise.resolve('test-key'),
-    getDashScopeApiKey: () => Promise.resolve('test-dashscope-key'),
   }))
   const mod = await import('@/app/api/generate-title/route')
   return mod.POST
@@ -70,7 +62,7 @@ describe('POST /api/generate-title', () => {
         { role: 'user', content: 'Hello there' },
         { role: 'assistant', content: 'Hi! How can I help?' },
       ],
-      model: 'gemini-2.0-flash',
+      model: 'gemini-3.5-flash',
     }))
     expect(res.status).toBe(200)
     const data = await res.json()
@@ -102,7 +94,7 @@ describe('POST /api/generate-title', () => {
         { role: 'user', content: 'Hello' },
         { role: 'assistant', content: 'Hi!' },
       ],
-      model: 'gemini-2.0-flash',
+      model: 'gemini-3.5-flash',
     }))
     expect(res.status).toBe(500)
     const data = await res.json()
@@ -118,7 +110,7 @@ describe('POST /api/generate-title', () => {
         { role: 'user', content: 'What is the weather like?' },
         { role: 'assistant', content: 'It depends on your location.' },
       ],
-      model: 'gemini-2.0-flash',
+      model: 'gemini-3.5-flash',
     }))
     expect(res.status).toBe(200)
     const data = await res.json()
@@ -136,7 +128,7 @@ describe('POST /api/generate-title', () => {
         { role: 'user', content: 'Tell me everything' },
         { role: 'assistant', content: 'Sure, here is everything...' },
       ],
-      model: 'gemini-2.0-flash',
+      model: 'gemini-3.5-flash',
     }))
     expect(res.status).toBe(200)
     const data = await res.json()

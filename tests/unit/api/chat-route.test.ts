@@ -55,12 +55,8 @@ describe('POST /api/chat', () => {
         { tools: { googleSearch: mockGoogleSearch } }
       ),
     }))
-    vi.doMock('@ai-sdk/openai', () => ({
-      createOpenAI: () => vi.fn((model: string) => ({ modelId: model, provider: 'openai' })),
-    }))
     vi.doMock('@/lib/settings', () => ({
       getGeminiApiKey: () => Promise.resolve('test-key'),
-      getDashScopeApiKey: () => Promise.resolve(null),
     }))
     vi.doMock('@/lib/embeddings', () => ({
       generateEmbedding: () => Promise.reject(new Error('test: embeddings unavailable')),
@@ -80,10 +76,10 @@ describe('POST /api/chat', () => {
   it('routes gemini models to Google provider', async () => {
     const response = await postChat({
       messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] }],
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-3.5-flash',
     })
     expect(response.status).toBe(200)
-    expect(mockGoogleFn).toHaveBeenCalledWith('gemini-3-flash-preview')
+    expect(mockGoogleFn).toHaveBeenCalledWith('gemini-3.5-flash')
   })
 
   it('returns 500 for unknown model provider', async () => {
@@ -103,7 +99,7 @@ describe('POST /api/chat', () => {
 
     const response = await postChat({
       messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'Continue' }] }],
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-3.5-flash',
       chatId: chat.id,
     })
     expect(response.status).toBe(200)
@@ -120,7 +116,7 @@ describe('POST /api/chat', () => {
 
     const response = await postChat({
       messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] }],
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-3.5-flash',
       chatId: chat.id,
     })
     expect(response.status).toBe(200)
@@ -136,7 +132,7 @@ describe('POST /api/chat', () => {
 
     const response = await postChat({
       messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] }],
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-3.5-flash',
     })
     expect(response.status).toBe(500)
     const data = await response.json()
