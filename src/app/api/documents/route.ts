@@ -105,7 +105,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Document processing failed: ${message}` }, { status: 500 })
     }
   } catch (error) {
-    return apiError(error, 'Failed to process document.')
+    // Surface the real reason (e.g. body too large, encrypted PDF) so uploads
+    // aren't a generic black-box failure. These are the user's own documents.
+    return apiError(error, 'Failed to process document:', 500, true)
   }
 }
 

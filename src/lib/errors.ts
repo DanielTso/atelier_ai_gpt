@@ -1,8 +1,13 @@
-export function apiError(error: unknown, publicMessage: string, status = 500): Response {
+export function apiError(
+  error: unknown,
+  publicMessage: string,
+  status = 500,
+  includeDetail = false
+): Response {
   const detail = error instanceof Error ? error.message : String(error)
   console.error(`[API Error] ${publicMessage}:`, detail)
   return new Response(
-    JSON.stringify({ error: publicMessage }),
+    JSON.stringify({ error: includeDetail ? `${publicMessage} ${detail}` : publicMessage }),
     { status, headers: { 'Content-Type': 'application/json' } }
   )
 }
