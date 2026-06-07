@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.10.0] - 2026-06-07
+
+### Added
+
+- **Excel (`.xlsx`) upload support.** Spreadsheets can now be attached in chat and added to project documents, alongside PDF and Word. Extraction (via `exceljs`) emits one tab-separated block per worksheet (prefixed `# Sheet: <name>`), with a cell formatter that flattens dates (→ ISO date), formulas (→ cached result), rich text, and hyperlinks. Wired into the extraction allow-list, both file pickers' `accept` filters, and the attachment type label. Covered by new unit tests.
+
+### Changed
+
+- **Clearer extraction errors on the chat attachment path.** `POST /api/extract` now surfaces the real failure reason (oversized body, encrypted PDF, etc.) instead of a generic "Failed to extract text from file." toast — matching the behaviour added for project documents in v1.9.1.
+
 ## [1.9.1] - 2026-06-07
 
 ### Fixed
