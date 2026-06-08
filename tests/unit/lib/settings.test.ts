@@ -62,4 +62,21 @@ describe('settings caching', () => {
     const second = await getServerSetting('clear-key')
     expect(second).toBe('value-2')
   })
+
+  it('getAnthropicApiKey reads DB key over env', async () => {
+    const { getAnthropicApiKey } = await import('@/lib/settings')
+    process.env.ANTHROPIC_API_KEY = 'env-anthropic'
+    await setSetting('anthropic-api-key', 'db-anthropic')
+    clearSettingsCache()
+    expect(await getAnthropicApiKey()).toBe('db-anthropic')
+    delete process.env.ANTHROPIC_API_KEY
+  })
+
+  it('getAnthropicApiKey falls back to env when no DB key', async () => {
+    const { getAnthropicApiKey } = await import('@/lib/settings')
+    clearSettingsCache()
+    process.env.ANTHROPIC_API_KEY = 'env-only-anthropic'
+    expect(await getAnthropicApiKey()).toBe('env-only-anthropic')
+    delete process.env.ANTHROPIC_API_KEY
+  })
 })

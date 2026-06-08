@@ -38,3 +38,7 @@ export async function getServerSetting(key: string, envFallback?: string): Promi
 export async function getGeminiApiKey(): Promise<string | null> {
   return getServerSetting('gemini-api-key', 'GOOGLE_GENERATIVE_AI_API_KEY')
 }
+
+export async function getAnthropicApiKey(): Promise<string | null> {
+  return getServerSetting('anthropic-api-key', 'ANTHROPIC_API_KEY')
+}
