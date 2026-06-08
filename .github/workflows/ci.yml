@@ -11,6 +11,28 @@ jobs:
   ci:
     runs-on: ubuntu-latest
 
+    # Postgres with pgvector for the E2E dev server + migrations.
+    # The pgvector/pgvector image is required so `CREATE EXTENSION vector`
+    # (migration 0000) succeeds. Unit tests use in-process PGlite and ignore this.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: atelier
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/atelier
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/atelier
+
     steps:
       - uses: actions/checkout@v4
 
@@ -34,8 +56,8 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
-      - name: Push DB schema
-        run: npx drizzle-kit push
+      - name: Apply DB migrations
+        run: npx drizzle-kit migrate
 
       - name: E2E tests
         run: npm run test:e2e
