@@ -1,23 +1,33 @@
 import { NextResponse } from 'next/server';
-import { getGeminiApiKey } from '@/lib/settings';
+import { getGeminiApiKey, getAnthropicApiKey } from '@/lib/settings';
 
 export async function GET() {
-  const geminiApiKey = await getGeminiApiKey();
+  const [anthropicApiKey, geminiApiKey] = await Promise.all([
+    getAnthropicApiKey(),
+    getGeminiApiKey(),
+  ]);
 
-  // Only include models if a Gemini API key is configured.
-  const models = geminiApiKey ? [
-    { name: 'Gemini 3.5 Flash', model: 'gemini-3.5-flash', digest: 'gemini-3.5-flash' },
-    { name: 'Gemini 3.1 Pro', model: 'gemini-3.1-pro-preview', digest: 'gemini-3.1-pro-preview' },
-    // Deep Think — virtual model ID that routes to Pro with a high thinking level.
-    { name: 'Gemini 3.1 Deep Think', model: 'gemini-3.1-pro-preview-deep-think', digest: 'gemini-3.1-pro-preview-deep-think' },
-    { name: 'Gemini 3.1 Flash-Lite', model: 'gemini-3.1-flash-lite', digest: 'gemini-3.1-flash-lite' },
-    // Nano Banana 2 — image generation only.
-    { name: 'Nano Banana 2', model: 'gemini-3.1-flash-image', digest: 'gemini-3.1-flash-image' },
-  ] : [];
+  const models: { name: string; model: string; digest: string }[] = [];
+
+  // Claude — primary chat models. Opus first → becomes the default for new
+  // chats via the client's `data.models[0]` fallback.
+  if (anthropicApiKey) {
+    models.push(
+      { name: 'Claude Opus 4.8', model: 'claude-opus-4-8', digest: 'claude-opus-4-8' },
+      { name: 'Claude Sonnet 4.6', model: 'claude-sonnet-4-6', digest: 'claude-sonnet-4-6' },
+      { name: 'Claude Haiku 4.5', model: 'claude-haiku-4-5', digest: 'claude-haiku-4-5' },
+    );
+  }
+
+  // Gemini — image generation only (Nano Banana 2). Embeddings + utility tasks
+  // use Gemini internally but are not user-selectable models.
+  if (geminiApiKey) {
+    models.push(
+      { name: 'Nano Banana 2', model: 'gemini-3.1-flash-image', digest: 'gemini-3.1-flash-image' },
+    );
+  }
 
   return NextResponse.json({ models }, {
-    headers: {
-      'Cache-Control': 'public, max-age=300',
-    }
+    headers: { 'Cache-Control': 'public, max-age=300' },
   });
 }
