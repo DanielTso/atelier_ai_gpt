@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.0] - 2026-06-07 — Phase A: Claude provider
+
+First of a four-phase program (A: Claude provider · B: RAG upgrade · C: construction plan/image extraction · D: Excel/Word artifacts). Design spec at `docs/specs/2026-06-07-phase-a-claude-provider-design.md`; plan at `docs/plans/2026-06-07-phase-a-claude-provider.md`.
+
+### Added (Breaking)
+
+- **Claude is now the primary chat provider** via `@ai-sdk/anthropic`. Picker offers **Claude Opus 4.8** (`claude-opus-4-8`, default), **Sonnet 4.6** (`claude-sonnet-4-6`), and **Haiku 4.5** (`claude-haiku-4-5`). Claude text models have **web search** enabled (`anthropic.tools.webSearch_20250305`). New `getAnthropicApiKey()` (DB-first, env `ANTHROPIC_API_KEY`); `anthropic-api-key` added to the sensitive-key read block.
+- **API Keys settings tab.** New Settings → API Keys tab to view configured status and set the Gemini + Anthropic keys in-app (`getApiKeyStatus()` returns booleans only; inputs are write-only/password). Previously keys were `.env.local`-only.
+
+### Changed (Breaking)
+
+- **Gemini text models retired from the picker.** Only the Gemini **image** model (Nano Banana 2) remains user-selectable. Gemini still powers **embeddings** (`gemini-embedding-001`) and image generation under the hood — Anthropic has no embeddings API, so the RAG pipeline is unchanged. The Deep Think virtual model and per-level thinking handling were removed from `createProvider`.
+- **Persona "Model + Persona" combos repointed to Claude**: Code Review → Opus 4.8, Creative Writing → Sonnet 4.6, Quick Code Help → Haiku 4.5, Deep Analysis → Opus 4.8, General Assistant → Sonnet 4.6. `modelShortLabel`/`MODEL_SHORT_LABELS` updated to the Claude lineup.
+- **Housekeeping pinned to Gemini Flash.** `title` / `summarize` / `classify` always run on the internal `gemini-3.5-flash` regardless of the chat model — cheap, fast, no Claude tokens on background tasks.
+- **Default chat-model fallback** moved from `gemini-3.5-flash` to `claude-opus-4-8`.
+
+### Notes
+
+- **Thinking config deferred.** Opus 4.8 rejects `budget_tokens` (the only thinking knob AI SDK v6 exposes), so Claude ships without an explicit thinking config; adaptive thinking is a future follow-up.
+
 ## [2.1.0] - 2026-06-07
 
 ### Changed

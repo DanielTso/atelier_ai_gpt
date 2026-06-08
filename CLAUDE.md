@@ -32,15 +32,17 @@ Path alias: `@/*` → `./src/*`.
 
 Create `.env.local` with:
 ```
+ANTHROPIC_API_KEY=your_key_here
 GOOGLE_GENERATIVE_AI_API_KEY=your_key_here
 ```
 
-The Gemini key can also be configured at runtime via the **Settings dialog** (stored in the `settings` SQLite table). DB values take priority over `.env.local`.
+Both keys can also be configured at runtime via the **Settings dialog → API Keys tab** (stored in the `settings` SQLite table). DB values take priority over `.env.local`.
 
 **Note:** `.env*.local` files and `sqlite.db` are gitignored. Never commit secrets or the local database.
 
-The app uses a single AI provider:
-- **Google Gemini** (cloud): Requires a Gemini API key. Without it, no chat models are available.
+The app uses two AI providers with a clear split — **Claude is the brain, Gemini is the senses**:
+- **Anthropic Claude** (cloud, `@ai-sdk/anthropic`): the chat brain. Without an Anthropic key, no Claude chat models appear.
+- **Google Gemini** (cloud, `@ai-sdk/google`): image generation (Nano Banana 2) + embeddings (RAG) only. Anthropic has **no embeddings API**, so embeddings always run on Gemini regardless of the chat model. Gemini text models are not user-selectable.
 
 ### Database
 
@@ -53,25 +55,25 @@ Schema at `src/db/schema.ts`, connection at `src/db/index.ts` (with `PRAGMA fore
 
 ### Security
 
-`getSetting()` and `getSettings()` server actions block the sensitive `gemini-api-key` from being read by client code. The API key is only accessed server-side via `src/lib/settings.ts` (`getGeminiApiKey()`). All POST API routes validate request bodies with Zod schemas; error responses are sanitized via `apiError()` helper (no raw error messages to clients).
+`getSetting()` and `getSettings()` server actions block the sensitive `gemini-api-key` and `anthropic-api-key` from being read by client code (`SENSITIVE_KEYS`). Keys are only accessed server-side via `src/lib/settings.ts` (`getGeminiApiKey()`, `getAnthropicApiKey()`). The `getApiKeyStatus()` server action returns booleans only (configured / not) so the API Keys UI can show status without exposing values. All POST API routes validate request bodies with Zod schemas; error responses are sanitized via `apiError()` helper (no raw error messages to clients).
 
 ## Architecture Overview
 
-Atelier Studio is a Next.js 16 App Router chat application backed by Google Gemini.
+Atelier Studio is a Next.js 16 App Router chat application. **Claude (Anthropic) is the chat brain; Google Gemini handles image generation and embeddings.**
 
 ### Data Flow
 
 1. **Client** (`src/app/page.tsx`) — Single-page chat UI using `useChat` from `@ai-sdk/react`. All application state lives here. Three view states: **active chat**, **project landing page** (two-column: chats + documents), **empty state** (branding with always-visible input toolbar). Sending a message with no active chat auto-creates a standalone quick chat.
 2. **Server Actions** (`src/app/actions.ts`) — "use server" functions for all DB reads/writes (CRUD for projects, chats, messages, settings, chat previews).
 3. **API Routes**:
-   - `POST /api/chat` — Streams LLM responses via Google Gemini. Applies five-layer context (see below). Gemini text models have Google Search grounding enabled automatically. Image models (`*image*`) get `responseModalities: ['TEXT', 'IMAGE']` instead of grounding. Deep Think (`*deep-think*`) routes to `gemini-3.1-pro-preview` with `thinkingConfig: { thinkingLevel: 'high' }`.
-   - `GET /api/models` — Returns a static curated list of available models (gated by API key presence). Cache-Control: 5 minutes.
-   - `POST /api/summarize` — Compresses older messages. Auto-triggers at 30+ messages, keeps last 10 in full.
+   - `POST /api/chat` — Streams LLM responses. Claude models (`claude-*`) route to Anthropic with **web search** enabled (`anthropic.tools.webSearch_20250305`). The Gemini image model (`*image*`) gets `responseModalities: ['TEXT', 'IMAGE']`. Applies five-layer context (see below). Default model fallback is `claude-opus-4-8`.
+   - `GET /api/models` — Returns a static curated list (gated by key presence): Claude models when the Anthropic key is set (Opus 4.8 first → the default), Nano Banana 2 when the Gemini key is set. No Gemini text models. Cache-Control: 5 minutes.
+   - `POST /api/summarize` — Compresses older messages. Auto-triggers at 30+ messages, keeps last 10 in full. Pinned to internal `gemini-3.5-flash` (housekeeping never burns Claude tokens).
    - `POST /api/embed` — Async 768-dim embedding generation via Gemini `gemini-embedding-001`. Best-effort after each exchange.
-   - `POST /api/generate-title` — Auto-generates chat title (3-6 words) after first AI response.
+   - `POST /api/generate-title` — Auto-generates chat title (3-6 words) after first AI response. Pinned to internal `gemini-3.5-flash`.
    - `POST /api/extract` — Extracts text from files (PDF via `unpdf`, DOCX via `mammoth`, XLSX via `exceljs` — one tab-separated block per sheet, text/code via UTF-8). Max 10MB.
    - `POST /api/documents` — Upload + process: extract text → chunk (2000 chars, 400 overlap, sentence-aware) → embed → store.
-   - `POST /api/classify` — LLM-based topic classification. Gemini only. Cached in `chatTopics`.
+   - `POST /api/classify` — LLM-based topic classification. Pinned to internal `gemini-3.5-flash` (tolerates a Claude `model` in the body). Cached in `chatTopics`.
 
 ### Source Layout
 
@@ -124,7 +126,14 @@ Brand tokens live in [src/app/globals.css](src/app/globals.css):
 
 ### Provider Routing
 
-Centralized in `src/lib/providers.ts` via `createProvider(modelName)`. All models are Google Gemini via `@ai-sdk/google`; a non-`gemini` model name throws. Google Search grounding is auto-enabled for all Gemini text models (including Deep Think) via `google.tools.googleSearch({})`. Image models (name contains `image`) are the exception — they skip grounding and instead set `providerOptions: { google: { responseModalities: ['TEXT', 'IMAGE'] } }`. Deep Think (name contains `deep-think`) is a virtual model that routes to `gemini-3.1-pro-preview` with `thinkingConfig: { thinkingLevel: 'high' }` plus grounding. Sources stream as `source-url` parts and render as link chips. All POST routes validate request bodies with Zod schemas (`src/lib/validation.ts`).
+Centralized in `src/lib/providers.ts` via `createProvider(modelName)`, which routes by model-name prefix:
+
+- **`claude-*` → Anthropic** (`@ai-sdk/anthropic`, `createAnthropic({ apiKey })`). Web search is enabled via `tools: { web_search: anthropic.tools.webSearch_20250305({ maxUses: 5 }) }`. **No thinking config** — Opus 4.8 rejects `budget_tokens` (the only thinking knob AI SDK v6 exposes), and adaptive thinking isn't yet wired; it's a deferred follow-up. Throws if no Anthropic key.
+- **`gemini-*image*` → Gemini image** — `providerOptions: { google: { responseModalities: ['TEXT', 'IMAGE'] } }`, no grounding.
+- **other `gemini-*` → internal Gemini text** (utility tasks + the embedding plumbing) — Google Search grounding via `google.tools.googleSearch({})`.
+- **anything else → throws** `Unknown model provider`.
+
+Embeddings always run on Gemini (`gemini-embedding-001`) regardless of chat model — Anthropic has no embeddings API. Sources stream as `source-url` parts and render as link chips (both Google grounding and Claude web search emit them). All POST routes validate request bodies with Zod schemas (`src/lib/validation.ts`).
 
 ### Multimodal
 
@@ -144,8 +153,8 @@ Centralized in `src/lib/providers.ts` via `createProvider(modelName)`. All model
 8. **Source deduplication**: Google Search grounding sends `source-url` parts in `message.parts[]` — deduplicate by URL before rendering
 9. **Multimodal images**: `sendMessage({ text, files: FileUIPart[] })` on client, `convertToModelMessages()` on server handles data URL → inline base64 automatically
 10. **Gemini image generation**: Image models (name contains `image`) require `providerOptions: { google: { responseModalities: ['TEXT', 'IMAGE'] } }` — without this, no images are returned. Must NOT have Google Search grounding tools (incompatible).
-11. **Deep Think virtual model**: `gemini-3.1-pro-preview-deep-think` is a virtual model ID — `createProvider` strips `-deep-think` and routes to `gemini-3.1-pro-preview` with `thinkingConfig: { thinkingLevel: 'high' }`.
-12. **Gemini model IDs**: Current curated list (`src/app/api/models/route.ts`): `gemini-3.5-flash` (default), `gemini-3.1-pro-preview`, `gemini-3.1-pro-preview-deep-think` (virtual), `gemini-3.1-flash-lite`, `gemini-3.1-flash-image` (Nano Banana 2). The older `*-preview` Flash/Flash-Lite/image IDs are deprecated/shut down — do not reintroduce them.
+11. **Claude provider**: `claude-*` models route via `@ai-sdk/anthropic` (`createAnthropic({ apiKey })`). Web search via `anthropic.tools.webSearch_20250305({ maxUses: 5 })` under `tools: { web_search }`. **Do NOT set a thinking budget** — Opus 4.8 rejects `budget_tokens` (400); AI SDK v6 has no adaptive-thinking knob yet, so ship without thinking config. Embeddings stay on Gemini (Anthropic has no embeddings API).
+12. **Model IDs**: User-selectable picker (`src/app/api/models/route.ts`): `claude-opus-4-8` (default), `claude-sonnet-4-6`, `claude-haiku-4-5`, and `gemini-3.1-flash-image` (Nano Banana 2). Gemini *text* models were retired from the picker. `gemini-3.5-flash` survives as an internal-only utility/housekeeping model (title/summarize/classify) and is not user-selectable. The Deep Think virtual model was removed.
 13. **AI-generated image persistence**: The `onFinish` callback must save `file` parts (not just `text` parts) from assistant messages to `messageAttachments` via `saveMessageAttachments()`. Without this, generated images are lost on page refresh. The load flow (`loadMessages`) already reconstructs `file` parts from attachments.
 14. **Image data URLs in new tabs**: Browsers block `data:` URLs opened via `<a target="_blank">` for security. Use a lightbox overlay instead of linking to `data:` URLs directly.
 15. **Server action body size limit**: `next.config.ts` sets `experimental.serverActions.bodySizeLimit` to `'10mb'`. Without this, `saveMessageAttachments()` fails silently for Gemini-generated images (base64 data URLs are 1-2MB+, exceeding the default 1MB limit).
@@ -160,7 +169,7 @@ Config: `vitest.config.ts`. Tests in `tests/`. Node environment by default; hook
 
 **In-memory SQLite**: Import `createTestDb`/`testDb` from `tests/helpers/test-db.ts`, mock `@/db` with a getter, call `createTestDb()` in `beforeEach` (async — uses `@libsql/client`).
 
-**API route tests**: Require `vi.resetModules()` + `vi.doMock()` + dynamic `import()` to re-register mocks after module reset. Must mock `@/lib/settings`, `@/lib/embeddings`, and AI SDK providers alongside `@/db`. The `@ai-sdk/google` mock must include `tools.googleSearch` on the provider function.
+**API route tests**: Require `vi.resetModules()` + `vi.doMock()` + dynamic `import()` to re-register mocks after module reset. Must mock `@/lib/settings`, `@/lib/embeddings`, and AI SDK providers alongside `@/db`. The `@ai-sdk/google` mock must include `tools.googleSearch`, and the `@ai-sdk/anthropic` mock (`createAnthropic`) must include `tools.webSearch_20250305` on the provider function. The `@/lib/settings` mock should expose both `getGeminiApiKey` and `getAnthropicApiKey`.
 
 ### Playwright (E2E)
 
