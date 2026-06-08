@@ -23,7 +23,7 @@ export async function getServerSetting(key: string, envFallback?: string): Promi
     return cached.value
   }
 
-  const result = await db.select().from(settings).where(eq(settings.key, key)).get()
+  const [result] = await db.select().from(settings).where(eq(settings.key, key))
   let value: string | null = null
   if (result?.value) {
     value = result.value

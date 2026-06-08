@@ -7,7 +7,7 @@ import { eq, desc, isNull, isNotNull, and, lte, asc, count, inArray, sql } from 
 const SENSITIVE_KEYS = new Set(['gemini-api-key', 'anthropic-api-key'])
 
 export async function getProjects() {
-  return await db.select().from(projects).all()
+  return await db.select().from(projects)
 }
 
 export async function createProject(name: string) {
@@ -25,13 +25,13 @@ export async function updateProjectName(id: number, name: string) {
 export async function getChats(projectId: number) {
   return await db.select().from(chats).where(
     and(eq(chats.projectId, projectId), eq(chats.archived, false))
-  ).orderBy(desc(chats.createdAt)).all()
+  ).orderBy(desc(chats.createdAt))
 }
 
 export async function getProjectChatPreviews(projectId: number) {
   const projectChats = await db.select().from(chats).where(
     and(eq(chats.projectId, projectId), eq(chats.archived, false))
-  ).orderBy(desc(chats.createdAt)).all()
+  ).orderBy(desc(chats.createdAt))
 
   if (projectChats.length === 0) return []
 
@@ -45,7 +45,6 @@ export async function getProjectChatPreviews(projectId: number) {
       eq(messages.role, 'user')
     ))
     .orderBy(asc(messages.createdAt))
-    .all()
 
   // Keep only the first message per chat
   const firstMsgMap = new Map<number, string>()
@@ -67,13 +66,13 @@ export async function getAllProjectChats() {
   // Get all non-archived chats that belong to a project
   return await db.select().from(chats).where(
     and(isNotNull(chats.projectId), eq(chats.archived, false))
-  ).orderBy(desc(chats.createdAt)).all()
+  ).orderBy(desc(chats.createdAt))
 }
 
 export async function getStandaloneChats() {
   return await db.select().from(chats).where(
     and(isNull(chats.projectId), eq(chats.archived, false))
-  ).orderBy(desc(chats.createdAt)).all()
+  ).orderBy(desc(chats.createdAt))
 }
 
 export async function createChat(projectId: number, title: string) {
@@ -108,7 +107,6 @@ export async function getChatMessages(chatId: number, limit: number = 100) {
     .where(eq(messages.chatId, chatId))
     .orderBy(desc(messages.createdAt))
     .limit(limit)
-    .all()
 
   // Reverse to get chronological order (oldest first)
   return recentMessages.reverse()
@@ -127,14 +125,14 @@ export async function restoreChat(id: number) {
 }
 
 export async function getArchivedChats() {
-  return await db.select().from(chats).where(eq(chats.archived, true)).orderBy(desc(chats.createdAt)).all()
+  return await db.select().from(chats).where(eq(chats.archived, true)).orderBy(desc(chats.createdAt))
 }
 
 // Context Management Actions
 
 export async function getChatWithContext(chatId: number) {
   // Get chat with summary and system prompt for context building
-  const result = await db.select().from(chats).where(eq(chats.id, chatId)).get()
+  const [result] = await db.select().from(chats).where(eq(chats.id, chatId))
   return result
 }
 
@@ -158,10 +156,9 @@ export async function updateChatSummary(chatId: number, summary: string, summary
 }
 
 export async function getMessageCount(chatId: number) {
-  const result = await db.select({ count: count() })
+  const [result] = await db.select({ count: count() })
     .from(messages)
     .where(eq(messages.chatId, chatId))
-    .get()
   return result?.count ?? 0
 }
 
@@ -175,7 +172,6 @@ export async function getMessagesForSummarization(chatId: number, upToMessageId:
       lte(messages.id, upToMessageId),
     ))
     .orderBy(asc(messages.createdAt))
-    .all()
 }
 
 // Settings Actions
@@ -184,14 +180,14 @@ export async function getSetting(key: string) {
   if (SENSITIVE_KEYS.has(key)) {
     throw new Error('Access denied: this setting cannot be read from the client')
   }
-  const result = await db.select().from(settings).where(eq(settings.key, key)).get()
+  const [result] = await db.select().from(settings).where(eq(settings.key, key))
   return result?.value ?? null
 }
 
 export async function getSettings(keys: string[]) {
   const safeKeys = keys.filter(k => !SENSITIVE_KEYS.has(k))
   if (safeKeys.length === 0) return {}
-  const results = await db.select().from(settings).where(inArray(settings.key, safeKeys)).all()
+  const results = await db.select().from(settings).where(inArray(settings.key, safeKeys))
   const map: Record<string, string> = {}
   for (const row of results) {
     map[row.key] = row.value
@@ -248,17 +244,15 @@ export async function saveMessageEmbedding(
 export async function getEmbeddingsForChat(chatId: number) {
   return await db.select().from(messageEmbeddings)
     .where(eq(messageEmbeddings.chatId, chatId))
-    .all()
 }
 
 export async function getEmbeddingsForProject(projectId: number) {
   return await db.select().from(messageEmbeddings)
     .where(eq(messageEmbeddings.projectId, projectId))
-    .all()
 }
 
 export async function getAllEmbeddings() {
-  return await db.select().from(messageEmbeddings).all()
+  return await db.select().from(messageEmbeddings)
 }
 
 export async function getEmbeddingCount(scope?: { chatId?: number; projectId?: number }) {
@@ -289,10 +283,10 @@ export async function updateProjectDefaults(
 }
 
 export async function getProjectDefaults(projectId: number) {
-  const result = await db.select({
+  const [result] = await db.select({
     defaultPersonaId: projects.defaultPersonaId,
     defaultModel: projects.defaultModel,
-  }).from(projects).where(eq(projects.id, projectId)).get()
+  }).from(projects).where(eq(projects.id, projectId))
   return result ?? { defaultPersonaId: null, defaultModel: null }
 }
 
@@ -316,11 +310,10 @@ export async function recordPersonaUsage(data: {
 
 export async function incrementUsageMessageCount(chatId: number) {
   // Get existing usage record for this chat
-  const existing = await db.select().from(personaUsage)
+  const [existing] = await db.select().from(personaUsage)
     .where(eq(personaUsage.chatId, chatId))
     .orderBy(desc(personaUsage.lastUsedAt))
     .limit(1)
-    .get()
 
   if (existing) {
     return await db.update(personaUsage)
@@ -338,7 +331,6 @@ export async function getProjectPersonaStats(projectId: number) {
   return await db.select().from(personaUsage)
     .where(eq(personaUsage.projectId, projectId))
     .orderBy(desc(personaUsage.messageCount))
-    .all()
 }
 
 // ── Chat Topics Actions ──
@@ -353,7 +345,6 @@ export async function getChatTopics(chatId: number) {
   return await db.select().from(chatTopics)
     .where(eq(chatTopics.chatId, chatId))
     .orderBy(desc(chatTopics.confidence))
-    .all()
 }
 
 // ── Document RAG Actions ──
@@ -390,7 +381,6 @@ export async function getProjectDocuments(projectId: number) {
   return await db.select().from(documents)
     .where(eq(documents.projectId, projectId))
     .orderBy(desc(documents.createdAt))
-    .all()
 }
 
 export async function deleteDocument(id: number) {
@@ -422,7 +412,6 @@ export async function getDocumentChunks(documentId: number) {
   }).from(documentChunks)
     .where(eq(documentChunks.documentId, documentId))
     .orderBy(documentChunks.chunkIndex)
-    .all()
 }
 
 export async function getDocumentChunksForProject(projectId: number) {
@@ -442,7 +431,6 @@ export async function getDocumentChunksForProject(projectId: number) {
         isNotNull(documentChunks.embedding)
       )
     )
-    .all()
 }
 
 // ── Message Attachment Actions ──
@@ -460,7 +448,6 @@ export async function saveMessageAttachments(
 export async function getChatAttachments(chatId: number) {
   return await db.select().from(messageAttachments)
     .where(eq(messageAttachments.chatId, chatId))
-    .all()
 }
 
 export async function getApiKeyStatus(): Promise<{ gemini: boolean; anthropic: boolean }> {
