@@ -1,7 +1,7 @@
 "use client"
 
 import * as Select from "@radix-ui/react-select"
-import { ChevronDown, Check, Cloud } from "lucide-react"
+import { ChevronDown, Check, Sparkles, Image as ImageIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { Model } from "@/types"
 
@@ -13,6 +13,8 @@ interface ModelSelectProps {
 
 export function ModelSelect({ models, value, onChange }: ModelSelectProps) {
   const selectedModel = models.find(m => m.model === value)
+  const claudeModels = models.filter(m => m.model.startsWith('claude'))
+  const imageModels = models.filter(m => m.model.includes('image'))
 
   return (
     <div className="flex items-center gap-1.5">
@@ -50,13 +52,27 @@ export function ModelSelect({ models, value, onChange }: ModelSelectProps) {
                 <div className="px-3 py-2 text-sm text-muted-foreground">Loading models...</div>
               )}
 
-              {models.length > 0 && (
+              {claudeModels.length > 0 && (
                 <Select.Group>
                   <Select.Label className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                    <Cloud className="h-3 w-3" />
-                    Google Gemini
+                    <Sparkles className="h-3 w-3" />
+                    Claude
                   </Select.Label>
-                  {models.map(m => (
+                  {claudeModels.map(m => (
+                    <ModelItem key={m.model} value={m.model}>
+                      {m.name}
+                    </ModelItem>
+                  ))}
+                </Select.Group>
+              )}
+
+              {imageModels.length > 0 && (
+                <Select.Group>
+                  <Select.Label className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    <ImageIcon className="h-3 w-3" />
+                    Image
+                  </Select.Label>
+                  {imageModels.map(m => (
                     <ModelItem key={m.model} value={m.model}>
                       {m.name}
                     </ModelItem>
