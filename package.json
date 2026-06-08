@@ -15,6 +15,7 @@
     "test:all": "vitest run && playwright test"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.81",
     "@ai-sdk/google": "^3.0.29",
     "@ai-sdk/react": "^3.0.88",
     "@libsql/client": "^0.17.0",
