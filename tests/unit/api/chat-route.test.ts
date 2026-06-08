@@ -30,6 +30,15 @@ vi.mock('@ai-sdk/google', () => ({
   createGoogleGenerativeAI: () => mockGoogleFn,
 }))
 
+const mockWebSearch = vi.fn(() => ({ type: 'provider-defined', id: 'web_search' }))
+const mockAnthropicFn = Object.assign(
+  vi.fn((model: string) => ({ modelId: model, provider: 'anthropic' })),
+  { tools: { webSearch_20250305: mockWebSearch } }
+)
+vi.mock('@ai-sdk/anthropic', () => ({
+  createAnthropic: () => mockAnthropicFn,
+}))
+
 import { createProject, createChat, updateChatSystemPrompt, updateChatSummary } from '@/app/actions'
 
 describe('POST /api/chat', () => {
@@ -55,8 +64,15 @@ describe('POST /api/chat', () => {
         { tools: { googleSearch: mockGoogleSearch } }
       ),
     }))
+    vi.doMock('@ai-sdk/anthropic', () => ({
+      createAnthropic: () => Object.assign(
+        (model: string) => mockAnthropicFn(model),
+        { tools: { webSearch_20250305: mockWebSearch } }
+      ),
+    }))
     vi.doMock('@/lib/settings', () => ({
       getGeminiApiKey: () => Promise.resolve('test-key'),
+      getAnthropicApiKey: () => Promise.resolve('test-anthropic-key'),
     }))
     vi.doMock('@/lib/embeddings', () => ({
       generateEmbedding: () => Promise.reject(new Error('test: embeddings unavailable')),
@@ -80,6 +96,15 @@ describe('POST /api/chat', () => {
     })
     expect(response.status).toBe(200)
     expect(mockGoogleFn).toHaveBeenCalledWith('gemini-3.5-flash')
+  })
+
+  it('routes claude models to the Anthropic provider', async () => {
+    const response = await postChat({
+      messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] }],
+      model: 'claude-opus-4-8',
+    })
+    expect(response.status).toBe(200)
+    expect(mockAnthropicFn).toHaveBeenCalledWith('claude-opus-4-8')
   })
 
   it('returns 500 for unknown model provider', async () => {

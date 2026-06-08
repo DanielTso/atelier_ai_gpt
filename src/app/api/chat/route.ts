@@ -42,7 +42,7 @@ export async function POST(req: Request) {
       return apiError(body.error, 'Invalid request body', 400);
     }
     const { messages, model, chatId } = body.data;
-    const modelName = model || 'gemini-3.5-flash';
+    const modelName = model || 'claude-opus-4-8';
 
     // Create provider (handles virtual model resolution, tools, and options)
     const { model: selectedModel, tools: googleTools, providerOptions } = await createProvider(modelName);
