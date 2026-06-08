@@ -22,4 +22,14 @@ describe('sensitive settings are not client-readable', () => {
     const result = await getSettings(['anthropic-api-key', 'gemini-api-key'])
     expect(result).toEqual({})
   })
+
+  it('getApiKeyStatus reports which keys are configured', async () => {
+    const { getApiKeyStatus, setSetting } = await import('@/app/actions')
+    delete process.env.ANTHROPIC_API_KEY
+    delete process.env.GOOGLE_GENERATIVE_AI_API_KEY
+    await setSetting('anthropic-api-key', 'sk-test')
+    const status = await getApiKeyStatus()
+    expect(status.anthropic).toBe(true)
+    expect(status.gemini).toBe(false)
+  })
 })
