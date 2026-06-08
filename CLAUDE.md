@@ -10,7 +10,8 @@ npm run dev          # Start development server (http://localhost:3000)
 npm run build        # Production build
 npm run start        # Run production server
 npm run lint         # Run ESLint
-npx drizzle-kit push # Push schema changes to database (local SQLite or remote Turso)
+npx drizzle-kit generate          # Author a migration from schema.ts changes
+DIRECT_URL=... npx drizzle-kit migrate   # Apply migrations to Supabase (direct connection)
 npm test             # Run Vitest unit/integration tests
 npm run test:watch   # Run Vitest in watch mode
 npm run test:e2e     # Run Playwright E2E tests (starts dev server automatically)
@@ -34,11 +35,13 @@ Create `.env.local` with:
 ```
 ANTHROPIC_API_KEY=your_key_here
 GOOGLE_GENERATIVE_AI_API_KEY=your_key_here
+DATABASE_URL=postgresql://...@...pooler.supabase.com:6543/postgres   # Supabase pooled (runtime)
+DIRECT_URL=postgresql://...@...supabase.com:5432/postgres            # Supabase direct (migrations)
 ```
 
-Both keys can also be configured at runtime via the **Settings dialog → API Keys tab** (stored in the `settings` SQLite table). DB values take priority over `.env.local`.
+The two AI keys can also be configured at runtime via the **Settings dialog → API Keys tab** (stored in the `settings` table). DB values take priority over `.env.local`.
 
-**Note:** `.env*.local` files and `sqlite.db` are gitignored. Never commit secrets or the local database.
+**Note:** `.env*.local` files are gitignored. Never commit secrets.
 
 The app uses two AI providers with a clear split — **Claude is the brain, Gemini is the senses**:
 - **Anthropic Claude** (cloud, `@ai-sdk/anthropic`): the chat brain. Without an Anthropic key, no Claude chat models appear.
@@ -46,12 +49,11 @@ The app uses two AI providers with a clear split — **Claude is the brain, Gemi
 
 ### Database
 
-SQLite via `@libsql/client` + `drizzle-orm/libsql`. Supports both local SQLite files and remote Turso. Driver selected automatically:
+**Supabase Postgres** via Drizzle on `postgres-js` (`drizzle-orm/postgres-js`). Connection at `src/db/index.ts`: `postgres(DATABASE_URL, { prepare: false })` — `prepare: false` is **required** for Supabase's transaction pooler (no prepared statements). Use the **pooled** URL (`DATABASE_URL`, port 6543) at runtime and the **direct** URL (`DIRECT_URL`, port 5432) for migrations.
 
-- **Local dev** (default): No env vars needed — uses `file:sqlite.db`
-- **Vercel/Production**: Set `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` in Vercel dashboard
-
-Schema at `src/db/schema.ts`, connection at `src/db/index.ts` (with `PRAGMA foreign_keys = ON` for local SQLite). Drizzle config uses `dialect: "turso"`. Ten tables: `projects` → `chats` → `messages` (cascade deletes), `settings`, `messageEmbeddings`, `documents`, `documentChunks`, `messageAttachments`, `personaUsage`, `chatTopics`. See schema file for field details.
+- Schema at `src/db/schema.ts` (`pg-core`): integer PKs via `GENERATED ALWAYS AS IDENTITY`, `timestamptz`, `boolean`, FK cascade deletes enforced natively (no `PRAGMA`). Ten tables: `projects` → `chats` → `messages`, `settings`, `messageEmbeddings`, `documents`, `documentChunks`, `messageAttachments`, `personaUsage`, `chatTopics`.
+- **pgvector**: `messageEmbeddings.embedding` and `documentChunks.embedding` are `vector(768)` with **HNSW** indexes (`vector_cosine_ops`). The `vector` extension is enabled by migration `drizzle/0000_enable_vector.sql`.
+- **Migrations** (versioned, in `drizzle/`): `npx drizzle-kit generate` to author, `DIRECT_URL=... npx drizzle-kit migrate` to apply. `drizzle.config.ts` uses `dialect: "postgresql"`. (Legacy `npx drizzle-kit push` is no longer the workflow.)
 
 ### Security
 
@@ -98,7 +100,7 @@ Five layers, in order (all degrade gracefully if providers unavailable):
 4. **Summary** — Compressed older messages (auto-triggers at 30+ messages, keeps last 10 in full)
 5. **Recent messages** — Last 20 messages in full detail
 
-Embeddings: 768-dim vectors via Gemini `gemini-embedding-001`. `generateEmbedding()` accepts `taskType` (`'query'`/`'document'`) — Gemini uses this for optimization. Brute-force cosine similarity (fast up to ~50K vectors).
+Embeddings: 768-dim vectors via Gemini `gemini-embedding-001`. `generateEmbedding()` accepts `taskType` (`'query'`/`'document'`) — Gemini uses this for optimization. Retrieval is **native pgvector**: `findSimilarMessages`/`findSimilarDocumentChunks` run one indexed SQL query each via Drizzle's `cosineDistance` (`similarity = 1 - (embedding <=> query)`, `WHERE similarity > threshold ORDER BY similarity DESC LIMIT k`), backed by the HNSW indexes — not brute-force JS. Reranking is a deferred follow-up (Phase B2).
 
 ### State Management
 
@@ -147,7 +149,7 @@ Embeddings always run on Gemini (`gemini-embedding-001`) regardless of chat mode
 2. **Message format**: Use `convertToModelMessages()` on server; messages use `parts` array, not `content` string
 3. **Response format**: Use `toUIMessageStreamResponse({ sendSources: true })` for Google Search sources
 4. **SDK v6 API changes**: No `input`/`handleInputChange`/`handleSubmit` — manage input state yourself. No `isLoading` — use `status === 'streaming' || status === 'submitted'`. Send with `sendMessage({ text })`.
-5. **libSQL client**: Uses `@libsql/client` (not `better-sqlite3`) — bundles natively in serverless
+5. **Postgres driver**: Uses `postgres-js` (`drizzle-orm/postgres-js`) with `prepare: false` for the Supabase transaction pooler; runs on Node (Fluid Compute), not Edge
 6. **Google Search tool name**: Must be exactly `google_search` in the `tools` object
 7. **AI SDK v6 naming**: Use `maxOutputTokens` (not `maxTokens`) in `generateText()`/`streamText()`
 8. **Source deduplication**: Google Search grounding sends `source-url` parts in `message.parts[]` — deduplicate by URL before rendering
@@ -167,7 +169,7 @@ Config: `vitest.config.ts`. Tests in `tests/`. Node environment by default; hook
 
 **Test structure:** `tests/unit/lib/` (utilities), `tests/unit/actions/` (server actions with in-memory SQLite), `tests/unit/api/` (API routes with mocked providers), `tests/hooks/` (React hooks, jsdom).
 
-**In-memory SQLite**: Import `createTestDb`/`testDb` from `tests/helpers/test-db.ts`, mock `@/db` with a getter, call `createTestDb()` in `beforeEach` (async — uses `@libsql/client`).
+**In-process Postgres (PGlite)**: Import `createTestDb`/`testDb` from `tests/helpers/test-db.ts`, mock `@/db` with a getter, call `createTestDb()` in `beforeEach`. `createTestDb()` spins up a fresh `PGlite` (with the `vector` extension) and applies the real Drizzle migrations from `drizzle/` — so tests exercise the actual schema incl. pgvector + HNSW. No DB secrets needed in CI. (PGlite is pinned to `^0.4.6` — v0.5.x dropped the `./vector` export.) Note: each `createTestDb()` spins a fresh Postgres, so the suite runs ~40s.
 
 **API route tests**: Require `vi.resetModules()` + `vi.doMock()` + dynamic `import()` to re-register mocks after module reset. Must mock `@/lib/settings`, `@/lib/embeddings`, and AI SDK providers alongside `@/db`. The `@ai-sdk/google` mock must include `tools.googleSearch`, and the `@ai-sdk/anthropic` mock (`createAnthropic`) must include `tools.webSearch_20250305` on the provider function. The `@/lib/settings` mock should expose both `getGeminiApiKey` and `getAnthropicApiKey`.
 
@@ -182,7 +184,7 @@ Config: `playwright.config.ts`. Tests in `e2e/`. Chromium only. Auto-starts dev 
 
 ## Deployment
 
-Production: **Vercel** at [atelier-ai.vercel.app](https://atelier-ai.vercel.app). GitHub: [DanielTso/atelier-ai](https://github.com/DanielTso/atelier-ai). Deploy with `vercel --prod`. Schema changes pushed separately: `TURSO_DATABASE_URL=... TURSO_AUTH_TOKEN=... npx drizzle-kit push`.
+Production: **Vercel** at [atelier-ai.vercel.app](https://atelier-ai.vercel.app). GitHub: [DanielTso/atelier-ai](https://github.com/DanielTso/atelier-ai). Deploy with `vercel --prod`. Set `DATABASE_URL` (Supabase pooled, :6543) and `DIRECT_URL` (Supabase direct, :5432) in the Vercel dashboard. Apply schema changes separately: `DIRECT_URL=... npx drizzle-kit migrate`.
 
 ## CI (GitHub Actions)
 
