@@ -464,13 +464,7 @@ export async function getChatAttachments(chatId: number) {
 }
 
 export async function getApiKeyStatus(): Promise<{ gemini: boolean; anthropic: boolean }> {
-  const rows = await db.select().from(settings)
-    .where(inArray(settings.key, ['gemini-api-key', 'anthropic-api-key'])).all()
-  const map = new Map(rows.map(r => [r.key, r.value]))
-  const has = (dbVal: string | undefined, envVar: string) =>
-    Boolean((dbVal && dbVal.trim()) || process.env[envVar])
-  return {
-    gemini: has(map.get('gemini-api-key'), 'GOOGLE_GENERATIVE_AI_API_KEY'),
-    anthropic: has(map.get('anthropic-api-key'), 'ANTHROPIC_API_KEY'),
-  }
+  const { getGeminiApiKey, getAnthropicApiKey } = await import('@/lib/settings')
+  const [gemini, anthropic] = await Promise.all([getGeminiApiKey(), getAnthropicApiKey()])
+  return { gemini: Boolean(gemini), anthropic: Boolean(anthropic) }
 }
