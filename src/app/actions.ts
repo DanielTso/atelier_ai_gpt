@@ -4,7 +4,7 @@ import { db } from '@/db'
 import { projects, chats, messages, settings, messageEmbeddings, personaUsage, chatTopics, documents, documentChunks, messageAttachments } from '@/db/schema'
 import { eq, desc, isNull, isNotNull, and, lte, asc, count, inArray, sql } from 'drizzle-orm'
 
-const SENSITIVE_KEYS = new Set(['gemini-api-key'])
+const SENSITIVE_KEYS = new Set(['gemini-api-key', 'anthropic-api-key'])
 
 export async function getProjects() {
   return await db.select().from(projects).all()
