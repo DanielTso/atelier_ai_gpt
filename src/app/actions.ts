@@ -234,10 +234,10 @@ export async function saveMessageEmbedding(
     chatId,
     projectId,
     content,
-    embedding: JSON.stringify(embedding),
+    embedding,
   }).onConflictDoUpdate({
     target: messageEmbeddings.messageId,
-    set: { content, embedding: JSON.stringify(embedding), createdAt: new Date() },
+    set: { content, embedding, createdAt: new Date() },
   }).returning()
 }
 
@@ -399,7 +399,7 @@ export async function saveDocumentChunks(chunks: {
 
 export async function updateChunkEmbedding(chunkId: number, embedding: number[]) {
   return await db.update(documentChunks)
-    .set({ embedding: JSON.stringify(embedding) })
+    .set({ embedding })
     .where(eq(documentChunks.id, chunkId))
     .returning()
 }
