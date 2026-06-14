@@ -87,7 +87,7 @@ Atelier Studio is a Next.js 16 App Router chat application. **Claude (Anthropic)
 - `src/components/ui/` — Reusable UI (dialogs, selectors, command palette)
 - `src/components/settings/` — Settings tab components
 - `src/hooks/` — Custom hooks (useLocalStorage, usePersonas, useAppearanceSettings, etc.)
-- `src/lib/` — Utilities: `settings.ts` (DB-first/env-fallback config), `embeddings.ts` (vector search), `chunking.ts` (document chunker), `fileAttachments.ts` (image/file handling), `providers.ts` (shared AI provider factory), `fileExtraction.ts` (shared file parsing), `errors.ts` (API error helper), `validation.ts` (Zod request schemas)
+- `src/lib/` — Utilities: `settings.ts` (DB-first/env-fallback config), `embeddings.ts` (pgvector search), `retrieval.ts` (RAG pipeline orchestrator), `ragConfig.ts` (tunable RAG knobs), `queryRewrite.ts` (conversational query rewrite), `rerank.ts` (LLM rerank), `mmr.ts` (diversity selection), `chunking.ts` (document chunker), `fileAttachments.ts` (image/file handling), `providers.ts` (shared AI provider factory), `fileExtraction.ts` (shared file parsing), `errors.ts` (API error helper), `validation.ts` (Zod request schemas)
 - `src/types.ts` — Shared TypeScript interfaces (`Model`)
 - `src/db/` — `schema.ts` (Drizzle schema), `index.ts` (connection with FK enforcement)
 
@@ -100,7 +100,9 @@ Five layers, in order (all degrade gracefully if providers unavailable):
 4. **Summary** — Compressed older messages (auto-triggers at 30+ messages, keeps last 10 in full)
 5. **Recent messages** — Last 20 messages in full detail
 
-Embeddings: 768-dim vectors via Gemini `gemini-embedding-001`. `generateEmbedding()` accepts `taskType` (`'query'`/`'document'`) — Gemini uses this for optimization. Retrieval is **native pgvector**: `findSimilarMessages`/`findSimilarDocumentChunks` run one indexed SQL query each via Drizzle's `cosineDistance` (`similarity = 1 - (embedding <=> query)`, `WHERE similarity > threshold ORDER BY similarity DESC LIMIT k`), backed by the HNSW indexes — not brute-force JS. Reranking is a deferred follow-up (Phase B2).
+Embeddings: 768-dim vectors via Gemini `gemini-embedding-001`. `generateEmbedding()` accepts `taskType` (`'query'`/`'document'`) — Gemini uses this for optimization. Retrieval uses **native pgvector** (`findSimilarMessages`/`findSimilarDocumentChunks` run one indexed SQL query each via Drizzle's `cosineDistance`, backed by HNSW indexes).
+
+**Advanced retrieval pipeline (Phase B2)** — `src/lib/retrieval.ts` `retrieveContext()` orchestrates: **query-rewrite** (`queryRewrite.ts`, Gemini Flash → standalone query) → embed → **vector top-N** (default 20) → **MMR** diversity (`mmr.ts`, λ 0.7) → **LLM rerank** (`rerank.ts`, Gemini Flash) → top-k (docs 3 / msgs 5). Every stage is **best-effort and degrades to the prior stage** (with all toggles off it's plain vector top-k). All knobs live in `src/lib/ragConfig.ts` (`getRagConfig()`) with env overrides: `RAG_DOC_THRESHOLD`, `RAG_MSG_THRESHOLD`, `RAG_TOP_N`, `RAG_DOC_TOP_K`, `RAG_MSG_TOP_K`, `RAG_MMR_LAMBDA`, `RAG_REWRITE_ENABLED`, `RAG_RERANK_ENABLED`, `RAG_MMR_ENABLED`. Note: rewrite + rerank add two Gemini Flash calls per message (~1–2s latency) — toggle off via env if needed. Reranking/rewrite LLM calls reuse the proven `generateText`+parse+fallback pattern (like `classify`).
 
 ### State Management
 
@@ -169,7 +171,7 @@ Config: `vitest.config.ts`. Tests in `tests/`. Node environment by default; hook
 
 **Test structure:** `tests/unit/lib/` (utilities), `tests/unit/actions/` (server actions with in-memory SQLite), `tests/unit/api/` (API routes with mocked providers), `tests/hooks/` (React hooks, jsdom).
 
-**In-process Postgres (PGlite)**: Import `createTestDb`/`testDb` from `tests/helpers/test-db.ts`, mock `@/db` with a getter, call `createTestDb()` in `beforeEach`. `createTestDb()` spins up a fresh `PGlite` (with the `vector` extension) and applies the real Drizzle migrations from `drizzle/` — so tests exercise the actual schema incl. pgvector + HNSW. No DB secrets needed in CI. (PGlite is pinned to `^0.4.6` — v0.5.x dropped the `./vector` export.) Note: each `createTestDb()` spins a fresh Postgres, so the suite runs ~40s.
+**In-process Postgres (PGlite)**: Import `createTestDb`/`testDb` from `tests/helpers/test-db.ts`, mock `@/db` with a getter, call `createTestDb()` in `beforeEach`. The `PGlite` instance (with the `vector` extension) + real Drizzle migrations from `drizzle/` are created **once per worker**; each `createTestDb()` then `TRUNCATE … RESTART IDENTITY CASCADE`s all tables for isolation — so the suite runs ~15s (was ~40s when it spun a fresh instance per test). Tests exercise the actual schema incl. pgvector + HNSW; no DB secrets needed in CI. (PGlite is pinned to `^0.4.6` — v0.5.x dropped the `./vector` export.)
 
 **API route tests**: Require `vi.resetModules()` + `vi.doMock()` + dynamic `import()` to re-register mocks after module reset. Must mock `@/lib/settings`, `@/lib/embeddings`, and AI SDK providers alongside `@/db`. The `@ai-sdk/google` mock must include `tools.googleSearch`, and the `@ai-sdk/anthropic` mock (`createAnthropic`) must include `tools.webSearch_20250305` on the provider function. The `@/lib/settings` mock should expose both `getGeminiApiKey` and `getAnthropicApiKey`.
 

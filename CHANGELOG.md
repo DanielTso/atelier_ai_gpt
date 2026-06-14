@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.1.0] - 2026-06-07 — Phase B2: Advanced RAG
+
+Spec at `docs/specs/2026-06-07-phase-b2-advanced-rag-design.md`; plan at `docs/plans/2026-06-07-phase-b2-advanced-rag.md`.
+
+### Added
+
+- **Multi-stage retrieval pipeline** (`src/lib/retrieval.ts` `retrieveContext()`): query-rewrite → vector top-N → MMR diversity → LLM rerank → top-k. New modules: `ragConfig.ts`, `queryRewrite.ts`, `rerank.ts`, `mmr.ts`. Query-rewrite resolves follow-up pronouns into standalone search queries; MMR removes near-duplicate (overlapping) chunks; rerank re-scores candidates for precision. Rewrite + rerank run on in-stack Gemini Flash via the proven `generateText`+parse+fallback pattern.
+- **Tunable RAG config** (`ragConfig.ts`) with env overrides + sane defaults: `RAG_DOC_THRESHOLD`, `RAG_MSG_THRESHOLD`, `RAG_TOP_N`, `RAG_DOC_TOP_K`, `RAG_MSG_TOP_K`, `RAG_MMR_LAMBDA`, and per-stage toggles `RAG_REWRITE_ENABLED`/`RAG_RERANK_ENABLED`/`RAG_MMR_ENABLED`.
+
+### Changed
+
+- **Every retrieval stage is best-effort and degrades to the prior stage** — with all toggles off the pipeline reduces to plain pgvector top-k, so it can never retrieve worse than before. The chat route's inline retrieval block is replaced by a single `retrieveContext()` call.
+- **Test suite ~40s → ~15s**: `tests/helpers/test-db.ts` now reuses one PGlite instance per worker and `TRUNCATE … RESTART IDENTITY CASCADE`s between tests instead of recreating Postgres each time.
+
+### Notes
+
+- Rewrite + rerank add two Gemini Flash calls per message (~1–2s latency) — toggle off via env. Thresholds ship as configurable defaults (not data-tuned) since real construction-doc usage hasn't happened yet.
+
 ## [4.0.0] - 2026-06-07 — Phase B: Supabase Postgres + pgvector
 
 Phase 2 of the workhorse program. Spec at `docs/specs/2026-06-07-phase-b-supabase-pgvector-design.md`; plan at `docs/plans/2026-06-07-phase-b-supabase-pgvector.md`.
