@@ -71,7 +71,7 @@ export async function findSimilarMessages(
   scope: { chatId?: number; projectId?: number },
   topK: number = 5,
   threshold: number = 0.7
-): Promise<{ content: string; similarity: number; chatId: number; messageId: number }[]> {
+): Promise<{ content: string; similarity: number; chatId: number; messageId: number; embedding: number[] }[]> {
   const similarity = sql<number>`1 - (${cosineDistance(messageEmbeddings.embedding, queryEmbedding)})`
   const scopeFilter = scope.projectId
     ? eq(messageEmbeddings.projectId, scope.projectId)
@@ -83,6 +83,7 @@ export async function findSimilarMessages(
     similarity,
     chatId: messageEmbeddings.chatId,
     messageId: messageEmbeddings.messageId,
+    embedding: messageEmbeddings.embedding,
   }).from(messageEmbeddings)
     .where(scopeFilter ? and(scopeFilter, gt(similarity, threshold)) : gt(similarity, threshold))
     .orderBy(desc(similarity))
@@ -98,7 +99,7 @@ export async function findSimilarDocumentChunks(
   projectId: number,
   topK: number = 3,
   threshold: number = 0.5
-): Promise<{ content: string; similarity: number; chunkId: number; documentId: number; filename: string }[]> {
+): Promise<{ content: string; similarity: number; chunkId: number; documentId: number; filename: string; embedding: number[] | null }[]> {
   const similarity = sql<number>`1 - (${cosineDistance(documentChunks.embedding, queryEmbedding)})`
   return db.select({
     content: documentChunks.content,
@@ -106,6 +107,7 @@ export async function findSimilarDocumentChunks(
     chunkId: documentChunks.id,
     documentId: documentChunks.documentId,
     filename: documents.filename,
+    embedding: documentChunks.embedding,
   }).from(documentChunks)
     .innerJoin(documents, eq(documentChunks.documentId, documents.id))
     .where(and(eq(documentChunks.projectId, projectId), gt(similarity, threshold)))
