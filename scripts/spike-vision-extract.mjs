@@ -4,8 +4,11 @@
 // What it does: renders page 1 of a PDF to a PNG (via unpdf + pdfjs-dist + @napi-rs/canvas),
 // sends it to a Gemini vision model, and prints the extracted text.
 //
-// PREREQS (the spike needs deps the app doesn't carry yet — install them just to run this):
-//   npm i -D pdfjs-dist @napi-rs/canvas
+// PREREQS — VALIDATED working versions (other versions fail, see below):
+//   npm i -D "pdfjs-dist@^5" "@napi-rs/canvas@^0.1.69"
+//   - pdfjs-dist MUST be v5 (v6 throws a @napi-rs/canvas "Value is none of these types" error)
+//   - @napi-rs/canvas MUST be 0.1.x (unpdf 1.4.0 peer is ^0.1.69; 1.0.0 -> ERESOLVE)
+//   - we import the LEGACY pdfjs build below (default build throws "DOMMatrix is not defined" in Node)
 //   (ai, unpdf, @ai-sdk/google are already project deps)
 //
 // RUN:
@@ -41,7 +44,9 @@ async function main() {
   let pngBytes
   try {
     const { definePDFJSModule, renderPageAsImage } = await import('unpdf')
-    await definePDFJSModule(() => import('pdfjs-dist'))
+    // Node needs the LEGACY pdfjs build — the default build references browser
+    // globals (DOMMatrix) that don't exist in Node and throws on load.
+    await definePDFJSModule(() => import('pdfjs-dist/legacy/build/pdf.mjs'))
     const buffer = new Uint8Array(await readFile(pdfPath))
     const ab = await renderPageAsImage(buffer, 1, {
       canvasImport: () => import('@napi-rs/canvas'),
