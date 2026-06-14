@@ -1,6 +1,6 @@
 import { streamText, convertToModelMessages, type UIMessage } from 'ai';
 import { getChatWithContext } from '@/app/actions';
-import { generateEmbedding, findSimilarMessages, findSimilarDocumentChunks } from '@/lib/embeddings';
+import { retrieveContext } from '@/lib/retrieval';
 import { createProvider } from '@/lib/providers';
 import { apiError } from '@/lib/errors';
 import { chatRequestSchema } from '@/lib/validation';
@@ -61,52 +61,14 @@ export async function POST(req: Request) {
         systemPrompt = chat.systemPrompt;
       }
 
-      // 2. Semantic retrieval — find relevant past messages + document chunks
-      try {
-        const userMessages = (messages as UIMessage[]).filter(m => m.role === 'user');
-        const lastUserMessage = userMessages[userMessages.length - 1];
-        if (lastUserMessage) {
-          const queryText = lastUserMessage.parts
-            ?.filter((part: { type: string }): part is { type: 'text'; text: string } => part.type === 'text')
-            .map((part: { text: string }) => part.text)
-            .join('') || '';
-
-          if (queryText) {
-            const queryEmbedding = await generateEmbedding(queryText, 'query');
-
-            // Message semantic retrieval
-            const similar = await findSimilarMessages(queryEmbedding, {
-              projectId: chat?.projectId ?? undefined,
-              chatId: !chat?.projectId ? chatId : undefined,
-            }, 5, 0.7);
-
-            const recentIds = new Set((messages as UIMessage[]).map((m: UIMessage) => m.id));
-            const relevantPast = similar.filter(s => !recentIds.has(String(s.messageId)));
-
-            if (relevantPast.length > 0) {
-              semanticContext = relevantPast.map(s => s.content).join('\n---\n');
-            }
-
-            // Document chunk retrieval (project-scoped)
-            if (chat?.projectId) {
-              try {
-                const relevantChunks = await findSimilarDocumentChunks(
-                  queryEmbedding, chat.projectId, 3, 0.5
-                );
-                if (relevantChunks.length > 0) {
-                  documentContext = relevantChunks
-                    .map(c => `[From: ${c.filename}]\n${c.content}`)
-                    .join('\n---\n');
-                }
-              } catch {
-                // Document retrieval is best-effort
-              }
-            }
-          }
-        }
-      } catch {
-        // Embedding unavailable — silently skip
-      }
+      // 2. Retrieval pipeline (rewrite -> vector top-N -> MMR -> rerank -> top-k).
+      // Best-effort: returns nulls if embeddings/providers are unavailable.
+      const retrieved = await retrieveContext(messages as UIMessage[], {
+        chatId,
+        projectId: chat?.projectId ?? null,
+      });
+      semanticContext = retrieved.semanticContext;
+      documentContext = retrieved.documentContext;
 
       // 3. Build context prefix (document chunks + semantic context + summary)
       const contextPrefix = buildContextPrefix(documentContext, semanticContext, chat?.summary ?? null);

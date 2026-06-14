@@ -74,9 +74,8 @@ describe('POST /api/chat', () => {
       getGeminiApiKey: () => Promise.resolve('test-key'),
       getAnthropicApiKey: () => Promise.resolve('test-anthropic-key'),
     }))
-    vi.doMock('@/lib/embeddings', () => ({
-      generateEmbedding: () => Promise.reject(new Error('test: embeddings unavailable')),
-      findSimilarMessages: () => Promise.resolve([]),
+    vi.doMock('@/lib/retrieval', () => ({
+      retrieveContext: () => Promise.resolve({ semanticContext: null, documentContext: null }),
     }))
 
     const { POST } = await import('@/app/api/chat/route')
