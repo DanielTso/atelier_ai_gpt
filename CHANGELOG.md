@@ -2,6 +2,39 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.3.0] - 2026-06-14 — Phase C-storage Stage 1: document storage
+
+Spec at `docs/specs/2026-06-14-phase-c-storage-design.md`; plan at `docs/plans/2026-06-14-phase-c-storage-stage1-documents.md`.
+
+### Added
+
+- **`src/lib/storage.ts`** (server-only): Supabase Storage wrapper using `@supabase/supabase-js` (Storage API only; DB stays on Drizzle). Exports `isStorageConfigured`, `createSignedUploadUrl`, `uploadBuffer`, `downloadToBuffer`, `createSignedDownloadUrl`, `removeObjects`, `storageBucketName`. Reads `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` (service-role key never sent to client). Bucket name from `SUPABASE_STORAGE_BUCKET` (default `atelier-files`), private.
+- **`src/lib/thumbnails.ts`**: `generatePdfThumbnail` (renders page 1 at scale 1) and `generateImageThumbnail` (downscale), both → WebP at `THUMBNAIL_WIDTH` (default 600px) via `@napi-rs/canvas`. Best-effort; failures are non-fatal.
+- **`src/lib/storageClient.ts`** (browser): anon-key Supabase client for `uploadToSignedUrl`. Uses `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+- **3-step direct-upload flow** replacing the old inline `POST /api/documents`:
+  1. `POST /api/documents/upload-url` — validates name/type/size, creates a `documents` row with status `uploading`, returns `{documentId, path, token, bucket}`.
+  2. Browser `uploadToSignedUrl` — file goes straight to Supabase Storage, bypassing the Vercel function request-body limit (large construction plans now work).
+  3. `POST /api/documents/process` `{documentId}` — downloads from Storage, runs the C2 extract pipeline (text / thin-PDF vision fallback / image vision), uploads thumbnail, chunks + embeds, sets status `processing` → `ready | error`.
+- **Document originals + thumbnails persisted** in private Supabase Storage; paths recorded in `documents.storage_path` + `documents.thumbnail_path`.
+- **`GET /api/documents`** returns short-lived signed `url` (original) + `thumbnailUrl` (best-effort, `null` if absent). **`DELETE /api/documents`** removes Storage objects (original + thumbnail) before deleting the row.
+- **New server actions**: `createUploadingDocument`, `updateDocumentStoragePath`, `getDocumentById`; `updateDocumentStatus` widened (added `uploading`/`processing` to status union + accepts `charCount`/`thumbnailPath`); `deleteDocument` now returns the deleted row.
+- **Schema migration `drizzle/0002_left_patriot.sql`**: adds `storage_path` and `thumbnail_path` columns to `documents`; `status` enum extended with `uploading` and `processing`.
+- **New env vars**: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (server-only), `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (browser), `SUPABASE_STORAGE_BUCKET` (default `atelier-files`), `THUMBNAIL_WIDTH` (default 600).
+
+### Changed
+
+- **Old inline `POST /api/documents`** (extract → chunk → embed in one function body) retired. Replaced by the 3-step flow above.
+- **`createDocument` server action** retired; superseded by `createUploadingDocument`.
+
+### Notes
+
+- **Pending USER actions before this ships:**
+  1. Create a **private** Supabase Storage bucket named `atelier-files` (or set `SUPABASE_STORAGE_BUCKET`).
+  2. Add the four Supabase Storage env vars to `.env.local` and the Vercel dashboard.
+  3. Run `DIRECT_URL=… npx drizzle-kit migrate` to apply migration `0002`.
+- **Stage 2 (chat-attachment migration off base64 → Storage) not done** — its own brainstorm→spec→plan follows.
+- **Live-Storage smoke** (UI upload end-to-end with real Supabase bucket) not yet run; unit tests use mocked storage; build and Vitest suite are green locally.
+
 ## [4.2.0] - 2026-06-07 — Phase C2: Vision extraction
 
 Spec at `docs/specs/2026-06-07-phase-c-construction-extraction-design.md`; plan at `docs/plans/2026-06-07-phase-c2-vision-extraction.md`.

@@ -1,6 +1,6 @@
 # Session Handoff — Atelier Studio (read me first)
 
-_Last updated: 2026-06-07. This is the bootstrap doc for a new session. The project CLAUDE.md is the source of truth for how the code works; this doc tracks **where we are in the multi-phase build**._
+_Last updated: 2026-06-14. This is the bootstrap doc for a new session. The project CLAUDE.md is the source of truth for how the code works; this doc tracks **where we are in the multi-phase build**._
 
 ## The program
 
@@ -11,7 +11,7 @@ Turning Atelier Studio into a Claude-powered **construction-document workhorse**
 | **A** | Claude as the chat provider (Opus 4.8 default, Sonnet, Haiku; web search). Gemini kept for image gen + embeddings. | ✅ **Merged to `master`** (local) |
 | **B** | Migrate DB libSQL/SQLite → **Supabase Postgres + pgvector** (HNSW). PGlite tests. | ✅ **Merged to `master`** (local) |
 | **B2** | Advanced RAG: query-rewrite → vector top-N → MMR → LLM rerank → top-k, tunable via `ragConfig` (env). Test suite ~40s→~15s. | ✅ **Merged to `master`** (local) |
-| **C** | Extract info from construction **plans/drawings/images** (vision). | 🚧 **C2 done + tagged `phase-c2`** (local); render smoke passed on a real plan. Vercel runtime check pending deploy |
+| **C** | Extract info from construction **plans/drawings/images** (vision). C-storage: document originals + thumbnails to Supabase Storage. | 🚧 **C2 done + tagged `phase-c2`** (local). **C-storage Stage 1 done** (unit tests green, build clean); pending USER setup + live smoke. Stage 2 (attachments) not started. |
 | **D** | Excel/Word **artifacts** (report generation). | ⛔ Not started |
 
 `master` is **28 commits ahead of `origin` (nothing pushed yet)** — deploy is pending (below).
@@ -42,14 +42,31 @@ Tag `phase-c2` already created locally (unpushed). The render path is smoke-prov
 2. **Playwright E2E** (`npm run test:e2e`) — needs `DATABASE_URL`/`DIRECT_URL` + a pgvector Postgres locally.
 3. **Manual UI smoke** — with DB configured, upload a **≤10 MB** scanned/drawing PDF (or raise the cap first — see caveat above), confirm "ready" + chunks + the chat cites it.
 
-### ▶️ After C2
-C-storage (Supabase Storage for originals/thumbnails), then C3 (UI) — each its own brainstorm→spec→plan→build.
+### ✅ C-storage Stage 1 (implemented 2026-06-14)
+
+Direct-to-Supabase-Storage document uploads replacing the old inline `POST /api/documents`. New modules: `src/lib/storage.ts` (server-only, service-role key), `src/lib/thumbnails.ts` (WebP thumbnails via `@napi-rs/canvas`), `src/lib/storageClient.ts` (browser anon-key upload). 3-step flow: `POST /api/documents/upload-url` → browser `uploadToSignedUrl` (bypasses Vercel body limit) → `POST /api/documents/process` (extract/thumbnail/chunk/embed). `GET /api/documents` returns signed `url` + `thumbnailUrl`; `DELETE` cleans up Storage. Schema migration `0002` adds `storage_path` + `thumbnail_path`. Old inline route + `createDocument` action retired.
+
+**Local gate:** unit tests green, build clean. Vitest suite passes. Tagged locally (unpushed).
+
+**Pending USER actions before C-storage Stage 1 goes live:**
+1. Create a **private** Supabase Storage bucket named `atelier-files` (or set `SUPABASE_STORAGE_BUCKET`).
+2. Add env vars to `.env.local` and Vercel dashboard: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+3. Run `DIRECT_URL=… npx drizzle-kit migrate` to apply migration `0002`.
+4. **Live-Storage smoke**: upload a document through the UI, confirm `ready` status + thumbnail + signed URL works.
+
+### ⏳ C-storage Stage 2 (NOT started)
+
+Chat-attachment migration off base64 → Supabase Storage. Needs its own brainstorm → spec → plan before implementation.
+
+### ▶️ After C-storage
+C3 (UI enhancements for documents/thumbnails) — each its own brainstorm→spec→plan→build.
 
 ## ⏳ Pending USER actions (not blocking C development; tests use PGlite)
 
 1. **Supabase deploy cutover** (Phase B went live-ready but isn't deployed): in `.env.local` set `DATABASE_URL` (Supabase pooled, :6543) + `DIRECT_URL` (direct, :5432), remove `TURSO_*`; run `DIRECT_URL=… npx drizzle-kit migrate`; set the same env in the Vercel dashboard; `git push` + `vercel --prod`. **Until then the deployed site runs the old Turso/Gemini stack.**
-2. **Smoke-test A & B** locally with real keys.
-3. Tag phases if desired (`phase-a`, `phase-b`, `phase-b2` after their smoke tests).
+2. **Supabase Storage setup** (C-storage Stage 1 prereq): create private bucket `atelier-files`; add `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` to `.env.local` and Vercel; run `DIRECT_URL=… npx drizzle-kit migrate` for migration `0002`.
+3. **Smoke-test A & B** locally with real keys.
+4. Tag phases if desired (`phase-a`, `phase-b`, `phase-b2` after their smoke tests).
 
 ## Key architecture facts (also in CLAUDE.md)
 

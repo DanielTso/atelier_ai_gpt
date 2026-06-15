@@ -37,7 +37,17 @@ ANTHROPIC_API_KEY=your_key_here
 GOOGLE_GENERATIVE_AI_API_KEY=your_key_here
 DATABASE_URL=postgresql://...@...pooler.supabase.com:6543/postgres   # Supabase pooled (runtime)
 DIRECT_URL=postgresql://...@...supabase.com:5432/postgres            # Supabase direct (migrations)
+
+# Supabase Storage (Phase C-storage) — required for document originals + thumbnails
+SUPABASE_URL=https://<project-ref>.supabase.co          # server-only
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here    # server-only; never expose to client
+NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co   # browser (signed upload)
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key_here             # browser (signed upload)
+SUPABASE_STORAGE_BUCKET=atelier-files                   # default; create as a PRIVATE bucket
+THUMBNAIL_WIDTH=600                                     # optional; default 600px WebP thumbnail
 ```
+
+**Storage access model:** bucket is **private**. `SUPABASE_SERVICE_ROLE_KEY` (server-only, never sent to client) creates signed upload tokens and mints signed download URLs. The browser uses `NEXT_PUBLIC_SUPABASE_ANON_KEY` only to `uploadToSignedUrl` — it never has broad storage access.
 
 The two AI keys can also be configured at runtime via the **Settings dialog → API Keys tab** (stored in the `settings` table). DB values take priority over `.env.local`.
 
@@ -73,8 +83,12 @@ Atelier Studio is a Next.js 16 App Router chat application. **Claude (Anthropic)
    - `POST /api/summarize` — Compresses older messages. Auto-triggers at 30+ messages, keeps last 10 in full. Pinned to internal `gemini-3.5-flash` (housekeeping never burns Claude tokens).
    - `POST /api/embed` — Async 768-dim embedding generation via Gemini `gemini-embedding-001`. Best-effort after each exchange.
    - `POST /api/generate-title` — Auto-generates chat title (3-6 words) after first AI response. Pinned to internal `gemini-3.5-flash`.
-   - `POST /api/extract` — Extracts text from files (PDF via `unpdf`, DOCX via `mammoth`, XLSX via `exceljs` — one tab-separated block per sheet, text/code via UTF-8). Max 50MB (`MAX_FILE_SIZE`, shared with `/api/documents`; large construction plans). Vercel's platform request-body limit may cap below this on deploy — C-storage direct upload is the eventual fix.
-   - `POST /api/documents` — Upload + process: extract text → chunk (2000 chars, 400 overlap, sentence-aware) → embed → store. **Vision fallback (Phase C2)**: image uploads (png/jpg/jpeg/webp by extension, or `image/*` MIME) → `extractViaVisionImage` directly; PDFs whose text layer is shorter than `EXTRACTION_MIN_TEXT_CHARS` (default 100) → per-page Gemini-vision render via `extractViaVision`. Other files → `extractTextFromBuffer` unchanged.
+   - `POST /api/extract` — Extracts text from files (PDF via `unpdf`, DOCX via `mammoth`, XLSX via `exceljs` — one tab-separated block per sheet, text/code via UTF-8). Max 50MB (`MAX_FILE_SIZE`; large construction plans). Vercel's platform request-body limit may cap below this on deploy — use the direct-upload flow (`/api/documents/upload-url` + `/api/documents/process`) for large files.
+   - **Document upload — 3-step direct-to-Storage flow (Phase C-storage):**
+     - `POST /api/documents/upload-url` — validates name/type/size, creates a `documents` row with status `uploading`, returns `{ documentId, path, token, bucket }` for the browser.
+     - Browser calls `uploadToSignedUrl` (`src/lib/storageClient.ts`, anon key) to PUT the file straight to Supabase Storage, bypassing the Vercel function request-body limit (large plans work).
+     - `POST /api/documents/process` `{ documentId }` — downloads original from Storage, runs the C2 extract pipeline (text / thin-PDF vision fallback / image vision), uploads a WebP thumbnail, chunks + embeds, sets status `processing` → `ready | error`. The old inline `POST /api/documents` + `createDocument` action are retired.
+   - `GET /api/documents` — returns each doc with short-lived signed `url` (original) + `thumbnailUrl` (best-effort, `null` if absent). `DELETE /api/documents` — removes Storage objects (original + thumbnail) before deleting the DB row.
    - `POST /api/classify` — LLM-based topic classification. Pinned to internal `gemini-3.5-flash` (tolerates a Claude `model` in the body). Cached in `chatTopics`.
 
 ### Source Layout
@@ -87,7 +101,7 @@ Atelier Studio is a Next.js 16 App Router chat application. **Claude (Anthropic)
 - `src/components/ui/` — Reusable UI (dialogs, selectors, command palette)
 - `src/components/settings/` — Settings tab components
 - `src/hooks/` — Custom hooks (useLocalStorage, usePersonas, useAppearanceSettings, etc.)
-- `src/lib/` — Utilities: `settings.ts` (DB-first/env-fallback config), `embeddings.ts` (pgvector search), `retrieval.ts` (RAG pipeline orchestrator), `ragConfig.ts` (tunable RAG knobs), `queryRewrite.ts` (conversational query rewrite), `rerank.ts` (LLM rerank), `mmr.ts` (diversity selection), `chunking.ts` (document chunker), `fileAttachments.ts` (image/file handling), `providers.ts` (shared AI provider factory), `fileExtraction.ts` (shared file parsing), `errors.ts` (API error helper), `validation.ts` (Zod request schemas)
+- `src/lib/` — Utilities: `settings.ts` (DB-first/env-fallback config), `embeddings.ts` (pgvector search), `retrieval.ts` (RAG pipeline orchestrator), `ragConfig.ts` (tunable RAG knobs), `queryRewrite.ts` (conversational query rewrite), `rerank.ts` (LLM rerank), `mmr.ts` (diversity selection), `chunking.ts` (document chunker), `fileAttachments.ts` (image/file handling), `providers.ts` (shared AI provider factory), `fileExtraction.ts` (shared file parsing), `errors.ts` (API error helper), `validation.ts` (Zod request schemas), `storage.ts` (server-only Supabase Storage wrapper — `isStorageConfigured`, `createSignedUploadUrl`, `uploadBuffer`, `downloadToBuffer`, `createSignedDownloadUrl`, `removeObjects`; uses service-role key), `thumbnails.ts` (`generatePdfThumbnail` + `generateImageThumbnail` → WebP via `@napi-rs/canvas`, best-effort), `storageClient.ts` (browser-side anon-key Supabase client for `uploadToSignedUrl`)
 - `src/types.ts` — Shared TypeScript interfaces (`Model`)
 - `src/db/` — `schema.ts` (Drizzle schema), `index.ts` (connection with FK enforcement)
 
