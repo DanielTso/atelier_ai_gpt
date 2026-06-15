@@ -26,9 +26,11 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
-    if (!isSupported(file.name, file.type)) {
+    const ext = getExtension(file.name)
+    const isImage = isImageExtension(ext) || file.type.startsWith('image/')
+    if (!isSupported(file.name, file.type) && !isImage) {
       return NextResponse.json(
-        { error: `Unsupported file type: ${file.name}. Supported: PDF, Word (.docx), Excel (.xlsx), and text/code files.` },
+        { error: `Unsupported file type: ${file.name}. Supported: PDF, Word (.docx), Excel (.xlsx), images (png/jpg/webp), and text/code files.` },
         { status: 400 }
       )
     }
@@ -43,10 +45,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Extract text from file
-    const ext = getExtension(file.name)
     const buffer = Buffer.from(await file.arrayBuffer())
     let textContent = ''
-    if (isImageExtension(ext) || file.type.startsWith('image/')) {
+    if (isImage) {
       // Image upload → vision directly.
       textContent = await extractViaVisionImage(buffer, file.type)
     } else {
