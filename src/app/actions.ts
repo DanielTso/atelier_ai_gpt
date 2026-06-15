@@ -349,23 +349,6 @@ export async function getChatTopics(chatId: number) {
 
 // ── Document RAG Actions ──
 
-export async function createDocument(data: {
-  projectId: number
-  filename: string
-  mimeType: string
-  fileSize: number
-  charCount: number
-}) {
-  return await db.insert(documents).values({
-    projectId: data.projectId,
-    filename: data.filename,
-    mimeType: data.mimeType,
-    fileSize: data.fileSize,
-    charCount: data.charCount,
-    status: 'processing',
-  }).returning()
-}
-
 export async function createUploadingDocument(data: {
   projectId: number
   filename: string
