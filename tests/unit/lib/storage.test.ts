@@ -23,7 +23,7 @@ describe('storage', () => {
   })
 
   it('isStorageConfigured reflects env', async () => {
-    setup(undefined, undefined)
+    setup('', '') // falsy, but not `undefined` (which would trigger setup's defaults)
     const a = await import('@/lib/storage')
     expect(a.isStorageConfigured()).toBe(false)
     setup('https://x.supabase.co', 'k')
