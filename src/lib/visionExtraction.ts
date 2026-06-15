@@ -38,21 +38,26 @@ export async function extractViaVision(buffer: Buffer): Promise<string> {
   await definePDFJSModule(() => import('pdfjs-dist/legacy/build/pdf.mjs'))
   const data = new Uint8Array(buffer)
   const pdf = await getDocumentProxy(data)
-  const total = Math.min(pdf.numPages, maxPages)
-  if (pdf.numPages > maxPages) {
-    console.warn(`[visionExtraction] capping at ${maxPages}/${pdf.numPages} pages`)
-  }
-  const parts: string[] = []
-  for (let page = 1; page <= total; page++) {
-    try {
-      const ab = await renderPageAsImage(data, page, { canvasImport: () => import('@napi-rs/canvas'), scale })
-      const text = await extractImage(new Uint8Array(ab), model, maxOutputTokens, apiKey)
-      if (text) parts.push(`# Page ${page}\n${text}`)
-    } catch (err) {
-      console.warn(`[visionExtraction] page ${page} failed:`, err instanceof Error ? err.message : err)
+  try {
+    const total = Math.min(pdf.numPages, maxPages)
+    if (pdf.numPages > maxPages) {
+      console.warn(`[visionExtraction] capping at ${maxPages}/${pdf.numPages} pages`)
     }
+    const parts: string[] = []
+    for (let page = 1; page <= total; page++) {
+      try {
+        const ab = await renderPageAsImage(data, page, { canvasImport: () => import('@napi-rs/canvas'), scale })
+        const text = await extractImage(new Uint8Array(ab), model, maxOutputTokens, apiKey)
+        if (text) parts.push(`# Page ${page}\n${text}`)
+      } catch (err) {
+        console.warn(`[visionExtraction] page ${page} failed:`, err instanceof Error ? err.message : err)
+      }
+    }
+    return parts.join('\n\n')
+  } finally {
+    // Release pdfjs worker + page caches so they don't accumulate on a warm instance.
+    await pdf.destroy?.()
   }
-  return parts.join('\n\n')
 }
 
 /** Vision-extract a single uploaded image. Best-effort; '' if no key. */

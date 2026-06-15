@@ -58,7 +58,12 @@ export async function POST(request: NextRequest) {
         if (vision.trim().length > textContent.trim().length) textContent = vision
       }
     }
-    if (textContent.length > MAX_TEXT_LENGTH) textContent = textContent.slice(0, MAX_TEXT_LENGTH)
+    if (textContent.length > MAX_TEXT_LENGTH) {
+      // Vision can emit far more than MAX_TEXT_LENGTH (pages × tokens); surface the
+      // drop so a missing schedule/sheet page isn't silently lost.
+      console.warn(`[Documents] ${file.name}: content truncated ${textContent.length} → ${MAX_TEXT_LENGTH} chars`)
+      textContent = textContent.slice(0, MAX_TEXT_LENGTH)
+    }
     if (!textContent.trim()) {
       return NextResponse.json({ error: 'No text content could be extracted (text layer empty and vision extraction unavailable — set a Gemini key).' }, { status: 400 })
     }

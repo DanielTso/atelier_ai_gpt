@@ -130,6 +130,31 @@ describe('POST /api/documents', () => {
     expect(mockChunkText).toHaveBeenCalledWith(visionTranscript)
   })
 
+  it('keeps the native text layer when vision returns a shorter result', async () => {
+    // Thin (< MIN_TEXT) but non-empty text layer triggers the vision fallback,
+    // yet vision yields fewer chars — the correctness gate must keep native text.
+    const thinText = 'T'.repeat(80) // < MIN_TEXT (100), so vision is attempted
+    const shortVision = 'V'.repeat(40) // shorter than the native text layer
+    mockEnsureEmbeddingModel.mockResolvedValue({ available: true })
+    mockExtractTextFromBuffer.mockResolvedValue(thinText)
+    mockExtractViaVision.mockResolvedValue(shortVision)
+    mockExtractViaVisionImage.mockResolvedValue('')
+    mockChunkText.mockReturnValue([{ index: 0, content: thinText.slice(0, 50) }])
+    mockCreateDocument.mockResolvedValue([{ id: 4, projectId: 1, filename: 'thin.pdf', mimeType: 'application/pdf', fileSize: 50, charCount: thinText.length, status: 'processing' }])
+    mockSaveDocumentChunks.mockResolvedValue([{ id: 40, content: thinText.slice(0, 50) }])
+    mockGenerateEmbedding.mockResolvedValue(new Array(768).fill(0.4))
+    mockUpdateChunkEmbedding.mockResolvedValue(undefined)
+    mockUpdateDocumentStatus.mockResolvedValue(undefined)
+
+    const POST = await importRoute()
+    const file = new File([new Uint8Array(10)], 'thin.pdf', { type: 'application/pdf' })
+    const res = await POST(makeRequest(makeFormData(file)) as never)
+
+    expect(res.status).toBe(200)
+    expect(mockExtractViaVision).toHaveBeenCalledOnce() // fallback was attempted
+    expect(mockChunkText).toHaveBeenCalledWith(thinText) // but native text was kept
+  })
+
   it('image upload uses extractViaVisionImage and skips text extraction + vision PDF path', async () => {
     const imageText = 'Floor plan text from image'
     mockEnsureEmbeddingModel.mockResolvedValue({ available: true })
