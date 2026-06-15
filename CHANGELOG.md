@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.2.0] - 2026-06-07 — Phase C2: Vision extraction
+
+Spec at `docs/specs/2026-06-07-phase-c-construction-extraction-design.md`; plan at `docs/plans/2026-06-07-phase-c2-vision-extraction.md`.
+
+### Added
+
+- **Vision-extraction module** (`src/lib/visionExtraction.ts`) with two entry points: `extractViaVision(buffer)` renders each PDF page (pdfjs-dist@5 *legacy* build + `@napi-rs/canvas`, scale 3) and sends each page image to Gemini Flash (`generateText`, image content part `{ type: 'image', image: Uint8Array }`), best-effort per page (page failure is logged and skipped), capped at `EXTRACTION_MAX_PAGES`; `extractViaVisionImage(buffer, mimeType)` vision-extracts a single uploaded image. Both return `''` if no Gemini key (graceful degradation).
+- **Image-upload support in `/api/documents`**: PNG/JPG/JPEG/WEBP by extension, or any `image/*` MIME type, are routed directly to `extractViaVisionImage`. The upload guard was broadened to accept images (they intentionally remain outside the shared `isSupported` list — see Changed).
+- **Vision fallback for thin-text PDFs**: after standard text extraction via `unpdf`, if the result is shorter than `EXTRACTION_MIN_TEXT_CHARS` (default 100) the route falls back to `extractViaVision`; the vision result is used if it yields more text. All other files continue through `extractTextFromBuffer` unchanged. Downstream chunk → embed → pgvector RAG pipeline is untouched.
+- **`isImageExtension(ext)` helper** in `src/lib/fileExtraction.ts` and `IMAGE_EXTENSIONS` set for opt-in image acceptance per route.
+- **`EXTRACTION_*` env knobs** (read in `visionExtraction.ts`): `EXTRACTION_MODEL` (default `gemini-3.5-flash`), `EXTRACTION_MAX_PAGES` (default `30`), `EXTRACTION_RENDER_SCALE` (default `3`), `EXTRACTION_MAX_OUTPUT_TOKENS` (default `8000`); `EXTRACTION_MIN_TEXT_CHARS` (default `100`, read in the documents route).
+- **Tests**: `tests/unit/lib/visionExtraction.test.ts` (5 tests), `tests/unit/api/documents-route.test.ts` (3 tests). Full API suite: 39 tests green.
+
+### Changed
+
+- **Images intentionally excluded from shared `SUPPORTED_EXTENSIONS`/`isSupported`**: the shared `/api/extract` text extractor has no image handling and would emit garbage — image acceptance is localized to `/api/documents` only. A prior spike that widened `isSupported` globally was caught and reverted before merge.
+- **`pdfjs-dist@^5.7.284` and `@napi-rs/canvas@^0.1.100` promoted from devDependencies to dependencies** (they now run at request time, not only in tests). pdfjs-dist v5 *legacy* build (`pdfjs-dist/legacy/build/pdf.mjs`) is required; v6 breaks the API. `@napi-rs/canvas` 0.1.x is the verified compatible series.
+
+### Notes
+
+- **Unverified deploy risk**: whether native `@napi-rs/canvas` builds/runs on Vercel Fluid Compute has not yet been confirmed (Task 6). Documented fallback is client-side pdf.js rendering if the native canvas module is unavailable.
+- Page extraction is sequential (one page at a time) — rate-limit-safe and bounded by `EXTRACTION_MAX_PAGES`. Bounded concurrency is a later optimization if throughput becomes a bottleneck.
+- Spike-validated: `gemini-3.5-flash` (not a reasoning-heavy pro model) reads real IFC construction plans well.
+
 ## [4.1.0] - 2026-06-07 — Phase B2: Advanced RAG
 
 Spec at `docs/specs/2026-06-07-phase-b2-advanced-rag-design.md`; plan at `docs/plans/2026-06-07-phase-b2-advanced-rag.md`.

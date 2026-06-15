@@ -74,7 +74,7 @@ Atelier Studio is a Next.js 16 App Router chat application. **Claude (Anthropic)
    - `POST /api/embed` — Async 768-dim embedding generation via Gemini `gemini-embedding-001`. Best-effort after each exchange.
    - `POST /api/generate-title` — Auto-generates chat title (3-6 words) after first AI response. Pinned to internal `gemini-3.5-flash`.
    - `POST /api/extract` — Extracts text from files (PDF via `unpdf`, DOCX via `mammoth`, XLSX via `exceljs` — one tab-separated block per sheet, text/code via UTF-8). Max 10MB.
-   - `POST /api/documents` — Upload + process: extract text → chunk (2000 chars, 400 overlap, sentence-aware) → embed → store.
+   - `POST /api/documents` — Upload + process: extract text → chunk (2000 chars, 400 overlap, sentence-aware) → embed → store. **Vision fallback (Phase C2)**: image uploads (png/jpg/jpeg/webp by extension, or `image/*` MIME) → `extractViaVisionImage` directly; PDFs whose text layer is shorter than `EXTRACTION_MIN_TEXT_CHARS` (default 100) → per-page Gemini-vision render via `extractViaVision`. Other files → `extractTextFromBuffer` unchanged.
    - `POST /api/classify` — LLM-based topic classification. Pinned to internal `gemini-3.5-flash` (tolerates a Claude `model` in the body). Cached in `chatTopics`.
 
 ### Source Layout
@@ -103,6 +103,8 @@ Five layers, in order (all degrade gracefully if providers unavailable):
 Embeddings: 768-dim vectors via Gemini `gemini-embedding-001`. `generateEmbedding()` accepts `taskType` (`'query'`/`'document'`) — Gemini uses this for optimization. Retrieval uses **native pgvector** (`findSimilarMessages`/`findSimilarDocumentChunks` run one indexed SQL query each via Drizzle's `cosineDistance`, backed by HNSW indexes).
 
 **Advanced retrieval pipeline (Phase B2)** — `src/lib/retrieval.ts` `retrieveContext()` orchestrates: **query-rewrite** (`queryRewrite.ts`, Gemini Flash → standalone query) → embed → **vector top-N** (default 20) → **MMR** diversity (`mmr.ts`, λ 0.7) → **LLM rerank** (`rerank.ts`, Gemini Flash) → top-k (docs 3 / msgs 5). Every stage is **best-effort and degrades to the prior stage** (with all toggles off it's plain vector top-k). All knobs live in `src/lib/ragConfig.ts` (`getRagConfig()`) with env overrides: `RAG_DOC_THRESHOLD`, `RAG_MSG_THRESHOLD`, `RAG_TOP_N`, `RAG_DOC_TOP_K`, `RAG_MSG_TOP_K`, `RAG_MMR_LAMBDA`, `RAG_REWRITE_ENABLED`, `RAG_RERANK_ENABLED`, `RAG_MMR_ENABLED`. Note: rewrite + rerank add two Gemini Flash calls per message (~1–2s latency) — toggle off via env if needed. Reranking/rewrite LLM calls reuse the proven `generateText`+parse+fallback pattern (like `classify`).
+
+**Vision-extraction fallback (Phase C2)** — `src/lib/visionExtraction.ts` handles two paths: `extractViaVision(buffer)` renders PDF pages via **pdfjs-dist@5 legacy** (`pdfjs-dist/legacy/build/pdf.mjs`) + **`@napi-rs/canvas`** (scale 3) and calls Gemini Flash per page; `extractViaVisionImage(buffer, mimeType)` vision-extracts a single image. Both degrade to `''` if no Gemini key. Env knobs: `EXTRACTION_MODEL` (default `gemini-3.5-flash`), `EXTRACTION_MAX_PAGES` (default `30`), `EXTRACTION_RENDER_SCALE` (default `3`), `EXTRACTION_MAX_OUTPUT_TOKENS` (default `8000`), `EXTRACTION_MIN_TEXT_CHARS` (default `100`). Once text is extracted the downstream chunk → embed → pgvector RAG pipeline is unchanged. Note: `@napi-rs/canvas` is a native module — Vercel Fluid Compute compatibility is unverified (Task 6); client-side pdf.js render is the documented fallback.
 
 ### State Management
 
