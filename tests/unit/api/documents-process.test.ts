@@ -108,4 +108,13 @@ describe('POST /api/documents/process', () => {
     expect(res.status).toBe(400)
     expect(m.updateDocumentStatus).toHaveBeenCalledWith(12, 'error', expect.objectContaining({ errorMessage: expect.any(String) }))
   })
+
+  it('extractor throwing (corrupt file) → error status + 500, not stuck processing', async () => {
+    m.getDocumentById.mockResolvedValue({ id: 13, projectId: 1, filename: 'corrupt.pdf', mimeType: 'application/pdf', storagePath: 'p' })
+    m.extractTextFromBuffer.mockRejectedValue(new Error('pdfjs worker crashed'))
+    const POST = await importRoute()
+    const res = await POST(req(13) as never)
+    expect(res.status).toBe(500)
+    expect(m.updateDocumentStatus).toHaveBeenCalledWith(13, 'error', expect.objectContaining({ errorMessage: expect.any(String) }))
+  })
 })

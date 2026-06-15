@@ -6,7 +6,9 @@ import { uploadUrlRequestSchema } from '@/lib/validation'
 import { apiError } from '@/lib/errors'
 
 function sanitize(name: string): string {
-  return name.replace(/[^a-zA-Z0-9._-]/g, '_')
+  // Replace path/special chars, and collapse an all-dots name (".", "..") to "_"
+  // so it can't normalize to a parent prefix in the storage path.
+  return name.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/^\.+$/, '_')
 }
 
 export async function POST(request: NextRequest) {

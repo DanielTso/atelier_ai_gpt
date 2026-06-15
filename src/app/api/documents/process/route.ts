@@ -38,14 +38,21 @@ export async function POST(request: NextRequest) {
     }
 
     let textContent = ''
-    if (isImage) {
-      textContent = await extractViaVisionImage(buffer, doc.mimeType)
-    } else {
-      textContent = await extractTextFromBuffer(buffer, ext)
-      if (ext === 'pdf' && textContent.trim().length < MIN_TEXT) {
-        const vision = await extractViaVision(buffer)
-        if (vision.trim().length > textContent.trim().length) textContent = vision
+    try {
+      if (isImage) {
+        textContent = await extractViaVisionImage(buffer, doc.mimeType)
+      } else {
+        textContent = await extractTextFromBuffer(buffer, ext)
+        if (ext === 'pdf' && textContent.trim().length < MIN_TEXT) {
+          const vision = await extractViaVision(buffer)
+          if (vision.trim().length > textContent.trim().length) textContent = vision
+        }
       }
+    } catch (e) {
+      // A corrupt PDF/DOCX/XLSX can throw in the extractor — reach a terminal
+      // status rather than leaving the row stuck in 'processing'.
+      await updateDocumentStatus(doc.id, 'error', { errorMessage: 'Failed to extract document content.' })
+      return apiError(e, 'Failed to extract document content', 500, false)
     }
     if (textContent.length > MAX_TEXT_LENGTH) {
       console.warn(`[documents/process] ${doc.filename}: content truncated ${textContent.length} -> ${MAX_TEXT_LENGTH}`)
