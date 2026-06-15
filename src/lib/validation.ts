@@ -34,3 +34,14 @@ export const classifyRequestSchema = z.object({
   messages: z.array(z.any()).min(1),
   model: z.string().optional(),
 })
+
+export const uploadUrlRequestSchema = z.object({
+  projectId: z.number().int().positive(),
+  filename: z.string().min(1).max(255),
+  contentType: z.string().min(1),
+  size: z.number().int().positive(),
+})
+
+export const processDocumentRequestSchema = z.object({
+  documentId: z.number().int().positive(),
+})
