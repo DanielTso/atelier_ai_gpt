@@ -29,6 +29,9 @@ describe('extractViaVision', () => {
     expect(out).toContain('PAGE ONE TEXT')
     expect(out).toContain('PAGE TWO TEXT')
     expect(mockRender).toHaveBeenCalledTimes(2)
+    // Each render must get its OWN buffer copy — pdfjs detaches the array it parses,
+    // so reusing one instance breaks page 2+ with a DataCloneError.
+    expect(mockRender.mock.calls[0][0]).not.toBe(mockRender.mock.calls[1][0])
   })
 
   it('returns empty string when no API key', async () => {

@@ -36,8 +36,11 @@ export async function extractViaVision(buffer: Buffer): Promise<string> {
   const { model, maxPages, scale, maxOutputTokens } = cfg()
   const { definePDFJSModule, getDocumentProxy, renderPageAsImage } = await import('unpdf')
   await definePDFJSModule(() => import('pdfjs-dist/legacy/build/pdf.mjs'))
-  const data = new Uint8Array(buffer)
-  const pdf = await getDocumentProxy(data)
+  // pdfjs TRANSFERS (detaches) the ArrayBuffer it parses, so every pdfjs call must
+  // get its own fresh copy. Keep `source` pristine and copy from it each time —
+  // reusing one array detaches it after the first call and breaks page 2+.
+  const source = new Uint8Array(buffer)
+  const pdf = await getDocumentProxy(new Uint8Array(source))
   try {
     const total = Math.min(pdf.numPages, maxPages)
     if (pdf.numPages > maxPages) {
@@ -46,7 +49,7 @@ export async function extractViaVision(buffer: Buffer): Promise<string> {
     const parts: string[] = []
     for (let page = 1; page <= total; page++) {
       try {
-        const ab = await renderPageAsImage(data, page, { canvasImport: () => import('@napi-rs/canvas'), scale })
+        const ab = await renderPageAsImage(new Uint8Array(source), page, { canvasImport: () => import('@napi-rs/canvas'), scale })
         const text = await extractImage(new Uint8Array(ab), model, maxOutputTokens, apiKey)
         if (text) parts.push(`# Page ${page}\n${text}`)
       } catch (err) {
