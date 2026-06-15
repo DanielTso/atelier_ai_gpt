@@ -23,8 +23,9 @@
 import { readFile, writeFile } from 'node:fs/promises'
 
 const pdfPath = process.argv[2]
+const pageNum = Number(process.argv[3]) || 1
 if (!pdfPath) {
-  console.error('Usage: node scripts/spike-vision-extract.mjs <path-to-plan.pdf>')
+  console.error('Usage: node scripts/spike-vision-extract.mjs <path-to-plan.pdf> [pageNumber]')
   process.exit(1)
 }
 if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
@@ -48,13 +49,13 @@ async function main() {
     // globals (DOMMatrix) that don't exist in Node and throws on load.
     await definePDFJSModule(() => import('pdfjs-dist/legacy/build/pdf.mjs'))
     const buffer = new Uint8Array(await readFile(pdfPath))
-    const ab = await renderPageAsImage(buffer, 1, {
+    const ab = await renderPageAsImage(buffer, pageNum, {
       canvasImport: () => import('@napi-rs/canvas'),
-      scale: 2,
+      scale: 3, // higher scale → sharper small text on large-format sheets
     })
     pngBytes = new Uint8Array(ab)
     await writeFile('spike-page1.png', pngBytes)
-    console.log(`[render] OK — wrote spike-page1.png (${pngBytes.length} bytes)`)
+    console.log(`[render] OK — page ${pageNum} → spike-page1.png (${pngBytes.length} bytes)`)
   } catch (err) {
     console.error('[render] FAILED — unpdf/pdfjs-dist/@napi-rs/canvas issue:', err?.message || err)
     console.error('  -> Did you `npm i -D pdfjs-dist @napi-rs/canvas`? If it still fails, this is the')
@@ -70,7 +71,7 @@ async function main() {
     const { text, usage } = await generateText({
       model: google(MODEL),
       messages: [{ role: 'user', content: [{ type: 'text', text: PROMPT }, { type: 'image', image: pngBytes }] }],
-      maxOutputTokens: 2000,
+      maxOutputTokens: 8000,
     })
     console.log(`\n===== EXTRACTION (${MODEL}) =====\n`)
     console.log(text)

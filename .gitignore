@@ -47,3 +47,7 @@ yarn-error.log*
 next-env.d.ts
 sqlite.db
 .env*.local
+
+# Phase C spike artifacts / dropped plan PDFs (confidential)
+/spike-page1.png
+/*.pdf

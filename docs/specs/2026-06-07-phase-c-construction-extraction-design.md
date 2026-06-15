@@ -19,7 +19,11 @@ Make construction **plans, drawings, and images** usable in the app — not just
 
 **C2-spike → C2 → C-storage → C3.** C2 extraction renders pages **in-memory** and only persists *extracted text* (existing pipeline), so it does **not** depend on file storage. De-risk the uncertain vision part first; storage and UI come after.
 
-## ⭐ Start here: the C2 spike (throwaway, do first)
+## ✅ C2 spike — DONE (2026-06-07). Result: GO.
+
+Ran `scripts/spike-vision-extract.mjs` against a real IFC plan (`GradingPlanIFC.pdf`, a 26-page Kimley-Horn Site Civil Package). **Outcome: vision extraction works very well.** `gemini-3.5-flash` accurately read both a text-heavy cover sheet (full 223-row sheet index + title block + PE stamp) and a dense overall site-plan drawing (building zones, parking counts, scattered dimensions, stormwater basins, utilities) and produced coherent summaries. Validated recipe → folded into the C2 decisions below: **model `gemini-3.5-flash`** (not the reasoning-heavy `gemini-3.1-pro-preview`), **`maxOutputTokens` ≥ 8000**, **render scale 3**, `pdfjs-dist@^5` legacy build + `@napi-rs/canvas@^0.1.x`. The render+vision plumbing is proven. Remaining unknowns are operational, not feasibility: Vercel native-canvas build, multi-page concurrency/cost, and prompt tuning per sheet type.
+
+<details><summary>Original spike definition (kept for reference)</summary>
 
 Before any production code, prove the approach on a **real construction PDF page**:
 
@@ -34,10 +38,12 @@ Before any production code, prove the approach on a **real construction PDF page
 
 Keep the spike out of the production paths (a scratch script or a throwaway route); delete after.
 
+</details>
+
 ## C2 — Vision extraction (the core)
 
 **Design decisions:**
-- **Vision model — Gemini, configurable.** Bulk page extraction is a "senses" task → cheap/fast Gemini vision (e.g. `gemini-3.1-pro-preview`, which has vision). Expose `EXTRACTION_MODEL` (env) so it can switch to a Claude vision model for hard drawings. **Verify the exact vision-capable Gemini model id + the AI SDK vision-input shape via Context7 at plan time.** Reuse the `createGoogleGenerativeAI` + `generateText` (image content part) pattern, like `classify`.
+- **Vision model — `gemini-3.5-flash` (VALIDATED by the spike, 2026-06-07).** Spike result on a real IFC plan: `gemini-3.5-flash` extracted a text-heavy cover sheet AND a dense site-plan drawing **excellently** — verbatim text, the full 223-row sheet-index table, scattered dimensions, spatial labels, parking counts, and a coherent summary. **Do NOT use `gemini-3.1-pro-preview`** — it's a heavy-reasoning model that burned ~1,900 of 2,000 output tokens on thinking and produced almost no text. **Set `maxOutputTokens` ≥ 8000** (drawings are output-heavy; Flash still spends roughly half its output on reasoning tokens). Render at **scale 3** for sharp small text on large-format sheets. Keep `EXTRACTION_MODEL` an env knob (Claude vision as an option for unusually hard sheets — not needed for typical IFC plans). Uses the `createGoogleGenerativeAI` + `generateText` image-content-part pattern (like `classify`), confirmed working in the spike.
 - **PDF → image: server-side `unpdf` render — VALIDATED locally (2026-06-07 spike).** `renderPageAsImage(buffer, pageNo, { canvasImport, scale })` works with these **exact** versions (other versions fail): **`pdfjs-dist@^5`** imported via the **legacy** build `definePDFJSModule(() => import('pdfjs-dist/legacy/build/pdf.mjs'))`, plus **`@napi-rs/canvas@^0.1.69`** (0.1.x — unpdf 1.4.0's peer). Pitfalls the spike hit and resolved: `pdfjs-dist@6` → `@napi-rs/canvas` "Value is none of these types" error (use v5); default (non-legacy) pdfjs build → `DOMMatrix is not defined` in Node (use legacy); `@napi-rs/canvas@1.0.0` → ERESOLVE (pin 0.1.x). Rendered a real PDF page to a valid PNG. **Still to verify in C2: that `@napi-rs/canvas` (native) builds/runs on Vercel Fluid Compute** — prebuilt Linux binaries should, but confirm in a preview deploy. Fallback if Vercel chokes: **client-side pdf.js** render (browser → canvas, no native dep). In C2, promote `pdfjs-dist`/`@napi-rs/canvas` from devDeps to `dependencies`.
 - **Trigger:** in `/api/documents`, after the existing text extraction, if the text layer is empty/thin (e.g. < N chars per page or overall), fall back to per-page vision extraction. Text PDFs keep their fast path; only scanned/drawing/image inputs pay the vision cost. Image uploads (PNG/JPG) go straight to vision.
 - **Downstream unchanged:** vision output is concatenated/per-page text → existing `chunkText` → embed → `documentChunks`. No retrieval changes.
