@@ -8,7 +8,13 @@ export const SUPPORTED_EXTENSIONS = new Set([
   'json', 'html', 'css',
   'java', 'c', 'cpp', 'go', 'rs', 'rb', 'php',
   'sh', 'yaml', 'yml', 'xml', 'sql',
+  'png', 'jpg', 'jpeg', 'webp',
 ])
+
+export const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'webp'])
+export function isImageExtension(ext: string): boolean {
+  return IMAGE_EXTENSIONS.has(ext)
+}
 
 export const TEXT_MIME_PREFIXES = ['text/', 'application/json', 'application/xml']
 
@@ -20,6 +26,7 @@ export function isSupported(filename: string, mimeType: string): boolean {
   const ext = getExtension(filename)
   if (SUPPORTED_EXTENSIONS.has(ext)) return true
   if (TEXT_MIME_PREFIXES.some(p => mimeType.startsWith(p))) return true
+  if (mimeType.startsWith('image/')) return true
   return false
 }
 
