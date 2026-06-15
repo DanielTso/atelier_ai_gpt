@@ -11,7 +11,7 @@ Turning Atelier Studio into a Claude-powered **construction-document workhorse**
 | **A** | Claude as the chat provider (Opus 4.8 default, Sonnet, Haiku; web search). Gemini kept for image gen + embeddings. | ✅ **Merged to `master`** (local) |
 | **B** | Migrate DB libSQL/SQLite → **Supabase Postgres + pgvector** (HNSW). PGlite tests. | ✅ **Merged to `master`** (local) |
 | **B2** | Advanced RAG: query-rewrite → vector top-N → MMR → LLM rerank → top-k, tunable via `ragConfig` (env). Test suite ~40s→~15s. | ✅ **Merged to `master`** (local) |
-| **C** | Extract info from construction **plans/drawings/images** (vision). | 🚧 **C2 implemented + locally verified on `phase-c-extraction`** (deploy check pending) |
+| **C** | Extract info from construction **plans/drawings/images** (vision). | 🚧 **C2 done + tagged `phase-c2`** (local); render smoke passed on a real plan. Vercel runtime check pending deploy |
 | **D** | Excel/Word **artifacts** (report generation). | ⛔ Not started |
 
 `master` is **28 commits ahead of `origin` (nothing pushed yet)** — deploy is pending (below).
@@ -28,16 +28,19 @@ Decomposed: **C2 (vision extraction) → C-storage (Supabase Storage) → C3 (UI
 
 ### ✅ C2 status (implemented 2026-06-14)
 All 6 plan tasks done on `phase-c-extraction`. New `src/lib/visionExtraction.ts` (PDF page render via unpdf + pdfjs-dist@5 legacy + @napi-rs/canvas → Gemini Flash per page; `extractViaVisionImage` for single images). `/api/documents` now: image uploads → vision; thin/empty-text PDFs (< `EXTRACTION_MIN_TEXT_CHARS`, default 100) → per-page vision fallback. `EXTRACTION_*` env knobs. Downstream chunk/embed/pgvector unchanged.
-- **Local gate GREEN:** lint 0 errors, build clean, full suite **166 tests pass** (incl. 5 visionExtraction + 4 documents-route). Typecheck clean.
-- **Native-canvas build risk RESOLVED:** Turbopack couldn't bundle the native `.node` binding; fixed via `serverExternalPackages: ['@napi-rs/canvas','pdfjs-dist','unpdf']` in `next.config.ts`.
+- **Local gate GREEN:** lint 0 errors, build clean, full suite **167 tests pass** (incl. 5 visionExtraction + 4 documents-route). Typecheck clean. **Tagged `phase-c2`** (local, unpushed).
+- **Render smoke PASSED (2026-06-14):** `node scripts/smoke-c2-render.mjs GradingPlanIFC.pdf 2` rendered pages 1–2 at scale 3 (native `@napi-rs/canvas` on Windows) and Gemini Flash transcribed them accurately (title block, PE seal, general notes). This proves the only genuinely-new runtime path; DB-side (chunk/embed/store) is unchanged from B/B2 and test-covered. `.env.local` has the Gemini key but **no Supabase DB**, so the full UI upload couldn't be exercised.
+- **Native-canvas BUILD risk RESOLVED:** Turbopack couldn't bundle the native `.node` binding; fixed via `serverExternalPackages: ['@napi-rs/canvas','pdfjs-dist','unpdf']` in `next.config.ts`.
+- **Bug found + fixed by the smoke (not caught by mocked unit tests):** pdfjs *detaches* the ArrayBuffer it parses, so reusing one `Uint8Array` across `getDocumentProxy` + each `renderPageAsImage` broke every page after the first (`DataCloneError`). Fixed by copying bytes per call from a pristine source; added a unit guard. The spike dodged it by rendering a single page.
+- **⚠️ Caveat to decide:** `GradingPlanIFC.pdf` is **17 MB**, over the **10 MB** `MAX_FILE_SIZE` (and `serverActions.bodySizeLimit`) — a real UI upload of it would be rejected. Construction plans are routinely large; raising both limits is a likely follow-up (its own small decision/spec).
 - **Design deviation from plan:** images are NOT added to the shared `SUPPORTED_EXTENSIONS`/`isSupported` (that broke `/api/extract`, which has no vision). Image acceptance is opt-in in `/api/documents`'s guard only.
 - Commits: `0a16f80`(deps) `4583a52`(module) `dd71b97`+`dc14cd4`(image support+localize) `fb6895e`(route) `af4380c`(docs) `a15c205`(externalize) `be2986b`(review fixes).
 
 ### ⏳ C2 — remaining (USER, needs your env/creds)
-1. **Vercel native-canvas RUNTIME check** — build-bundling is fixed, but whether `@napi-rs/canvas` *loads* on Fluid Compute is unverified. Vercel CLI isn't installed (`npm i -g vercel`). Deploy a preview + upload a scanned PDF. Fallback if it fails to load = client-side pdf.js render (documented in the C spec).
+Tag `phase-c2` already created locally (unpushed). The render path is smoke-proven; what's left all rides on the **Supabase deploy cutover** (DB not configured locally):
+1. **Vercel native-canvas RUNTIME check** — build-bundling fixed + native render works on Windows, but whether `@napi-rs/canvas` *loads* on Vercel Fluid Compute (Linux) is unverified. `npm i -g vercel`, deploy a preview, run the upload (or `scripts/smoke-c2-render.mjs` in that env). Fallback if it fails = client-side pdf.js render (in the C spec).
 2. **Playwright E2E** (`npm run test:e2e`) — needs `DATABASE_URL`/`DIRECT_URL` + a pgvector Postgres locally.
-3. **Manual smoke** — upload `GradingPlanIFC.pdf`, confirm it reaches "ready" with chunks and the chat can cite it.
-4. **Tag** `phase-c2` after the above pass: `git tag -a phase-c2 -m "Phase C2: vision extraction"`.
+3. **Manual UI smoke** — with DB configured, upload a **≤10 MB** scanned/drawing PDF (or raise the cap first — see caveat above), confirm "ready" + chunks + the chat cites it.
 
 ### ▶️ After C2
 C-storage (Supabase Storage for originals/thumbnails), then C3 (UI) — each its own brainstorm→spec→plan→build.
