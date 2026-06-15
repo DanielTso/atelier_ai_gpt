@@ -62,19 +62,27 @@ export const ProjectDocumentsDialog = memo(function ProjectDocumentsDialog({
   const handleUpload = async (file: File) => {
     setUploading(true)
     try {
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('projectId', String(projectId))
-
-      const res = await fetch('/api/documents', {
+      // 1. Mint a signed upload URL + create the documents row.
+      const urlRes = await fetch('/api/documents/upload-url', {
         method: 'POST',
-        body: formData,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ projectId, filename: file.name, contentType: file.type || 'application/octet-stream', size: file.size }),
       })
+      if (!urlRes.ok) throw new Error((await urlRes.json()).error || 'Upload failed')
+      const { documentId, path, token, bucket } = await urlRes.json()
 
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Upload failed')
-      }
+      // 2. Upload the bytes straight to Storage (bypasses the function body limit).
+      const { getBrowserSupabase } = await import('@/lib/storageClient')
+      const { error: upErr } = await getBrowserSupabase().storage.from(bucket).uploadToSignedUrl(path, token, file)
+      if (upErr) throw upErr
+
+      // 3. Kick off server-side processing.
+      const procRes = await fetch('/api/documents/process', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ documentId }),
+      })
+      if (!procRes.ok) throw new Error((await procRes.json()).error || 'Processing failed')
 
       toast.success(`Uploaded and indexed: ${file.name}`)
       await loadDocuments()
@@ -146,7 +154,7 @@ export const ProjectDocumentsDialog = memo(function ProjectDocumentsDialog({
               ref={fileInputRef}
               type="file"
               className="hidden"
-              accept=".pdf,.docx,.xlsx,.txt,.md,.csv,.py,.js,.ts,.tsx,.jsx,.json,.html,.css,.java,.c,.cpp,.go,.rs,.rb,.php,.sh,.yaml,.yml,.xml,.sql"
+              accept=".pdf,.docx,.xlsx,.txt,.md,.csv,.py,.js,.ts,.tsx,.jsx,.json,.html,.css,.java,.c,.cpp,.go,.rs,.rb,.php,.sh,.yaml,.yml,.xml,.sql,.png,.jpg,.jpeg,.webp"
               onChange={handleFileChange}
             />
             {uploading ? (
@@ -161,7 +169,7 @@ export const ProjectDocumentsDialog = memo(function ProjectDocumentsDialog({
                   Drop a file here or click to upload
                 </p>
                 <p className="text-xs text-muted-foreground/60">
-                  PDF, DOCX, text, and code files up to 10MB
+                  PDF, DOCX, images, text, and code files up to 50MB
                 </p>
               </div>
             )}
