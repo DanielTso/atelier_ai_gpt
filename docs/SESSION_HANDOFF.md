@@ -11,7 +11,7 @@ Turning Atelier Studio into a Claude-powered **construction-document workhorse**
 | **A** | Claude as the chat provider (Opus 4.8 default, Sonnet, Haiku; web search). Gemini kept for image gen + embeddings. | ✅ **Merged to `master`** (local) |
 | **B** | Migrate DB libSQL/SQLite → **Supabase Postgres + pgvector** (HNSW). PGlite tests. | ✅ **Merged to `master`** (local) |
 | **B2** | Advanced RAG: query-rewrite → vector top-N → MMR → LLM rerank → top-k, tunable via `ragConfig` (env). Test suite ~40s→~15s. | ✅ **Merged to `master`** (local) |
-| **C** | Extract info from construction **plans/drawings/images** (vision). | 🚧 **In progress on branch `phase-c-extraction`** |
+| **C** | Extract info from construction **plans/drawings/images** (vision). | 🚧 **C2 implemented + locally verified on `phase-c-extraction`** (deploy check pending) |
 | **D** | Excel/Word **artifacts** (report generation). | ⛔ Not started |
 
 `master` is **28 commits ahead of `origin` (nothing pushed yet)** — deploy is pending (below).
@@ -26,11 +26,21 @@ Decomposed: **C2 (vision extraction) → C-storage (Supabase Storage) → C3 (UI
 - **Validated recipe (baked into the C2 plan):** model `gemini-3.5-flash` (NOT the reasoning-heavy `gemini-3.1-pro-preview`); `maxOutputTokens ≥ 8000`; render `scale 3`; `pdfjs-dist@^5` **legacy** build (`pdfjs-dist/legacy/build/pdf.mjs`) + `@napi-rs/canvas@^0.1.x` (already installed as devDeps; C2 Task 1 promotes them to dependencies). Image content part: `{ type: 'image', image: Uint8Array }` via `generateText`.
 - **The one real deploy risk for C2:** does `@napi-rs/canvas` (native) build/run on Vercel Fluid Compute? C2 plan Task 6 verifies via a preview deploy; documented fallback = **client-side pdf.js** rendering.
 
-### ▶️ Resume C2
-1. `git checkout phase-c-extraction`
-2. Read `docs/plans/2026-06-07-phase-c2-vision-extraction.md`.
-3. Execute it with `superpowers:subagent-driven-development` (role-framed implementers — see [[feedback-role-based-agent-stack]]). 6 tasks; additive (no migration red-zone). Verify each module's tests; full gate + the Vercel native-canvas check at the end.
-4. After C2: C-storage, then C3 — each its own brainstorm→spec→plan→build.
+### ✅ C2 status (implemented 2026-06-14)
+All 6 plan tasks done on `phase-c-extraction`. New `src/lib/visionExtraction.ts` (PDF page render via unpdf + pdfjs-dist@5 legacy + @napi-rs/canvas → Gemini Flash per page; `extractViaVisionImage` for single images). `/api/documents` now: image uploads → vision; thin/empty-text PDFs (< `EXTRACTION_MIN_TEXT_CHARS`, default 100) → per-page vision fallback. `EXTRACTION_*` env knobs. Downstream chunk/embed/pgvector unchanged.
+- **Local gate GREEN:** lint 0 errors, build clean, full suite **166 tests pass** (incl. 5 visionExtraction + 4 documents-route). Typecheck clean.
+- **Native-canvas build risk RESOLVED:** Turbopack couldn't bundle the native `.node` binding; fixed via `serverExternalPackages: ['@napi-rs/canvas','pdfjs-dist','unpdf']` in `next.config.ts`.
+- **Design deviation from plan:** images are NOT added to the shared `SUPPORTED_EXTENSIONS`/`isSupported` (that broke `/api/extract`, which has no vision). Image acceptance is opt-in in `/api/documents`'s guard only.
+- Commits: `0a16f80`(deps) `4583a52`(module) `dd71b97`+`dc14cd4`(image support+localize) `fb6895e`(route) `af4380c`(docs) `a15c205`(externalize) `be2986b`(review fixes).
+
+### ⏳ C2 — remaining (USER, needs your env/creds)
+1. **Vercel native-canvas RUNTIME check** — build-bundling is fixed, but whether `@napi-rs/canvas` *loads* on Fluid Compute is unverified. Vercel CLI isn't installed (`npm i -g vercel`). Deploy a preview + upload a scanned PDF. Fallback if it fails to load = client-side pdf.js render (documented in the C spec).
+2. **Playwright E2E** (`npm run test:e2e`) — needs `DATABASE_URL`/`DIRECT_URL` + a pgvector Postgres locally.
+3. **Manual smoke** — upload `GradingPlanIFC.pdf`, confirm it reaches "ready" with chunks and the chat can cite it.
+4. **Tag** `phase-c2` after the above pass: `git tag -a phase-c2 -m "Phase C2: vision extraction"`.
+
+### ▶️ After C2
+C-storage (Supabase Storage for originals/thumbnails), then C3 (UI) — each its own brainstorm→spec→plan→build.
 
 ## ⏳ Pending USER actions (not blocking C development; tests use PGlite)
 
