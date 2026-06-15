@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createDocument, updateDocumentStatus, saveDocumentChunks, updateChunkEmbedding, getProjectDocuments, deleteDocument } from '@/app/actions'
 import { generateEmbedding, ensureEmbeddingModel } from '@/lib/embeddings'
 import { chunkText } from '@/lib/chunking'
-import { MAX_FILE_SIZE, MAX_TEXT_LENGTH, getExtension, isSupported, extractTextFromBuffer } from '@/lib/fileExtraction'
+import { MAX_FILE_SIZE, MAX_TEXT_LENGTH, getExtension, isSupported, extractTextFromBuffer, isImageExtension } from '@/lib/fileExtraction'
+import { extractViaVision, extractViaVisionImage } from '@/lib/visionExtraction'
 import { apiError } from '@/lib/errors'
+
+const MIN_TEXT = Number(process.env.EXTRACTION_MIN_TEXT_CHARS) || 100
 
 export async function POST(request: NextRequest) {
   try {
@@ -42,14 +45,21 @@ export async function POST(request: NextRequest) {
     // Extract text from file
     const ext = getExtension(file.name)
     const buffer = Buffer.from(await file.arrayBuffer())
-    let textContent = await extractTextFromBuffer(buffer, ext)
-
-    if (textContent.length > MAX_TEXT_LENGTH) {
-      textContent = textContent.slice(0, MAX_TEXT_LENGTH)
+    let textContent = ''
+    if (isImageExtension(ext) || file.type.startsWith('image/')) {
+      // Image upload → vision directly.
+      textContent = await extractViaVisionImage(buffer, file.type)
+    } else {
+      textContent = await extractTextFromBuffer(buffer, ext)
+      // Scanned/drawing PDF: thin/empty text layer → fall back to vision per page.
+      if (ext === 'pdf' && textContent.trim().length < MIN_TEXT) {
+        const vision = await extractViaVision(buffer)
+        if (vision.trim().length > textContent.trim().length) textContent = vision
+      }
     }
-
+    if (textContent.length > MAX_TEXT_LENGTH) textContent = textContent.slice(0, MAX_TEXT_LENGTH)
     if (!textContent.trim()) {
-      return NextResponse.json({ error: 'No text content could be extracted from the file.' }, { status: 400 })
+      return NextResponse.json({ error: 'No text content could be extracted (text layer empty and vision extraction unavailable — set a Gemini key).' }, { status: 400 })
     }
 
     // Create document record
