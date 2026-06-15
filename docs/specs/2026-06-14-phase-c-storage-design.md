@@ -24,7 +24,8 @@ The C2 extraction pipeline (render → vision → chunk → embed → pgvector) 
 
 - **Full scope, two execution stages, one spec.** Stage 1 = Storage foundation + Documents. Stage 2 = chat-attachments migration. They share only `src/lib/storage.ts`; Stage 1 ships and is verified before Stage 2 (Stage 2 touches the live chat-image display path → more regression risk).
 - **Private bucket + signed URLs.** One private bucket (`atelier-files`) with `documents/…` and `attachments/…` prefixes. Uploads via short-lived signed *upload* URLs; downloads via short-lived signed *GET* URLs minted server-side on demand. Nothing is publicly reachable (construction plans can be confidential).
-- **Service-role key, server-only.** `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` are new env vars; the service-role key is added to the sensitive-keys denylist and never reaches client code. Storage is server-side only.
+- **Service-role key, server-only.** `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` are new env vars; the service-role key is added to the sensitive-keys denylist and never reaches client code. All privileged Storage ops (mint URLs, download, thumbnail upload, delete) are server-side.
+- **Browser direct-upload uses the anon key.** The PUT to a signed upload URL is performed by `@supabase/supabase-js` in the browser via `uploadToSignedUrl(path, token, file)` — verified against current Supabase docs (a raw PUT still needs the project `apikey`, so the SDK is the robust path). This needs two **public** env vars: `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY` (anon key is public-safe). Security holds: the signed upload *token* authorizes only that single write into the private bucket; the anon key alone can neither read nor list private objects. All reads go through server-minted signed GET URLs.
 - **Client-orchestrated 3-step upload flow** (no Storage webhooks): mint upload URL → client PUT → client calls process endpoint. Simplest, no extra Supabase config, fully testable.
 - **DB stays on Drizzle/postgres-js.** `@supabase/supabase-js` is used for the **Storage API only**.
 - **Document upload now requires Storage configured** (it rides on the same Supabase project as the DB). `isStorageConfigured()` gives a clear error when it isn't, rather than crashing.
@@ -107,7 +108,7 @@ A small helper renders **page 1 only** at a low scale (~600px wide) to **WebP** 
 ## Pending USER actions (not blocking build — tests mock Storage)
 
 1. Create a **private** bucket `atelier-files` in the Supabase project.
-2. Set `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` in `.env.local` (and Vercel) — same project as the DB.
+2. Set `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` (server) and `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY` (browser direct-upload) in `.env.local` (and Vercel) — same project as the DB.
 3. Apply the new migration: `DIRECT_URL=… npx drizzle-kit migrate`.
 
 ## Definition of done
