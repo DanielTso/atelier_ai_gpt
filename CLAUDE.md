@@ -73,7 +73,7 @@ Atelier Studio is a Next.js 16 App Router chat application. **Claude (Anthropic)
    - `POST /api/summarize` — Compresses older messages. Auto-triggers at 30+ messages, keeps last 10 in full. Pinned to internal `gemini-3.5-flash` (housekeeping never burns Claude tokens).
    - `POST /api/embed` — Async 768-dim embedding generation via Gemini `gemini-embedding-001`. Best-effort after each exchange.
    - `POST /api/generate-title` — Auto-generates chat title (3-6 words) after first AI response. Pinned to internal `gemini-3.5-flash`.
-   - `POST /api/extract` — Extracts text from files (PDF via `unpdf`, DOCX via `mammoth`, XLSX via `exceljs` — one tab-separated block per sheet, text/code via UTF-8). Max 10MB.
+   - `POST /api/extract` — Extracts text from files (PDF via `unpdf`, DOCX via `mammoth`, XLSX via `exceljs` — one tab-separated block per sheet, text/code via UTF-8). Max 50MB (`MAX_FILE_SIZE`, shared with `/api/documents`; large construction plans). Vercel's platform request-body limit may cap below this on deploy — C-storage direct upload is the eventual fix.
    - `POST /api/documents` — Upload + process: extract text → chunk (2000 chars, 400 overlap, sentence-aware) → embed → store. **Vision fallback (Phase C2)**: image uploads (png/jpg/jpeg/webp by extension, or `image/*` MIME) → `extractViaVisionImage` directly; PDFs whose text layer is shorter than `EXTRACTION_MIN_TEXT_CHARS` (default 100) → per-page Gemini-vision render via `extractViaVision`. Other files → `extractTextFromBuffer` unchanged.
    - `POST /api/classify` — LLM-based topic classification. Pinned to internal `gemini-3.5-flash` (tolerates a Claude `model` in the body). Cached in `chatTopics`.
 

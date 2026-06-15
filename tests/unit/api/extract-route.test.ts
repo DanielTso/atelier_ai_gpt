@@ -49,10 +49,10 @@ describe('POST /api/extract', () => {
   })
 
   it('returns 400 for oversized file', async () => {
+    const { MAX_FILE_SIZE } = await import('@/lib/fileExtraction')
     const POST = await importRoute()
-    // Create a file that reports > 10MB
-    const bigContent = new Uint8Array(10 * 1024 * 1024 + 1)
-    const file = new File([bigContent], 'large.txt', { type: 'text/plain' })
+    // Just over the limit (derived from the constant so it tracks future changes).
+    const file = new File([new Uint8Array(MAX_FILE_SIZE + 1)], 'large.txt', { type: 'text/plain' })
     const form = createFormData(file)
     const request = createRequest(form)
 
