@@ -15,6 +15,13 @@
       "when": 1780885640240,
       "tag": "0001_init_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1781494848441,
+      "tag": "0002_left_patriot",
+      "breakpoints": true
     }
   ]
 }

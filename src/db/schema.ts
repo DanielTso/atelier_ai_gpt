@@ -69,6 +69,8 @@ export const documents = pgTable('documents', {
   chunkCount: integer('chunk_count').default(0),
   status: text('status').notNull().default('processing'),
   errorMessage: text('error_message'),
+  storagePath: text('storage_path'),
+  thumbnailPath: text('thumbnail_path'),
   createdAt: createdAt(),
 }, (table) => [
   index('idx_documents_project_id').on(table.projectId),
