@@ -366,10 +366,35 @@ export async function createDocument(data: {
   }).returning()
 }
 
+export async function createUploadingDocument(data: {
+  projectId: number
+  filename: string
+  mimeType: string
+  fileSize: number
+}) {
+  return await db.insert(documents).values({
+    projectId: data.projectId,
+    filename: data.filename,
+    mimeType: data.mimeType,
+    fileSize: data.fileSize,
+    charCount: 0,
+    status: 'uploading',
+  }).returning()
+}
+
+export async function updateDocumentStoragePath(id: number, storagePath: string) {
+  return await db.update(documents).set({ storagePath }).where(eq(documents.id, id)).returning()
+}
+
+export async function getDocumentById(id: number) {
+  const [doc] = await db.select().from(documents).where(eq(documents.id, id))
+  return doc ?? null
+}
+
 export async function updateDocumentStatus(
   id: number,
-  status: 'ready' | 'error',
-  updates?: { chunkCount?: number; errorMessage?: string }
+  status: 'uploading' | 'processing' | 'ready' | 'error',
+  updates?: { chunkCount?: number; errorMessage?: string; charCount?: number; thumbnailPath?: string }
 ) {
   return await db.update(documents)
     .set({ status, ...updates })
@@ -384,7 +409,7 @@ export async function getProjectDocuments(projectId: number) {
 }
 
 export async function deleteDocument(id: number) {
-  await db.delete(documents).where(eq(documents.id, id))
+  return await db.delete(documents).where(eq(documents.id, id)).returning()
 }
 
 export async function saveDocumentChunks(chunks: {
