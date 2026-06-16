@@ -109,7 +109,8 @@ export const messageAttachments = pgTable('message_attachments', {
   chatId: integer('chat_id').references(() => chats.id, { onDelete: 'cascade' }).notNull(),
   filename: text('filename').notNull(),
   mediaType: text('media_type').notNull(),
-  dataUrl: text('data_url').notNull(),
+  dataUrl: text('data_url'),
+  storagePath: text('storage_path'),
   fileSize: integer('file_size').notNull(),
   createdAt: createdAt(),
 }, (table) => [

@@ -387,13 +387,16 @@ export default function Home() {
           { type: 'text' as const, text: m.content },
         ]
         // Append image file parts from saved attachments
+        // Skip storage-backed attachments (dataUrl is null) — resolved via signed URL in Phase C-storage
         if (msgAttachments) {
           for (const att of msgAttachments) {
-            parts.push({
-              type: 'file' as const,
-              mediaType: att.mediaType,
-              url: att.dataUrl,
-            })
+            if (att.dataUrl != null) {
+              parts.push({
+                type: 'file' as const,
+                mediaType: att.mediaType,
+                url: att.dataUrl,
+              })
+            }
           }
         }
         return {
