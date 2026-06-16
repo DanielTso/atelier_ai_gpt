@@ -3,6 +3,23 @@
 import { db } from '@/db'
 import { projects, chats, messages, settings, messageEmbeddings, personaUsage, chatTopics, documents, documentChunks, messageAttachments } from '@/db/schema'
 import { eq, desc, isNull, isNotNull, and, lte, asc, count, inArray, sql } from 'drizzle-orm'
+import { isStorageConfigured, uploadBuffer, createSignedDownloadUrl, removeObjects } from '@/lib/storage'
+
+function sanitizeAttachmentName(name: string): string {
+  return name.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/^\.+$/, '_')
+}
+
+function dataUrlToBuffer(dataUrl: string): Buffer {
+  const comma = dataUrl.indexOf(',')
+  return Buffer.from(comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl, 'base64')
+}
+
+async function removeAttachmentObjects(where: ReturnType<typeof eq>) {
+  if (!isStorageConfigured()) return
+  const rows = await db.select({ storagePath: messageAttachments.storagePath }).from(messageAttachments).where(where)
+  const paths = rows.map(r => r.storagePath).filter((p): p is string => Boolean(p))
+  if (paths.length) await removeObjects(paths).catch(e => console.warn('[attachments] storage cleanup failed:', e instanceof Error ? e.message : e))
+}
 
 const SENSITIVE_KEYS = new Set(['gemini-api-key', 'anthropic-api-key'])
 
@@ -84,6 +101,7 @@ export async function createStandaloneChat(title: string) {
 }
 
 export async function deleteChat(id: number) {
+  await removeAttachmentObjects(eq(messageAttachments.chatId, id))
   await db.delete(chats).where(eq(chats.id, id))
 }
 
@@ -96,6 +114,7 @@ export async function saveMessage(chatId: number, role: string, content: string)
 }
 
 export async function deleteMessage(id: number) {
+  await removeAttachmentObjects(eq(messageAttachments.messageId, id))
   await db.delete(messages).where(eq(messages.id, id))
 }
 
@@ -449,13 +468,27 @@ export async function saveMessageAttachments(
   attachments: { filename: string; mediaType: string; dataUrl: string; fileSize: number }[]
 ) {
   if (attachments.length === 0) return []
-  const rows = attachments.map(a => ({ messageId, chatId, ...a }))
+  if (isStorageConfigured()) {
+    const rows = await Promise.all(attachments.map(async (a, i) => {
+      const path = `attachments/${chatId}/${messageId}/${i}-${sanitizeAttachmentName(a.filename)}`
+      await uploadBuffer(path, dataUrlToBuffer(a.dataUrl), a.mediaType)
+      return { messageId, chatId, filename: a.filename, mediaType: a.mediaType, storagePath: path, dataUrl: null, fileSize: a.fileSize }
+    }))
+    return await db.insert(messageAttachments).values(rows).returning()
+  }
+  const rows = attachments.map(a => ({ messageId, chatId, filename: a.filename, mediaType: a.mediaType, dataUrl: a.dataUrl, fileSize: a.fileSize }))
   return await db.insert(messageAttachments).values(rows).returning()
 }
 
 export async function getChatAttachments(chatId: number) {
-  return await db.select().from(messageAttachments)
-    .where(eq(messageAttachments.chatId, chatId))
+  const rows = await db.select().from(messageAttachments).where(eq(messageAttachments.chatId, chatId))
+  return await Promise.all(rows.map(async (r) => {
+    let url = r.dataUrl ?? ''
+    if (r.storagePath) {
+      url = await createSignedDownloadUrl(r.storagePath).catch(() => '')
+    }
+    return { messageId: r.messageId, mediaType: r.mediaType, filename: r.filename, url }
+  }))
 }
 
 export async function getApiKeyStatus(): Promise<{ gemini: boolean; anthropic: boolean }> {
