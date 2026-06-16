@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.4.0] - 2026-06-14 — Phase C-storage Stage 2: chat attachments to Storage
+
+Spec at `docs/specs/2026-06-14-phase-c-storage-design.md`; plan at `docs/plans/2026-06-14-phase-c-storage-stage2-attachments.md`.
+
+### Added
+
+- **Dual-write in `saveMessageAttachments`**: when Storage is configured, decodes the base64 data URL and uploads attachment bytes to `attachments/<chatId>/<messageId>/<i>-<filename>` in the private Supabase Storage bucket; stores `storage_path` with `data_url` null. When Storage is NOT configured, falls back to the base64 `data_url` column — chat image attach keeps working with no Storage configured (graceful degradation; unlike documents, which require Storage).
+- **Dual-read in `getChatAttachments`**: returns `{ messageId, mediaType, filename, url }` where `url` is a short-lived signed Storage URL for `storage_path` rows, or the legacy `data_url` for old rows. No backfill of old rows — they read unchanged.
+- **Delete cleanup**: `deleteChat` and `deleteMessage` remove relevant Storage objects best-effort before the DB cascade delete.
+- **Schema migration `drizzle/0003_superb_roughhouse.sql`**: adds `storage_path text` (nullable) to `message_attachments`; makes `data_url` nullable (was NOT NULL). One or the other column is populated per row.
+- **Client read-path (`page.tsx` `loadMessages`)**: resolves `att.url` (signed URL or legacy data URL) when building `file` parts; skips any that fail to resolve. No UI change — `MessagesList` and the lightbox already consume a URL string.
+
+### Changed
+
+- `message_attachments.data_url` is now nullable (migration `0003`). Existing rows are unaffected (they retain their base64 value).
+
+### Notes
+
+- Reuses Stage 1's `src/lib/storage.ts` and all `SUPABASE_*` / `NEXT_PUBLIC_SUPABASE_*` / `SUPABASE_STORAGE_BUCKET` env vars — no new env vars.
+- **Pending USER action:** run `DIRECT_URL=… npx drizzle-kit migrate` to apply migration `0003`.
+- **Known deferral:** deleting a whole **project** cascades `message_attachments` rows via FK but does NOT sweep their Storage objects — consistent with Stage 1's orphan-sweep deferral.
+- C-storage is now **complete** (Stage 1: documents; Stage 2: attachments). Next sub-phase is **C3 (UI)**.
+
 ## [4.3.0] - 2026-06-14 — Phase C-storage Stage 1: document storage
 
 Spec at `docs/specs/2026-06-14-phase-c-storage-design.md`; plan at `docs/plans/2026-06-14-phase-c-storage-stage1-documents.md`.

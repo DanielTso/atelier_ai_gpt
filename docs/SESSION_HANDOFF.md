@@ -11,7 +11,7 @@ Turning Atelier Studio into a Claude-powered **construction-document workhorse**
 | **A** | Claude as the chat provider (Opus 4.8 default, Sonnet, Haiku; web search). Gemini kept for image gen + embeddings. | ✅ **Merged to `master`** (local) |
 | **B** | Migrate DB libSQL/SQLite → **Supabase Postgres + pgvector** (HNSW). PGlite tests. | ✅ **Merged to `master`** (local) |
 | **B2** | Advanced RAG: query-rewrite → vector top-N → MMR → LLM rerank → top-k, tunable via `ragConfig` (env). Test suite ~40s→~15s. | ✅ **Merged to `master`** (local) |
-| **C** | Extract info from construction **plans/drawings/images** (vision). C-storage: document originals + thumbnails to Supabase Storage. | 🚧 **C2 done + tagged `phase-c2`** (local). **C-storage Stage 1 done** (unit tests green, build clean); pending USER setup + live smoke. Stage 2 (attachments) not started. |
+| **C** | Extract info from construction **plans/drawings/images** (vision). C-storage: document originals + thumbnails to Supabase Storage. | 🚧 **C2 done + tagged `phase-c2`** (local). **C-storage Stages 1 + 2 done** (unit tests green, build clean); pending USER setup + live smoke. Next: C3 (UI). |
 | **D** | Excel/Word **artifacts** (report generation). | ⛔ Not started |
 
 `master` is **28 commits ahead of `origin` (nothing pushed yet)** — deploy is pending (below).
@@ -54,17 +54,25 @@ Direct-to-Supabase-Storage document uploads replacing the old inline `POST /api/
 3. Run `DIRECT_URL=… npx drizzle-kit migrate` to apply migration `0002`.
 4. **Live-Storage smoke**: upload a document through the UI, confirm `ready` status + thumbnail + signed URL works.
 
-### ⏳ C-storage Stage 2 (NOT started)
+### ✅ C-storage Stage 2 (implemented 2026-06-14)
 
-Chat-attachment migration off base64 → Supabase Storage. Needs its own brainstorm → spec → plan before implementation.
+Chat-attachment migration off base64 → Supabase Storage. Dual-write in `saveMessageAttachments`: Storage-configured path uploads bytes to `attachments/<chatId>/<messageId>/<i>-<filename>`, stores `storage_path` with `data_url` null; no-Storage path keeps base64 `data_url` as graceful degradation. Dual-read in `getChatAttachments`: signed URL for Storage rows, legacy data URL for old rows (no backfill). `deleteChat`/`deleteMessage` sweep Storage objects best-effort. Schema migration `drizzle/0003_superb_roughhouse.sql` adds `storage_path` + makes `data_url` nullable. Client `loadMessages` resolves `att.url` (signed or data URL) when rebuilding `file` parts. No UI change.
+
+**Test counts:** 5 new `tests/unit/actions/attachments-storage.test.ts`; full actions suite green.
+
+**Pending USER action:** run `DIRECT_URL=… npx drizzle-kit migrate` to apply migration `0003`.
+
+**Known deferral:** project delete does not sweep attachment Storage objects (consistent with Stage 1 orphan-sweep deferral).
+
+**C-storage is complete (Stages 1 + 2).** Env vars unchanged from Stage 1 (`SUPABASE_*` / `NEXT_PUBLIC_SUPABASE_*` / `SUPABASE_STORAGE_BUCKET`).
 
 ### ▶️ After C-storage
-C3 (UI enhancements for documents/thumbnails) — each its own brainstorm→spec→plan→build.
+**C3 (UI)** — thumbnail display in project landing page, document viewer, attachment previews. Each its own brainstorm→spec→plan→build.
 
 ## ⏳ Pending USER actions (not blocking C development; tests use PGlite)
 
 1. **Supabase deploy cutover** (Phase B went live-ready but isn't deployed): in `.env.local` set `DATABASE_URL` (Supabase pooled, :6543) + `DIRECT_URL` (direct, :5432), remove `TURSO_*`; run `DIRECT_URL=… npx drizzle-kit migrate`; set the same env in the Vercel dashboard; `git push` + `vercel --prod`. **Until then the deployed site runs the old Turso/Gemini stack.**
-2. **Supabase Storage setup** (C-storage Stage 1 prereq): create private bucket `atelier-files`; add `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` to `.env.local` and Vercel; run `DIRECT_URL=… npx drizzle-kit migrate` for migration `0002`.
+2. **Supabase Storage setup** (C-storage prereq): create private bucket `atelier-files`; add `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` to `.env.local` and Vercel; run `DIRECT_URL=… npx drizzle-kit migrate` to apply migrations `0002` (document storage) and `0003` (attachment storage_path + nullable data_url).
 3. **Smoke-test A & B** locally with real keys.
 4. Tag phases if desired (`phase-a`, `phase-b`, `phase-b2` after their smoke tests).
 
