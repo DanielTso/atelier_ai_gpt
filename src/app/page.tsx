@@ -386,17 +386,17 @@ export default function Home() {
         const parts: Array<{ type: 'text'; text: string } | { type: 'file'; mediaType: string; url: string }> = [
           { type: 'text' as const, text: m.content },
         ]
-        // Append image file parts from saved attachments
-        // Skip storage-backed attachments (dataUrl is null) — resolved via signed URL in Phase C-storage
+        // Append image file parts from saved attachments. `url` is resolved
+        // server-side: a signed Storage URL for storage-backed rows, or the
+        // legacy base64 data URL for old rows. Skip any that failed to resolve.
         if (msgAttachments) {
           for (const att of msgAttachments) {
-            if (att.dataUrl != null) {
-              parts.push({
-                type: 'file' as const,
-                mediaType: att.mediaType,
-                url: att.dataUrl,
-              })
-            }
+            if (!att.url) continue
+            parts.push({
+              type: 'file' as const,
+              mediaType: att.mediaType,
+              url: att.url,
+            })
           }
         }
         return {
