@@ -26,7 +26,6 @@ import {
   saveMessageAttachments,
   getChatAttachments,
   deleteChat,
-  deleteMessage,
 } from '@/app/actions'
 
 describe('attachment storage lifecycle', () => {
@@ -103,6 +102,31 @@ describe('attachment storage lifecycle', () => {
 
     const rows = await getChatAttachments(chatId)
     expect(rows[0].url).toBe(dataUrl)
+  })
+
+  it('mid-batch upload failure removes already-uploaded objects and throws (no orphans, no partial insert)', async () => {
+    // First upload succeeds, second throws.
+    mockUploadBuffer
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('storage 500'))
+
+    await expect(saveMessageAttachments(messageId, chatId, [
+      { filename: 'a.png', mediaType: 'image/png', dataUrl: 'data:image/png;base64,QUJD', fileSize: 3 },
+      { filename: 'b.png', mediaType: 'image/png', dataUrl: 'data:image/png;base64,QUJD', fileSize: 3 },
+    ])).rejects.toThrow('storage 500')
+
+    // The one object that did upload is cleaned up...
+    expect(mockRemoveObjects).toHaveBeenCalledWith([`attachments/${chatId}/${messageId}/0-a.png`])
+    // ...and nothing was inserted (all-or-nothing).
+    const rows = await getChatAttachments(chatId)
+    expect(rows).toHaveLength(0)
+  })
+
+  it('rejects an attachment whose decoded size exceeds the cap', async () => {
+    const huge = 'A'.repeat(Math.ceil((20 * 1024 * 1024 * 4) / 3) + 8)
+    await expect(saveMessageAttachments(messageId, chatId, [
+      { filename: 'big.png', mediaType: 'image/png', dataUrl: `data:image/png;base64,${huge}`, fileSize: huge.length },
+    ])).rejects.toThrow('Attachment too large')
   })
 
   it('configured → deleteChat calls removeObjects with the stored path', async () => {

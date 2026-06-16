@@ -9,16 +9,30 @@ function sanitizeAttachmentName(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/^\.+$/, '_')
 }
 
+// Cap decoded attachment size. User uploads are bounded by the server-action body
+// limit, but AI-generated images (saved in onFinish) are not — guard the decode so
+// an oversized data URL can't balloon server memory.
+const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024 // 20MB
+// Signed URLs for chat images live in the open page for a session; a short TTL would
+// break already-rendered <img> tags. Use a generous window (private bucket, single user).
+const ATTACHMENT_URL_TTL_SECONDS = 24 * 60 * 60 // 24h
+
 function dataUrlToBuffer(dataUrl: string): Buffer {
   const comma = dataUrl.indexOf(',')
-  return Buffer.from(comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl, 'base64')
+  const b64 = comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl
+  if (b64.length > Math.ceil((MAX_ATTACHMENT_BYTES * 4) / 3)) {
+    throw new Error('Attachment too large')
+  }
+  return Buffer.from(b64, 'base64')
 }
 
 async function removeAttachmentObjects(where: ReturnType<typeof eq>) {
   if (!isStorageConfigured()) return
   const rows = await db.select({ storagePath: messageAttachments.storagePath }).from(messageAttachments).where(where)
   const paths = rows.map(r => r.storagePath).filter((p): p is string => Boolean(p))
-  if (paths.length) await removeObjects(paths).catch(e => console.warn('[attachments] storage cleanup failed:', e instanceof Error ? e.message : e))
+  // Best-effort: the DB row (the recovery anchor) is about to be deleted, so log the
+  // exact paths if cleanup fails — they'd otherwise be untraceable orphans.
+  if (paths.length) await removeObjects(paths).catch(e => console.warn('[attachments] storage cleanup failed for paths:', paths, e instanceof Error ? e.message : e))
 }
 
 const SENSITIVE_KEYS = new Set(['gemini-api-key', 'anthropic-api-key'])
@@ -469,12 +483,23 @@ export async function saveMessageAttachments(
 ) {
   if (attachments.length === 0) return []
   if (isStorageConfigured()) {
-    const rows = await Promise.all(attachments.map(async (a, i) => {
-      const path = `attachments/${chatId}/${messageId}/${i}-${sanitizeAttachmentName(a.filename)}`
-      await uploadBuffer(path, dataUrlToBuffer(a.dataUrl), a.mediaType)
-      return { messageId, chatId, filename: a.filename, mediaType: a.mediaType, storagePath: path, dataUrl: null, fileSize: a.fileSize }
-    }))
-    return await db.insert(messageAttachments).values(rows).returning()
+    // Upload serially and track what landed, so a mid-batch failure cleans up the
+    // already-uploaded objects instead of orphaning them (the insert below is
+    // all-or-nothing, so a partial upload must not leave stray blobs).
+    const rows: typeof messageAttachments.$inferInsert[] = []
+    const uploaded: string[] = []
+    try {
+      for (const [i, a] of attachments.entries()) {
+        const path = `attachments/${chatId}/${messageId}/${i}-${sanitizeAttachmentName(a.filename)}`
+        await uploadBuffer(path, dataUrlToBuffer(a.dataUrl), a.mediaType)
+        uploaded.push(path)
+        rows.push({ messageId, chatId, filename: a.filename, mediaType: a.mediaType, storagePath: path, dataUrl: null, fileSize: a.fileSize })
+      }
+      return await db.insert(messageAttachments).values(rows).returning()
+    } catch (e) {
+      if (uploaded.length) await removeObjects(uploaded).catch(() => {})
+      throw e
+    }
   }
   const rows = attachments.map(a => ({ messageId, chatId, filename: a.filename, mediaType: a.mediaType, dataUrl: a.dataUrl, fileSize: a.fileSize }))
   return await db.insert(messageAttachments).values(rows).returning()
@@ -485,7 +510,7 @@ export async function getChatAttachments(chatId: number) {
   return await Promise.all(rows.map(async (r) => {
     let url = r.dataUrl ?? ''
     if (r.storagePath) {
-      url = await createSignedDownloadUrl(r.storagePath).catch(() => '')
+      url = await createSignedDownloadUrl(r.storagePath, ATTACHMENT_URL_TTL_SECONDS).catch(() => '')
     }
     return { messageId: r.messageId, mediaType: r.mediaType, filename: r.filename, url }
   }))
