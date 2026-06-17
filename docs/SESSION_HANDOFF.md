@@ -1,6 +1,6 @@
 # Session Handoff — Atelier Studio (read me first)
 
-_Last updated: 2026-06-17. This is the bootstrap doc for a new session. The project CLAUDE.md is the source of truth for how the code works; this doc tracks **where we are in the multi-phase build**._
+_Last updated: 2026-06-17 (D1 done). This is the bootstrap doc for a new session. The project CLAUDE.md is the source of truth for how the code works; this doc tracks **where we are in the multi-phase build**._
 
 ## The program
 
@@ -12,7 +12,7 @@ Turning Atelier Studio into a Claude-powered **construction-document workhorse**
 | **B** | Migrate DB libSQL/SQLite → **Supabase Postgres + pgvector** (HNSW). PGlite tests. | ✅ **Merged to `master`** (local) |
 | **B2** | Advanced RAG: query-rewrite → vector top-N → MMR → LLM rerank → top-k, tunable via `ragConfig` (env). Test suite ~40s→~15s. | ✅ **Merged to `master`** (local) |
 | **C** | Extract info from construction **plans/drawings/images** (vision). C-storage: document originals + thumbnails to Supabase Storage. C3: documents UI (thumbnail cards, tabbed preview, extraction badge). | ✅ **Phase C complete** (C2 + C-storage + C3). Migration `0004` applied to live Supabase. Branch: `phase-c-extraction` (unpushed). |
-| **D** | **Artifacts — Claude-style.** Assistant-generated artifacts (docs, code, HTML, diagrams) in a live preview panel, versioned + editable, with **export/download** to PDF/DOCX/XLSX/PPTX. Subsumes the original "Excel/Word report generation" idea. Reuses C-storage. | ⛔ Not started — **next up after Phase C merge**. (Scope expanded 2026-06-17.) |
+| **D** | **Artifacts — Claude-style.** Assistant-generated artifacts (docs, code, HTML, diagrams) in a live preview panel, versioned + editable, with **export/download** to PDF/DOCX/XLSX/PPTX. Subsumes the original "Excel/Word report generation" idea. Reuses C-storage. | **D1 ✅ done** (artifact engine: `generate_artifact` tool, XLSX/DOCX/PDF renderers, `artifacts` table + migration `0005`, `ArtifactCard`, `/api/artifacts`). **D2 next:** artifact workspace panel, live preview, versioning, edit/regenerate, PPTX. |
 
 `master` is **28 commits ahead of `origin` (nothing pushed yet)** — deploy is pending (below).
 
@@ -22,6 +22,22 @@ Goal: Atelier generates **artifacts** the way Claude.ai does — a self-containe
 - **Export libs (serverless-safe):** `exceljs` (**already a dependency** — Excel is nearly free), `docx` (Word), `pdf-lib` or `@react-pdf/renderer` (PDF; avoid puppeteer/Chromium), `pptxgenjs` (PowerPoint).
 - **Open design axes for the D brainstorm:** artifact *types* (doc/code/html/diagram/sheet); deterministic export vs. Claude-authored-via-**tool-call** (`generate_artifact`); trigger (chat tool vs. UI export menu); the **preview-panel UX** (versioning, edit/regenerate); persistence model (new table vs. reuse documents/Storage).
 - **Build order:** still its own brainstorm → spec → plan after **C3 (UI)**; do not start before then. Sequencing unchanged.
+
+## ✅ Phase D1 — DONE (2026-06-17, branch `phase-c-extraction`)
+
+**Artifact engine:** Claude can now generate downloadable XLSX, DOCX, and PDF files via a `generate_artifact` tool call during a chat turn.
+
+- **Tool** (`src/lib/artifacts/tool.ts`): AI SDK v6 `tool()` wired into `/api/chat` for Claude models when `chatId` is present and Storage is configured. Claude calls it with `{ type, title, format, content }`; `execute` renders, uploads to Storage, persists an `artifacts` row, returns a signed `downloadUrl`.
+- **Renderers** (`src/lib/artifacts/`): `toXlsx.ts` (exceljs), `toDocx.ts` (docx), `toPdf.ts` (pdf-lib), dispatched by `render.ts`. Types in `types.ts`.
+- **Schema**: `artifacts` table — migration `drizzle/0005_lyrical_onslaught.sql` (`id, chat_id, project_id, type, title, storage_path, status, error_message, created_at` + index on `chat_id`). **Applied to live Supabase.** Migrations `0000`–`0005` are current.
+- **Actions**: `createArtifact`, `getArtifactById`, `getChatArtifacts`, `updateArtifactStoragePath`, `deleteArtifact`.
+- **Route** `GET /api/artifacts?chatId=` (signed URLs) + `DELETE /api/artifacts?id=`.
+- **Client**: `ArtifactSummary` in `src/types.ts`; `ArtifactCard` renders below assistant messages; `page.tsx` fetches + re-fetches after each response.
+- **New deps**: `docx`, `pdf-lib`. `exceljs` already present.
+- **Verification**: lint 0 errors / 30 warnings (baseline), build clean, **215 tests pass** (new: 4 render, 2 tool, 2 actions, 2 route, 2 ArtifactCard).
+- **Artifacts keyed by chat** (D2 = per-message pinning). Chat-driven live smoke best done in-browser with real Anthropic key + Storage.
+
+**D2 next:** artifact workspace panel, live preview, versioning, edit/regenerate, PPTX.
 
 ## Phase C — COMPLETE (branch `phase-c-extraction`)
 
@@ -84,7 +100,7 @@ Thumbnail `DocumentCard` grid on both document surfaces (`ProjectDocumentsDialog
 ## ⏳ Pending USER actions (not blocking C development; tests use PGlite)
 
 1. **Supabase deploy cutover** (Phase B went live-ready but isn't deployed): in `.env.local` set `DATABASE_URL` (Supabase pooled, :6543) + `DIRECT_URL` (direct, :5432), remove `TURSO_*`; run `DIRECT_URL=… npx drizzle-kit migrate`; set the same env in the Vercel dashboard; `git push` + `vercel --prod`. **Until then the deployed site runs the old Turso/Gemini stack.**
-2. **Supabase Storage setup** (C-storage prereq): create private bucket `atelier-files`; add `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` to `.env.local` and Vercel; run `DIRECT_URL=… npx drizzle-kit migrate` to apply migrations `0002` (document storage) and `0003` (attachment storage_path + nullable data_url).
+2. **Supabase Storage setup** (C-storage prereq): create private bucket `atelier-files`; add `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` to `.env.local` and Vercel; run `DIRECT_URL=… npx drizzle-kit migrate` to apply migrations `0002` (document storage), `0003` (attachment storage_path + nullable data_url), and `0005` (artifacts table — already applied to live Supabase).
 3. **Smoke-test A & B** locally with real keys.
 4. Tag phases if desired (`phase-a`, `phase-b`, `phase-b2` after their smoke tests).
 

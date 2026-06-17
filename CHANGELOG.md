@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.6.0] - 2026-06-17 — Phase D1: artifact engine — Claude-generated downloadable XLSX/DOCX/PDF
+
+Spec at `docs/specs/2026-06-17-phase-d1-artifact-engine-design.md`; plan at `docs/plans/2026-06-17-phase-d1-artifact-engine.md`.
+
+### Added
+
+- **`generate_artifact` tool** (`src/lib/artifacts/tool.ts`) — AI SDK v6 `tool()` definition wired into `POST /api/chat` for Claude models when a `chatId` is present and Storage is configured. Claude calls it with `{ type: 'xlsx'|'docx'|'pdf', title, format: 'markdown'|'sheets', content }`; `execute` renders the file, uploads to `artifacts/<projectId|standalone>/<id>/<slug>.<ext>` in the `atelier-files` bucket, persists an `artifacts` row, and returns `{ artifactId, title, type, downloadUrl }`.
+- **Renderers** (`src/lib/artifacts/`): `toXlsx.ts` (exceljs), `toDocx.ts` (docx; Markdown → headings/paragraphs/bullets), `toPdf.ts` (pdf-lib; Markdown → clean wrapped-text PDF), dispatched by `render.ts` `renderArtifact(type, title, content)`. Types in `types.ts` (`ArtifactType`, `SheetSpec`, `RenderedArtifact`).
+- **`artifacts` table** — migration `drizzle/0005_lyrical_onslaught.sql`: `id, chat_id, project_id, type, title, storage_path, status, error_message, created_at` + index on `chat_id`. Applied to live Supabase.
+- **Server actions**: `createArtifact`, `getArtifactById`, `getChatArtifacts` (rows + signed `downloadUrl`), `updateArtifactStoragePath`, `deleteArtifact` in `src/app/actions.ts`.
+- **`GET /api/artifacts?chatId=`** — returns all chat artifacts with short-lived signed `downloadUrl`. **`DELETE /api/artifacts?id=`** — removes the Storage object then the row (`src/app/api/artifacts/route.ts`).
+- **`ArtifactSummary` type** in `src/types.ts`; **`ArtifactCard`** (`src/components/chat/ArtifactCard.tsx`) — icon by type, title, type label, Download link. Rendered by `MessagesList` (new `artifacts?` prop).
+- **Client load + re-fetch** in `page.tsx`: artifacts fetched from `/api/artifacts?chatId=` on chat open and re-fetched after each assistant response.
+- **New deps**: `docx`, `pdf-lib` (pure-JS). `exceljs` already present.
+
+### Notes
+
+- Verification: lint 0 errors / 30 warnings (baseline — zero new), build clean, full suite **215 tests pass** (new: 4 render, 2 tool, 2 actions, 2 route, 2 ArtifactCard).
+- Migration `0005` applied to live Supabase. Migrations `0000`–`0005` are current.
+- Artifacts are keyed by chat; per-message pinning is D2. **D2 next: artifact workspace panel, live preview, versioning, edit/regenerate, PPTX.**
+- Chat-driven live smoke (ask Claude to generate a schedule) is best done in-browser with the real Anthropic key + Storage configured.
+
 ## [4.5.0] - 2026-06-17 — Phase C3: documents UI — thumbnail cards, tabbed preview, extraction badge
 
 Spec at `docs/specs/2026-06-17-phase-c3-documents-ui-design.md`; plan at `docs/plans/2026-06-17-phase-c3-documents-ui.md`. **This release closes Phase C (C2 + C-storage + C3).**
