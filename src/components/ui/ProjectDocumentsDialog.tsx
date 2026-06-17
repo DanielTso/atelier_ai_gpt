@@ -2,22 +2,13 @@
 
 import { memo, useState, useEffect, useRef, useCallback } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
-import { X, FileText, Upload, Trash2, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
+import { X, FileText, Upload, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { formatFileSize, getFileTypeBadge } from '@/lib/fileUtils'
 import { toast } from 'sonner'
-
-interface Document {
-  id: number
-  filename: string
-  mimeType: string
-  fileSize: number
-  charCount: number
-  chunkCount: number | null
-  status: string
-  errorMessage: string | null
-  createdAt: Date | null
-}
+import type { DocumentSummary } from '@/types'
+import { useDocumentUpload } from '@/hooks/useDocumentUpload'
+import { DocumentCard } from '@/components/chat/DocumentCard'
+import { DocumentPreviewDialog } from '@/components/ui/DocumentPreviewDialog'
 
 interface ProjectDocumentsDialogProps {
   open: boolean
@@ -32,9 +23,9 @@ export const ProjectDocumentsDialog = memo(function ProjectDocumentsDialog({
   projectId,
   projectName,
 }: ProjectDocumentsDialogProps) {
-  const [documents, setDocuments] = useState<Document[]>([])
-  const [uploading, setUploading] = useState(false)
+  const [documents, setDocuments] = useState<DocumentSummary[]>([])
   const [loading, setLoading] = useState(true)
+  const [previewDoc, setPreviewDoc] = useState<DocumentSummary | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [dragOver, setDragOver] = useState(false)
 
@@ -59,38 +50,14 @@ export const ProjectDocumentsDialog = memo(function ProjectDocumentsDialog({
     }
   }, [open, loadDocuments])
 
+  const { upload, uploading } = useDocumentUpload()
   const handleUpload = async (file: File) => {
-    setUploading(true)
     try {
-      // 1. Mint a signed upload URL + create the documents row.
-      const urlRes = await fetch('/api/documents/upload-url', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ projectId, filename: file.name, contentType: file.type || 'application/octet-stream', size: file.size }),
-      })
-      if (!urlRes.ok) throw new Error((await urlRes.json()).error || 'Upload failed')
-      const { documentId, path, token, bucket } = await urlRes.json()
-
-      // 2. Upload the bytes straight to Storage (bypasses the function body limit).
-      const { getBrowserSupabase } = await import('@/lib/storageClient')
-      const { error: upErr } = await getBrowserSupabase().storage.from(bucket).uploadToSignedUrl(path, token, file)
-      if (upErr) throw upErr
-
-      // 3. Kick off server-side processing.
-      const procRes = await fetch('/api/documents/process', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ documentId }),
-      })
-      if (!procRes.ok) throw new Error((await procRes.json()).error || 'Processing failed')
-
+      await upload(file, projectId)
       toast.success(`Uploaded and indexed: ${file.name}`)
       await loadDocuments()
     } catch (e) {
-      const message = e instanceof Error ? e.message : 'Upload failed'
-      toast.error(message)
-    } finally {
-      setUploading(false)
+      toast.error(e instanceof Error ? e.message : 'Upload failed')
     }
   }
 
@@ -184,50 +151,16 @@ export const ProjectDocumentsDialog = memo(function ProjectDocumentsDialog({
                 No documents yet. Upload files to enable document-based context.
               </div>
             ) : (
-              documents.map(doc => {
-                const badge = getFileTypeBadge(doc.mimeType, doc.filename)
-                return (
-                  <div
+              <div className="grid grid-cols-2 gap-2.5">
+                {documents.map(doc => (
+                  <DocumentCard
                     key={doc.id}
-                    className="flex items-center gap-3 p-3 rounded-lg bg-white/[0.03] hover:bg-white/[0.06] transition-colors group"
-                  >
-                    {/* Status icon */}
-                    <div className="shrink-0">
-                      {doc.status === 'processing' && <Loader2 className="h-4 w-4 text-amber-400 animate-spin" />}
-                      {doc.status === 'ready' && <CheckCircle2 className="h-4 w-4 text-green-400" />}
-                      {doc.status === 'error' && <AlertCircle className="h-4 w-4 text-red-400" />}
-                    </div>
-
-                    {/* File info */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm truncate">{doc.filename}</span>
-                        <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full shrink-0", badge.className)}>
-                          {badge.label}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
-                        <span>{formatFileSize(doc.fileSize)}</span>
-                        {doc.status === 'ready' && (
-                          <span>{doc.chunkCount} chunk{doc.chunkCount !== 1 ? 's' : ''}</span>
-                        )}
-                        {doc.status === 'error' && (
-                          <span className="text-red-400 truncate">{doc.errorMessage || 'Processing failed'}</span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Delete button */}
-                    <button
-                      onClick={() => handleDelete(doc.id, doc.filename)}
-                      className="p-1.5 rounded hover:bg-white/10 text-muted-foreground hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 shrink-0"
-                      title="Delete document"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                )
-              })
+                    doc={doc}
+                    onOpen={setPreviewDoc}
+                    onDelete={(d) => handleDelete(d.id, d.filename)}
+                  />
+                ))}
+              </div>
             )}
           </div>
 
@@ -237,6 +170,11 @@ export const ProjectDocumentsDialog = memo(function ProjectDocumentsDialog({
               {totalChunks} chunk{totalChunks !== 1 ? 's' : ''} indexed across {readyDocs} document{readyDocs !== 1 ? 's' : ''}
             </div>
           )}
+          <DocumentPreviewDialog
+            open={previewDoc !== null}
+            onOpenChange={(o) => { if (!o) setPreviewDoc(null) }}
+            document={previewDoc}
+          />
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
