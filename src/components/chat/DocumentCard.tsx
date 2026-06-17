@@ -20,6 +20,7 @@ export const DocumentCard = memo(function DocumentCard({ doc, onOpen, onDelete }
     >
       <div className="h-24 bg-muted/40 flex items-center justify-center overflow-hidden">
         {doc.thumbnailUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element -- signed Supabase URL, not a static asset
           <img src={doc.thumbnailUrl} alt={doc.filename} className="h-full w-full object-cover" />
         ) : (
           <span className={cn('text-xs font-semibold px-2 py-1 rounded-full', badge.className)}>{badge.label}</span>
