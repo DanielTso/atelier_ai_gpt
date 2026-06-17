@@ -4,22 +4,24 @@ const mockRender = vi.fn()
 const mockUpload = vi.fn()
 const mockCreate = vi.fn()
 const mockSigned = vi.fn()
+const mockRemove = vi.fn()
 
 async function load() {
   vi.resetModules()
   vi.doMock('@/lib/artifacts/render', () => ({ renderArtifact: mockRender }))
-  vi.doMock('@/lib/storage', () => ({ uploadBuffer: mockUpload, createSignedDownloadUrl: mockSigned, isStorageConfigured: () => true }))
+  vi.doMock('@/lib/storage', () => ({ uploadBuffer: mockUpload, createSignedDownloadUrl: mockSigned, removeObjects: mockRemove, isStorageConfigured: () => true }))
   vi.doMock('@/app/actions', () => ({ createArtifact: mockCreate, updateArtifactStoragePath: vi.fn() }))
   return (await import('@/lib/artifacts/tool')).createGenerateArtifactTool
 }
 
 describe('generate_artifact tool', () => {
   beforeEach(() => {
-    [mockRender, mockUpload, mockCreate, mockSigned].forEach(f => f.mockReset())
+    [mockRender, mockUpload, mockCreate, mockSigned, mockRemove].forEach(f => f.mockReset())
     mockRender.mockResolvedValue({ buffer: Buffer.from('PK..'), contentType: 'app/xlsx', ext: 'xlsx' })
     mockUpload.mockResolvedValue(undefined)
     mockCreate.mockResolvedValue([{ id: 9 }])
     mockSigned.mockResolvedValue('signed:url')
+    mockRemove.mockResolvedValue(undefined)
   })
 
   it('renders, uploads, persists, returns a downloadable result', async () => {
@@ -32,11 +34,35 @@ describe('generate_artifact tool', () => {
     expect(out).toEqual({ artifactId: 9, title: 'Schedule', type: 'xlsx', downloadUrl: 'signed:url' })
   })
 
-  it('returns an error result when rendering throws', async () => {
+  it('persists only after a successful upload (real path, no pending sentinel)', async () => {
+    const make = await load()
+    const tool = make({ chatId: 3, projectId: 1 })
+    await tool.execute!({ type: 'xlsx', title: 'Schedule', format: 'sheets', content: [{ name: 'T', rows: [['a']] }] }, {} as never)
+    // upload happens before the row is created, and the row gets the real (non-'pending') path
+    expect(mockUpload.mock.invocationCallOrder[0]).toBeLessThan(mockCreate.mock.invocationCallOrder[0])
+    const createdPath = mockCreate.mock.calls[0][0].storagePath as string
+    expect(createdPath).not.toBe('pending')
+    expect(createdPath).toMatch(/^artifacts\/1\/.+\/schedule\.xlsx$/)
+    expect(mockUpload.mock.calls[0][0]).toBe(createdPath) // uploaded to the same path that was persisted
+  })
+
+  it('returns an error result when rendering throws (no upload, no row)', async () => {
     mockRender.mockRejectedValue(new Error('bad content'))
     const make = await load()
     const tool = make({ chatId: 3, projectId: 1 })
     const out = await tool.execute!({ type: 'pdf', title: 'R', format: 'markdown', content: 'x' }, {} as never)
     expect(out).toEqual({ error: expect.stringContaining('Failed') })
+    expect(mockUpload).not.toHaveBeenCalled()
+    expect(mockCreate).not.toHaveBeenCalled()
+  })
+
+  it('removes the uploaded object if the DB insert fails (no orphan blob)', async () => {
+    mockCreate.mockRejectedValue(new Error('db down'))
+    const make = await load()
+    const tool = make({ chatId: 3, projectId: 1 })
+    const out = await tool.execute!({ type: 'xlsx', title: 'Schedule', format: 'sheets', content: [{ name: 'T', rows: [['a']] }] }, {} as never)
+    expect(out).toEqual({ error: expect.stringContaining('Failed') })
+    expect(mockUpload).toHaveBeenCalled()
+    expect(mockRemove).toHaveBeenCalledWith([mockUpload.mock.calls[0][0]])
   })
 })

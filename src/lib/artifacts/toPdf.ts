@@ -32,7 +32,7 @@ export async function toPdf(markdown: string): Promise<Buffer> {
 
   for (const raw of markdown.split('\n')) {
     const line = raw.trimEnd()
-    if (!line.trim()) { y -= 8; continue }
+    if (!line.trim()) { ensure(8); y -= 8; continue }
     const h = /^(#{1,3})\s+(.*)$/.exec(line)
     if (h) { const size = h[1].length === 1 ? 20 : h[1].length === 2 ? 16 : 13; y -= 4; draw(h[2], bold, size, 6); continue }
     const b = /^[-*]\s+(.*)$/.exec(line)

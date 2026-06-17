@@ -1,7 +1,8 @@
 import { tool } from 'ai'
 import { z } from 'zod'
+import { randomUUID } from 'node:crypto'
 import { renderArtifact } from './render'
-import { uploadBuffer, createSignedDownloadUrl } from '@/lib/storage'
+import { uploadBuffer, createSignedDownloadUrl, removeObjects } from '@/lib/storage'
 import { createArtifact } from '@/app/actions'
 import type { ArtifactType } from './types'
 
@@ -25,12 +26,17 @@ export function createGenerateArtifactTool(ctx: { chatId: number; projectId: num
     execute: async ({ type, title, content }) => {
       try {
         const { buffer, contentType, ext } = await renderArtifact(type as ArtifactType, title, content)
-        const [row] = await createArtifact({ chatId: ctx.chatId, projectId: ctx.projectId, type, title, storagePath: 'pending' })
-        const path = `artifacts/${ctx.projectId ?? 'standalone'}/${row.id}/${slug(title)}.${ext}`
+        // Upload FIRST to a uuid-keyed path, then persist the row with the real
+        // path — so a failure never leaves an orphan row with a broken storage path.
+        const path = `artifacts/${ctx.projectId ?? 'standalone'}/${randomUUID()}/${slug(title)}.${ext}`
         await uploadBuffer(path, buffer, contentType)
-        // Re-point storage path now that we know the artifact id.
-        const { updateArtifactStoragePath } = await import('@/app/actions')
-        await updateArtifactStoragePath(row.id, path)
+        let row
+        try {
+          ;[row] = await createArtifact({ chatId: ctx.chatId, projectId: ctx.projectId, type, title, storagePath: path })
+        } catch (e) {
+          await removeObjects([path]).catch(() => {}) // don't leave an orphan object if the insert fails
+          throw e
+        }
         const downloadUrl = await createSignedDownloadUrl(path)
         return { artifactId: row.id, title, type, downloadUrl }
       } catch (e) {
