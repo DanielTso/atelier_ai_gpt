@@ -9,7 +9,7 @@ let client: PGlite | null = null
 export let testDb: ReturnType<typeof drizzle<typeof schema>>
 
 const TABLES = [
-  'chat_topics', 'message_attachments', 'persona_usage', 'document_chunks',
+  'artifacts', 'chat_topics', 'message_attachments', 'persona_usage', 'document_chunks',
   'documents', 'message_embeddings', 'messages', 'chats', 'projects', 'settings',
 ]
 

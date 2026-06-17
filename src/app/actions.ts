@@ -1,7 +1,7 @@
 'use server'
 
 import { db } from '@/db'
-import { projects, chats, messages, settings, messageEmbeddings, personaUsage, chatTopics, documents, documentChunks, messageAttachments } from '@/db/schema'
+import { projects, chats, messages, settings, messageEmbeddings, personaUsage, chatTopics, documents, documentChunks, messageAttachments, artifacts } from '@/db/schema'
 import { eq, desc, isNull, isNotNull, and, lte, asc, count, inArray, sql } from 'drizzle-orm'
 import { isStorageConfigured, uploadBuffer, createSignedDownloadUrl, removeObjects } from '@/lib/storage'
 
@@ -520,4 +520,36 @@ export async function getApiKeyStatus(): Promise<{ gemini: boolean; anthropic: b
   const { getGeminiApiKey, getAnthropicApiKey } = await import('@/lib/settings')
   const [gemini, anthropic] = await Promise.all([getGeminiApiKey(), getAnthropicApiKey()])
   return { gemini: Boolean(gemini), anthropic: Boolean(anthropic) }
+}
+
+// ── Artifact Actions ──
+
+export async function createArtifact(data: {
+  chatId: number; projectId: number | null; type: string; title: string; storagePath: string; status?: string; errorMessage?: string
+}) {
+  return await db.insert(artifacts).values({
+    chatId: data.chatId, projectId: data.projectId ?? null, type: data.type, title: data.title,
+    storagePath: data.storagePath, status: data.status ?? 'ready', errorMessage: data.errorMessage ?? null,
+  }).returning()
+}
+
+export async function getArtifactById(id: number) {
+  const [a] = await db.select().from(artifacts).where(eq(artifacts.id, id))
+  return a ?? null
+}
+
+export async function getChatArtifacts(chatId: number) {
+  const rows = await db.select().from(artifacts).where(eq(artifacts.chatId, chatId)).orderBy(asc(artifacts.createdAt))
+  return await Promise.all(rows.map(async (r) => ({
+    id: r.id, chatId: r.chatId, type: r.type, title: r.title, status: r.status, createdAt: r.createdAt,
+    downloadUrl: r.storagePath ? await createSignedDownloadUrl(r.storagePath).catch(() => null) : null,
+  })))
+}
+
+export async function deleteArtifact(id: number) {
+  return await db.delete(artifacts).where(eq(artifacts.id, id)).returning()
+}
+
+export async function updateArtifactStoragePath(id: number, storagePath: string) {
+  return await db.update(artifacts).set({ storagePath }).where(eq(artifacts.id, id)).returning()
 }
