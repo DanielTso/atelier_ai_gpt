@@ -6,18 +6,12 @@ import { X, FileText, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatFileSize, getFileTypeBadge } from '@/lib/fileUtils'
 import { getDocumentChunks } from '@/app/actions'
+import type { DocumentSummary } from '@/types'
 
 interface DocumentPreviewDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  document: {
-    id: number
-    filename: string
-    mimeType: string
-    fileSize: number
-    chunkCount: number | null
-    status: string
-  } | null
+  document: DocumentSummary | null
 }
 
 export const DocumentPreviewDialog = memo(function DocumentPreviewDialog({
@@ -27,6 +21,15 @@ export const DocumentPreviewDialog = memo(function DocumentPreviewDialog({
 }: DocumentPreviewDialogProps) {
   const [content, setContent] = useState('')
   const [loading, setLoading] = useState(false)
+
+  // hasVisual must be computed before hooks — safe with optional chaining when doc is null
+  const hasVisual = !!doc && !!doc.url && (doc.mimeType.startsWith('image/') || doc.mimeType === 'application/pdf')
+
+  const [tab, setTab] = useState<'preview' | 'text'>('preview')
+
+  useEffect(() => {
+    setTab(hasVisual ? 'preview' : 'text')
+  }, [hasVisual, doc?.id])
 
   useEffect(() => {
     if (!open || !doc) return
@@ -75,16 +78,29 @@ export const DocumentPreviewDialog = memo(function DocumentPreviewDialog({
             )}
           </div>
 
-          {/* Content */}
-          <div className="flex-1 overflow-y-auto min-h-0 rounded-lg bg-white/[0.03] border border-white/5 p-4">
-            {loading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-              </div>
+          {/* Tab strip */}
+          <div role="tablist" className="flex items-center gap-1 mb-3 text-sm">
+            {hasVisual && (
+              <button role="tab" aria-selected={tab === 'preview'} onClick={() => setTab('preview')}
+                className={cn('px-3 py-1.5 rounded-lg', tab === 'preview' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/50')}>Preview</button>
+            )}
+            <button role="tab" aria-selected={tab === 'text'} onClick={() => setTab('text')}
+              className={cn('px-3 py-1.5 rounded-lg', tab === 'text' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/50')}>Extracted text</button>
+            {doc.url && <a href={doc.url} target="_blank" rel="noreferrer" className="ml-auto px-3 py-1.5 text-xs text-primary hover:underline">Open original ↗</a>}
+          </div>
+
+          {/* Content panel */}
+          <div className="flex-1 overflow-y-auto min-h-0 rounded-lg bg-white/[0.03] border border-white/5">
+            {hasVisual && tab === 'preview' ? (
+              doc.mimeType.startsWith('image/')
+                ? <img src={doc.url!} alt={doc.filename} className="w-full h-full object-contain" />
+                : <iframe src={doc.url!} title={doc.filename} className="w-full h-full min-h-[60vh]" />
             ) : (
-              <pre className="text-sm text-foreground/90 whitespace-pre-wrap break-words font-mono leading-relaxed">
-                {content}
-              </pre>
+              <div className="p-4">
+                {loading
+                  ? <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                  : <pre className="text-sm text-foreground/90 whitespace-pre-wrap break-words font-mono leading-relaxed">{content}</pre>}
+              </div>
             )}
           </div>
         </Dialog.Content>
