@@ -41,6 +41,7 @@ yarn-error.log*
 
 # claude code local agent state
 .claude/
+.superpowers/
 
 # typescript
 *.tsbuildinfo
