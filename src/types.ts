@@ -19,3 +19,13 @@ export interface DocumentSummary {
   thumbnailUrl: string | null
   extractionMethod: 'text' | 'vision' | null
 }
+
+export interface ArtifactSummary {
+  id: number
+  chatId: number
+  type: string
+  title: string
+  status: string
+  downloadUrl: string | null
+  createdAt: Date | null
+}
