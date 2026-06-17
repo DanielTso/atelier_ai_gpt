@@ -71,6 +71,7 @@ export const documents = pgTable('documents', {
   errorMessage: text('error_message'),
   storagePath: text('storage_path'),
   thumbnailPath: text('thumbnail_path'),
+  extractionMethod: text('extraction_method'),
   createdAt: createdAt(),
 }, (table) => [
   index('idx_documents_project_id').on(table.projectId),
