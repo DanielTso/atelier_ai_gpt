@@ -410,7 +410,7 @@ export async function getDocumentById(id: number) {
 export async function updateDocumentStatus(
   id: number,
   status: 'uploading' | 'processing' | 'ready' | 'error',
-  updates?: { chunkCount?: number; errorMessage?: string; charCount?: number; thumbnailPath?: string }
+  updates?: { chunkCount?: number; errorMessage?: string; charCount?: number; thumbnailPath?: string; extractionMethod?: 'text' | 'vision' }
 ) {
   return await db.update(documents)
     .set({ status, ...updates })

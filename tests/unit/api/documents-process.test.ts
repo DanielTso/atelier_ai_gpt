@@ -65,6 +65,7 @@ describe('POST /api/documents/process', () => {
     expect(m.extractViaVision).not.toHaveBeenCalled()
     expect(m.uploadBuffer).toHaveBeenCalled()
     expect(m.updateDocumentStatus).toHaveBeenCalledWith(7, 'ready', expect.objectContaining({ chunkCount: 1, thumbnailPath: expect.stringContaining('thumb.webp') }))
+    expect(m.updateDocumentStatus).toHaveBeenCalledWith(7, 'ready', expect.objectContaining({ extractionMethod: 'text' }))
   })
 
   it('thin-text PDF falls back to vision', async () => {
@@ -87,6 +88,7 @@ describe('POST /api/documents/process', () => {
     expect(m.extractViaVisionImage).toHaveBeenCalled()
     expect(m.generateImageThumbnail).toHaveBeenCalled()
     expect(m.extractTextFromBuffer).not.toHaveBeenCalled()
+    expect(m.updateDocumentStatus).toHaveBeenCalledWith(9, 'ready', expect.objectContaining({ extractionMethod: 'vision' }))
   })
 
   it('thumbnail failure is non-fatal (still ready, no thumbnailPath)', async () => {
@@ -107,6 +109,15 @@ describe('POST /api/documents/process', () => {
     const res = await POST(req(12) as never)
     expect(res.status).toBe(400)
     expect(m.updateDocumentStatus).toHaveBeenCalledWith(12, 'error', expect.objectContaining({ errorMessage: expect.any(String) }))
+  })
+
+  it('thin-text PDF that falls back to vision records extractionMethod vision', async () => {
+    m.getDocumentById.mockResolvedValue({ id: 14, projectId: 1, filename: 'scan.pdf', mimeType: 'application/pdf', storagePath: 'p' })
+    m.extractTextFromBuffer.mockResolvedValue('')
+    m.extractViaVision.mockResolvedValue('V'.repeat(300))
+    const POST = await importRoute()
+    await POST(req(14) as never)
+    expect(m.updateDocumentStatus).toHaveBeenCalledWith(14, 'ready', expect.objectContaining({ extractionMethod: 'vision' }))
   })
 
   it('extractor throwing (corrupt file) → error status + 500, not stuck processing', async () => {

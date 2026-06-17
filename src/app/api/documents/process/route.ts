@@ -38,14 +38,19 @@ export async function POST(request: NextRequest) {
     }
 
     let textContent = ''
+    let extractionMethod: 'text' | 'vision' = 'text'
     try {
       if (isImage) {
         textContent = await extractViaVisionImage(buffer, doc.mimeType)
+        extractionMethod = 'vision'
       } else {
         textContent = await extractTextFromBuffer(buffer, ext)
         if (ext === 'pdf' && textContent.trim().length < MIN_TEXT) {
           const vision = await extractViaVision(buffer)
-          if (vision.trim().length > textContent.trim().length) textContent = vision
+          if (vision.trim().length > textContent.trim().length) {
+            textContent = vision
+            extractionMethod = 'vision'
+          }
         }
       }
     } catch (e) {
@@ -90,7 +95,7 @@ export async function POST(request: NextRequest) {
       console.warn(`[documents/process] ${results.length - embedded}/${saved.length} chunks failed to embed`)
     }
     const status = embedded === 0 && saved.length > 0 ? 'error' : 'ready'
-    await updateDocumentStatus(doc.id, status, { chunkCount: saved.length, charCount: textContent.length, thumbnailPath })
+    await updateDocumentStatus(doc.id, status, { chunkCount: saved.length, charCount: textContent.length, thumbnailPath, extractionMethod })
 
     return NextResponse.json({ documentId: doc.id, status, chunkCount: saved.length, charCount: textContent.length })
   } catch (error) {
