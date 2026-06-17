@@ -4,6 +4,8 @@ import { retrieveContext } from '@/lib/retrieval';
 import { createProvider } from '@/lib/providers';
 import { apiError } from '@/lib/errors';
 import { chatRequestSchema } from '@/lib/validation';
+import { createGenerateArtifactTool } from '@/lib/artifacts/tool';
+import { isStorageConfigured } from '@/lib/storage';
 
 // Configuration for hybrid context management
 const RECENT_MESSAGES_LIMIT = 20; // Keep last N messages in full detail
@@ -45,13 +47,16 @@ export async function POST(req: Request) {
     const modelName = model || 'claude-opus-4-8';
 
     // Create provider (handles virtual model resolution, tools, and options)
-    const { model: selectedModel, tools: googleTools, providerOptions } = await createProvider(modelName);
+    const { model: selectedModel, tools: providerTools, providerOptions } = await createProvider(modelName);
 
     // Build context with hybrid approach: system prompt + semantic context + summary + recent messages
     let contextMessages = messages as UIMessage[];
     let systemPrompt: string | undefined;
     let semanticContext: string | null = null;
     let documentContext: string | null = null;
+    // Start with provider tools (web_search for Claude, google_search for Gemini, undefined for image)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let tools: Record<string, any> | undefined = providerTools;
 
     if (chatId) {
       const chat = await getChatWithContext(chatId);
@@ -78,6 +83,12 @@ export async function POST(req: Request) {
           : contextMessages;
         contextMessages = [...contextPrefix, ...recentMessages];
       }
+
+      // 4. Merge generate_artifact tool for Claude when Storage is configured
+      if (modelName.startsWith('claude') && isStorageConfigured()) {
+        const projectId = chat?.projectId ?? null;
+        tools = { ...(providerTools ?? {}), generate_artifact: createGenerateArtifactTool({ chatId, projectId }) };
+      }
     }
 
     // Convert UIMessage to ModelMessage format for streamText
@@ -87,7 +98,7 @@ export async function POST(req: Request) {
       model: selectedModel,
       system: systemPrompt, // System instruction is always first, never trimmed
       messages: modelMessages,
-      ...(googleTools && { tools: googleTools }),
+      ...(tools && { tools }),
       ...(providerOptions && { providerOptions }),
     });
 
