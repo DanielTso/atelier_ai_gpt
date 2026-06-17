@@ -78,13 +78,15 @@ export const DocumentPreviewDialog = memo(function DocumentPreviewDialog({
           </div>
 
           {/* Tab strip */}
-          <div role="tablist" className="flex items-center gap-1 mb-3 text-sm">
-            {hasVisual && (
-              <button role="tab" aria-selected={activeTab === 'preview'} onClick={() => setTab('preview')}
-                className={cn('px-3 py-1.5 rounded-lg', activeTab === 'preview' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/50')}>Preview</button>
-            )}
-            <button role="tab" aria-selected={activeTab === 'text'} onClick={() => setTab('text')}
-              className={cn('px-3 py-1.5 rounded-lg', activeTab === 'text' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/50')}>Extracted text</button>
+          <div className="flex items-center gap-2 mb-3 text-sm">
+            <div role="tablist" className="flex items-center gap-1">
+              {hasVisual && (
+                <button role="tab" aria-selected={activeTab === 'preview'} onClick={() => setTab('preview')}
+                  className={cn('px-3 py-1.5 rounded-lg', activeTab === 'preview' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/50')}>Preview</button>
+              )}
+              <button role="tab" aria-selected={activeTab === 'text'} onClick={() => setTab('text')}
+                className={cn('px-3 py-1.5 rounded-lg', activeTab === 'text' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/50')}>Extracted text</button>
+            </div>
             {doc.url && <a href={doc.url} target="_blank" rel="noreferrer" className="ml-auto px-3 py-1.5 text-xs text-primary hover:underline">Open original ↗</a>}
           </div>
 

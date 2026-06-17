@@ -66,6 +66,7 @@ export const ProjectLandingPage = memo(function ProjectLandingPage({
 
   const { upload, uploading } = useDocumentUpload()
   const handleUpload = async (file: File) => {
+    if (uploading) return // guard against a second concurrent upload (button or drop)
     try {
       await upload(file, project.id)
       toast.success(`Uploaded and indexed: ${file.name}`)
@@ -195,7 +196,7 @@ export const ProjectLandingPage = memo(function ProjectLandingPage({
             ref={fileInputRef}
             type="file"
             className="hidden"
-            accept=".pdf,.docx,.txt,.md,.csv,.py,.js,.ts,.tsx,.jsx,.json,.html,.css,.java,.c,.cpp,.go,.rs,.rb,.php,.sh,.yaml,.yml,.xml,.sql,.png,.jpg,.jpeg,.webp"
+            accept=".pdf,.docx,.xlsx,.txt,.md,.csv,.py,.js,.ts,.tsx,.jsx,.json,.html,.css,.java,.c,.cpp,.go,.rs,.rb,.php,.sh,.yaml,.yml,.xml,.sql,.png,.jpg,.jpeg,.webp"
             onChange={handleFileChange}
           />
           {/* Files header */}
@@ -205,8 +206,12 @@ export const ProjectLandingPage = memo(function ProjectLandingPage({
               Files
             </h2>
             <button
-              onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+              onClick={() => !uploading && fileInputRef.current?.click()}
+              disabled={uploading}
+              className={cn(
+                "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors",
+                uploading && "opacity-50 cursor-not-allowed"
+              )}
               title="Upload document"
             >
               <Plus className="h-3.5 w-3.5" />
