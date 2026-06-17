@@ -91,6 +91,20 @@ export const documentChunks = pgTable('document_chunks', {
   index('idx_chunks_vector').using('hnsw', table.embedding.op('vector_cosine_ops')),
 ]);
 
+export const artifacts = pgTable('artifacts', {
+  id: idPk(),
+  chatId: integer('chat_id').references(() => chats.id, { onDelete: 'cascade' }).notNull(),
+  projectId: integer('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+  type: text('type').notNull(),
+  title: text('title').notNull(),
+  storagePath: text('storage_path').notNull(),
+  status: text('status').notNull().default('ready'),
+  errorMessage: text('error_message'),
+  createdAt: createdAt(),
+}, (table) => [
+  index('idx_artifacts_chat_id').on(table.chatId),
+]);
+
 export const personaUsage = pgTable('persona_usage', {
   id: idPk(),
   projectId: integer('project_id').references(() => projects.id, { onDelete: 'cascade' }),
