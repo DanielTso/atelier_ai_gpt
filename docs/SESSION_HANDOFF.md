@@ -1,6 +1,6 @@
 # Session Handoff — Atelier Studio (read me first)
 
-_Last updated: 2026-06-14. This is the bootstrap doc for a new session. The project CLAUDE.md is the source of truth for how the code works; this doc tracks **where we are in the multi-phase build**._
+_Last updated: 2026-06-17. This is the bootstrap doc for a new session. The project CLAUDE.md is the source of truth for how the code works; this doc tracks **where we are in the multi-phase build**._
 
 ## The program
 
@@ -12,9 +12,16 @@ Turning Atelier Studio into a Claude-powered **construction-document workhorse**
 | **B** | Migrate DB libSQL/SQLite → **Supabase Postgres + pgvector** (HNSW). PGlite tests. | ✅ **Merged to `master`** (local) |
 | **B2** | Advanced RAG: query-rewrite → vector top-N → MMR → LLM rerank → top-k, tunable via `ragConfig` (env). Test suite ~40s→~15s. | ✅ **Merged to `master`** (local) |
 | **C** | Extract info from construction **plans/drawings/images** (vision). C-storage: document originals + thumbnails to Supabase Storage. | 🚧 **C2 done + tagged `phase-c2`** (local). **C-storage Stages 1 + 2 done** (unit tests green, build clean); pending USER setup + live smoke. Next: C3 (UI). |
-| **D** | Excel/Word **artifacts** (report generation). | ⛔ Not started |
+| **D** | **Artifacts — Claude-style.** Assistant-generated artifacts (docs, code, HTML, diagrams) in a live preview panel, versioned + editable, with **export/download** to PDF/DOCX/XLSX/PPTX. Subsumes the original "Excel/Word report generation" idea. Reuses C-storage. | ⛔ Not started (scope expanded 2026-06-17) |
 
 `master` is **28 commits ahead of `origin` (nothing pushed yet)** — deploy is pending (below).
+
+### Phase D scope note — Claude-style Artifacts (added 2026-06-17)
+Goal: Atelier generates **artifacts** the way Claude.ai does — a self-contained, versioned, previewable work product shown in a dedicated panel (not just inline chat text), which the user can iterate on and **download** as a real file.
+- **Key insight:** the chat *model* can't emit binaries, but the *app* can. Claude produces structured content (markdown/JSON/code); a server route renders it to a file with pure-JS libs, uploads to the `atelier-files` bucket, and returns a signed download URL — **reusing the C-storage pipeline**.
+- **Export libs (serverless-safe):** `exceljs` (**already a dependency** — Excel is nearly free), `docx` (Word), `pdf-lib` or `@react-pdf/renderer` (PDF; avoid puppeteer/Chromium), `pptxgenjs` (PowerPoint).
+- **Open design axes for the D brainstorm:** artifact *types* (doc/code/html/diagram/sheet); deterministic export vs. Claude-authored-via-**tool-call** (`generate_artifact`); trigger (chat tool vs. UI export menu); the **preview-panel UX** (versioning, edit/regenerate); persistence model (new table vs. reuse documents/Storage).
+- **Build order:** still its own brainstorm → spec → plan after **C3 (UI)**; do not start before then. Sequencing unchanged.
 
 ## Phase C — current state (branch `phase-c-extraction`)
 
