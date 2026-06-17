@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.5.0] - 2026-06-17 — Phase C3: documents UI — thumbnail cards, tabbed preview, extraction badge
+
+Spec at `docs/specs/2026-06-17-phase-c3-documents-ui-design.md`; plan at `docs/plans/2026-06-17-phase-c3-documents-ui.md`. **This release closes Phase C (C2 + C-storage + C3).**
+
+### Added
+
+- **`src/components/chat/DocumentCard.tsx`** — shared thumbnail card component. Renders the signed `thumbnailUrl` (WebP first-page thumbnail from Storage) with a file-type-tile fallback for text/code/docx/xlsx. Shows filename, status icon (spinners for `uploading`/`processing`; check for `ready`; alert for `error`), chunk count, hover-to-reveal delete, and a `vision` chip when `extractionMethod === 'vision'`. Clicking the card opens `DocumentPreviewDialog`.
+- **`src/hooks/useDocumentUpload.ts`** — shared 3-step upload hook used by both document surfaces (request upload-url → `uploadToSignedUrl` → process). Centralises progress/error state; both surfaces now accept images (png/jpg/jpeg/webp) in addition to PDF/DOCX/XLSX.
+- **Tabbed `DocumentPreviewDialog`** — two tabs: "Preview" renders the original file inline (images directly; PDFs via `<iframe>` on the signed `url`; docx/text show text-only); "Extracted text" reconstructs chunks (existing behaviour). An "Open original" link is always present. Preview tab is only rendered for visual originals (image/* or pdf).
+- **`DocumentStatus` + `DocumentSummary` types** in `src/types.ts` — canonical document shape shared across `ProjectDocumentsDialog`, `ProjectLandingPage`, and `DocumentCard`, replacing three formerly duplicated local `Document` interfaces.
+- **`documents.extraction_method` column** — migration `drizzle/0004_sudden_ben_grimm.sql` adds `extraction_method text` (nullable) to the `documents` table. `/api/documents/process` records `'text'` or `'vision'`; `GET /api/documents` returns it; `DocumentCard` displays it as a badge.
+
+### Changed
+
+- **`ProjectDocumentsDialog`** and **`ProjectLandingPage`** both migrated to `DocumentCard` grid + `useDocumentUpload`; now accept image uploads.
+- **`updateDocumentStatus` server action** — accepts the new optional `extractionMethod` parameter.
+- Migration `0004` applied to the live Supabase project.
+
+### Fixed
+
+- **Project landing-page uploader regression** — `ProjectLandingPage` was still POSTing to the retired inline `/api/documents` endpoint (broken since C-storage Stage 1). Switching to `useDocumentUpload` restores drag-drop upload from the project Files panel.
+
+### Notes
+
+- Verification: lint 0 errors / 30 warnings (baseline — zero new), build clean, full Vitest + Playwright suite **203 tests pass** (new: 2 hook, 5 DocumentCard, 2 preview dialog, 2 process-method tests).
+- **Phase C is complete.** Next up: **Phase D (Artifacts)** — Claude-style artifact panel with versioned previews and export to PDF/DOCX/XLSX/PPTX. See `docs/SESSION_HANDOFF.md` for scope.
+
 ## [4.4.0] - 2026-06-14 — Phase C-storage Stage 2: chat attachments to Storage
 
 Spec at `docs/specs/2026-06-14-phase-c-storage-design.md`; plan at `docs/plans/2026-06-14-phase-c-storage-stage2-attachments.md`.

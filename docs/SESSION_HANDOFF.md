@@ -11,8 +11,8 @@ Turning Atelier Studio into a Claude-powered **construction-document workhorse**
 | **A** | Claude as the chat provider (Opus 4.8 default, Sonnet, Haiku; web search). Gemini kept for image gen + embeddings. | ✅ **Merged to `master`** (local) |
 | **B** | Migrate DB libSQL/SQLite → **Supabase Postgres + pgvector** (HNSW). PGlite tests. | ✅ **Merged to `master`** (local) |
 | **B2** | Advanced RAG: query-rewrite → vector top-N → MMR → LLM rerank → top-k, tunable via `ragConfig` (env). Test suite ~40s→~15s. | ✅ **Merged to `master`** (local) |
-| **C** | Extract info from construction **plans/drawings/images** (vision). C-storage: document originals + thumbnails to Supabase Storage. | 🚧 **C2 done + tagged `phase-c2`** (local). **C-storage Stages 1 + 2 done** (unit tests green, build clean); pending USER setup + live smoke. Next: C3 (UI). |
-| **D** | **Artifacts — Claude-style.** Assistant-generated artifacts (docs, code, HTML, diagrams) in a live preview panel, versioned + editable, with **export/download** to PDF/DOCX/XLSX/PPTX. Subsumes the original "Excel/Word report generation" idea. Reuses C-storage. | ⛔ Not started (scope expanded 2026-06-17) |
+| **C** | Extract info from construction **plans/drawings/images** (vision). C-storage: document originals + thumbnails to Supabase Storage. C3: documents UI (thumbnail cards, tabbed preview, extraction badge). | ✅ **Phase C complete** (C2 + C-storage + C3). Migration `0004` applied to live Supabase. Branch: `phase-c-extraction` (unpushed). |
+| **D** | **Artifacts — Claude-style.** Assistant-generated artifacts (docs, code, HTML, diagrams) in a live preview panel, versioned + editable, with **export/download** to PDF/DOCX/XLSX/PPTX. Subsumes the original "Excel/Word report generation" idea. Reuses C-storage. | ⛔ Not started — **next up after Phase C merge**. (Scope expanded 2026-06-17.) |
 
 `master` is **28 commits ahead of `origin` (nothing pushed yet)** — deploy is pending (below).
 
@@ -23,9 +23,9 @@ Goal: Atelier generates **artifacts** the way Claude.ai does — a self-containe
 - **Open design axes for the D brainstorm:** artifact *types* (doc/code/html/diagram/sheet); deterministic export vs. Claude-authored-via-**tool-call** (`generate_artifact`); trigger (chat tool vs. UI export menu); the **preview-panel UX** (versioning, edit/regenerate); persistence model (new table vs. reuse documents/Storage).
 - **Build order:** still its own brainstorm → spec → plan after **C3 (UI)**; do not start before then. Sequencing unchanged.
 
-## Phase C — current state (branch `phase-c-extraction`)
+## Phase C — COMPLETE (branch `phase-c-extraction`)
 
-Decomposed: **C2 (vision extraction) → C-storage (Supabase Storage) → C3 (UI)**. C2 first; it renders pages in-memory and reuses the existing chunk/embed/pgvector pipeline, so it needs no storage.
+Decomposed: **C2 (vision extraction) → C-storage (Supabase Storage) → C3 (UI)**. All three sub-phases done. Branch `phase-c-extraction` ready to merge to `master` (pending USER push approval).
 
 - **Design spec:** `docs/specs/2026-06-07-phase-c-construction-extraction-design.md`
 - **C2 plan (ready to execute):** `docs/plans/2026-06-07-phase-c2-vision-extraction.md`
@@ -73,8 +73,13 @@ Chat-attachment migration off base64 → Supabase Storage. Dual-write in `saveMe
 
 **C-storage is complete (Stages 1 + 2).** Env vars unchanged from Stage 1 (`SUPABASE_*` / `NEXT_PUBLIC_SUPABASE_*` / `SUPABASE_STORAGE_BUCKET`).
 
-### ▶️ After C-storage
-**C3 (UI)** — thumbnail display in project landing page, document viewer, attachment previews. Each its own brainstorm→spec→plan→build.
+**Migration `0004`** (`drizzle/0004_sudden_ben_grimm.sql`) — adds `extraction_method text` to `documents`. Applied to live Supabase on 2026-06-17 (C3 rollout).
+
+### ✅ C3 (UI) — DONE (2026-06-17)
+
+Thumbnail `DocumentCard` grid on both document surfaces (`ProjectDocumentsDialog` + `ProjectLandingPage`); shared `useDocumentUpload` hook (also fixed landing-page uploader regression); tabbed `DocumentPreviewDialog` (Preview + Extracted text); `DocumentSummary`/`DocumentStatus` types in `src/types.ts`; `documents.extraction_method` column (migration `0004`, applied to live Supabase); vision/text badge in `DocumentCard`. Images (png/jpg/jpeg/webp) accepted on both upload surfaces. Lint 0 errors / 30 warnings (baseline), build clean, 203 tests pass.
+
+**Phase C is complete.** Next: brainstorm → spec → plan for **Phase D (Artifacts)**.
 
 ## ⏳ Pending USER actions (not blocking C development; tests use PGlite)
 

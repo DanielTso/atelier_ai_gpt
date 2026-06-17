@@ -63,7 +63,8 @@ The app uses two AI providers with a clear split — **Claude is the brain, Gemi
 
 - Schema at `src/db/schema.ts` (`pg-core`): integer PKs via `GENERATED ALWAYS AS IDENTITY`, `timestamptz`, `boolean`, FK cascade deletes enforced natively (no `PRAGMA`). Ten tables: `projects` → `chats` → `messages`, `settings`, `messageEmbeddings`, `documents`, `documentChunks`, `messageAttachments`, `personaUsage`, `chatTopics`.
 - **pgvector**: `messageEmbeddings.embedding` and `documentChunks.embedding` are `vector(768)` with **HNSW** indexes (`vector_cosine_ops`). The `vector` extension is enabled by migration `drizzle/0000_enable_vector.sql`.
-- **Migrations** (versioned, in `drizzle/`): `npx drizzle-kit generate` to author, `DIRECT_URL=... npx drizzle-kit migrate` to apply. `drizzle.config.ts` uses `dialect: "postgresql"`. (Legacy `npx drizzle-kit push` is no longer the workflow.)
+- **`documents.extraction_method`** — text column (`'text'` | `'vision'`), nullable; added by migration `drizzle/0004_sudden_ben_grimm.sql`. Set by `/api/documents/process`; surfaced in `GET /api/documents` and displayed as a badge in `DocumentCard`.
+- **Migrations** (versioned, in `drizzle/`): `npx drizzle-kit generate` to author, `DIRECT_URL=... npx drizzle-kit migrate` to apply. `drizzle.config.ts` uses `dialect: "postgresql"`. (Legacy `npx drizzle-kit push` is no longer the workflow.) Applied to Supabase: `0000`–`0004`.
 
 ### Security
 
@@ -87,8 +88,8 @@ Atelier Studio is a Next.js 16 App Router chat application. **Claude (Anthropic)
    - **Document upload — 3-step direct-to-Storage flow (Phase C-storage):**
      - `POST /api/documents/upload-url` — validates name/type/size, creates a `documents` row with status `uploading`, returns `{ documentId, path, token, bucket }` for the browser.
      - Browser calls `uploadToSignedUrl` (`src/lib/storageClient.ts`, anon key) to PUT the file straight to Supabase Storage, bypassing the Vercel function request-body limit (large plans work).
-     - `POST /api/documents/process` `{ documentId }` — downloads original from Storage, runs the C2 extract pipeline (text / thin-PDF vision fallback / image vision), uploads a WebP thumbnail, chunks + embeds, sets status `processing` → `ready | error`. The old inline `POST /api/documents` + `createDocument` action are retired.
-   - `GET /api/documents` — returns each doc with short-lived signed `url` (original) + `thumbnailUrl` (best-effort, `null` if absent). `DELETE /api/documents` — removes Storage objects (original + thumbnail) before deleting the DB row.
+     - `POST /api/documents/process` `{ documentId }` — downloads original from Storage, runs the C2 extract pipeline (text / thin-PDF vision fallback / image vision), uploads a WebP thumbnail, chunks + embeds, records `extraction_method` (`'text'` or `'vision'`), sets status `processing` → `ready | error`. The old inline `POST /api/documents` + `createDocument` action are retired.
+   - `GET /api/documents` — returns each doc with short-lived signed `url` (original) + `thumbnailUrl` (best-effort, `null` if absent) + `extractionMethod` (`'text'` or `'vision'`). `DELETE /api/documents` — removes Storage objects (original + thumbnail) before deleting the DB row.
    - `POST /api/classify` — LLM-based topic classification. Pinned to internal `gemini-3.5-flash` (tolerates a Claude `model` in the body). Cached in `chatTopics`.
 
 ### Source Layout
@@ -98,11 +99,14 @@ Atelier Studio is a Next.js 16 App Router chat application. **Claude (Anthropic)
 - `src/app/api/` — API routes (chat, models, embed, summarize, documents, etc.)
 - `src/components/chat/sidebar/` — Decomposed sidebar: `Sidebar.tsx` (orchestrator), `types.ts` + `SidebarActionsContext.tsx` (shared types/context), section components (`QuickChatsSection`, `ProjectsSection`, `ArchivedSection`), item components (`ChatItem`, `ProjectItem`), layout (`SidebarHeader`, `SidebarFooter`, `CollapsedSidebar`, `SmartChatMenu`)
 - `src/components/chat/` — Other chat components (MessagesList, ChatInputArea, ChatContextMenu, ProjectLandingPage, etc.)
+- `src/components/chat/DocumentCard.tsx` — Shared thumbnail card for document grids: shows first-page WebP thumbnail (signed `thumbnailUrl`) with a file-type-tile fallback for text/code/docx; filename; status icon (spinners for `uploading`/`processing`, check for `ready`, alert for `error`); a `vision` chip when `extractionMethod === 'vision'`; chunk count; hover-to-reveal delete; click opens preview. Used in both `ProjectDocumentsDialog` and `ProjectLandingPage`.
 - `src/components/ui/` — Reusable UI (dialogs, selectors, command palette)
+- `src/components/ui/DocumentPreviewDialog.tsx` — Tabbed document preview: "Preview" tab shows the original file inline (images directly; PDFs in an `<iframe>` via the signed `url`; docx/text show text only) + "Extracted text" tab (existing chunk reconstruction). An "Open original" link is always available.
 - `src/components/settings/` — Settings tab components
 - `src/hooks/` — Custom hooks (useLocalStorage, usePersonas, useAppearanceSettings, etc.)
+- `src/hooks/useDocumentUpload.ts` — Shared 3-step upload hook (request upload-url → `uploadToSignedUrl` → process). Used by both `ProjectDocumentsDialog` and `ProjectLandingPage`; fixes a regression where the landing page was still POSTing to the retired inline `/api/documents` endpoint.
 - `src/lib/` — Utilities: `settings.ts` (DB-first/env-fallback config), `embeddings.ts` (pgvector search), `retrieval.ts` (RAG pipeline orchestrator), `ragConfig.ts` (tunable RAG knobs), `queryRewrite.ts` (conversational query rewrite), `rerank.ts` (LLM rerank), `mmr.ts` (diversity selection), `chunking.ts` (document chunker), `fileAttachments.ts` (image/file handling), `providers.ts` (shared AI provider factory), `fileExtraction.ts` (shared file parsing), `errors.ts` (API error helper), `validation.ts` (Zod request schemas), `storage.ts` (server-only Supabase Storage wrapper — `isStorageConfigured`, `createSignedUploadUrl`, `uploadBuffer`, `downloadToBuffer`, `createSignedDownloadUrl`, `removeObjects`; uses service-role key), `thumbnails.ts` (`generatePdfThumbnail` + `generateImageThumbnail` → WebP via `@napi-rs/canvas`, best-effort), `storageClient.ts` (browser-side anon-key Supabase client for `uploadToSignedUrl`)
-- `src/types.ts` — Shared TypeScript interfaces (`Model`)
+- `src/types.ts` — Shared TypeScript interfaces (`Model`, `DocumentStatus`, `DocumentSummary`). `DocumentSummary` is the canonical document shape used across `ProjectDocumentsDialog`, `ProjectLandingPage`, and `DocumentCard`, replacing three former local `Document` interface duplicates.
 - `src/db/` — `schema.ts` (Drizzle schema), `index.ts` (connection with FK enforcement)
 
 ### Context Pipeline (`/api/chat`)
@@ -158,6 +162,8 @@ Embeddings always run on Gemini (`gemini-embedding-001`) regardless of chat mode
 ### Multimodal
 
 **Input**: Images sent as `FileUIPart` via `sendMessage({ text, files })`, persisted in `message_attachments` table, reloaded as `file` parts on page load. `convertToModelMessages()` handles format conversion automatically. Gemini has vision support.
+
+**Document surfaces (Phase C3)**: Both `ProjectDocumentsDialog` (modal) and `ProjectLandingPage` (Files panel) render a `DocumentCard` grid and use `useDocumentUpload` for uploads. Both now accept images (png/jpg/jpeg/webp) in addition to PDF/DOCX/XLSX. Clicking a card opens `DocumentPreviewDialog` (tabbed: "Preview" renders originals inline; "Extracted text" reconstructs chunks). The `vision` badge on a card indicates the document was processed via Gemini vision extraction (vs. text extraction). **Phase C is complete (C2 + C-storage + C3).**
 
 **Attachment persistence (Phase C-storage Stage 2)**: `saveMessageAttachments` uses a **dual-write** strategy — when Storage is configured (`isStorageConfigured()`), it decodes the base64 data URL, uploads bytes to `attachments/<chatId>/<messageId>/<i>-<filename>` in the private Supabase Storage bucket, and stores `storage_path` with `data_url` null. When Storage is NOT configured, it falls back to storing the base64 `data_url` in the DB column (graceful degradation — unlike documents, chat attachments keep working with no Storage configured). `message_attachments.storage_path` is nullable; `data_url` is also nullable (one or the other is populated). `getChatAttachments` does a **dual-read**: rows with `storage_path` get a short-lived signed URL via `createSignedDownloadUrl`; legacy `data_url` rows are returned unchanged. No backfill of old rows. `deleteChat` / `deleteMessage` remove relevant Storage objects best-effort before the DB cascade. Migration `drizzle/0003_superb_roughhouse.sql` added `storage_path` + made `data_url` nullable. Known deferral: deleting a whole **project** does not sweep attachment Storage objects (consistent with the Stage 1 orphan-sweep deferral).
 
