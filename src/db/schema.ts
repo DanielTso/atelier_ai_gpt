@@ -9,6 +9,8 @@ export const projects = pgTable('projects', {
   icon: text('icon'),
   defaultPersonaId: text('default_persona_id'),
   defaultModel: text('default_model'),
+  memory: text('memory'),
+  instructions: text('instructions'),
   createdAt: createdAt(),
 });
 
