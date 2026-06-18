@@ -53,6 +53,24 @@ export async function updateProjectName(id: number, name: string) {
   return await db.update(projects).set({ name }).where(eq(projects.id, id)).returning()
 }
 
+export async function updateProjectContext(
+  id: number,
+  fields: { memory?: string | null; instructions?: string | null },
+) {
+  const set: { memory?: string | null; instructions?: string | null } = {}
+  if ('memory' in fields) set.memory = fields.memory ?? null
+  if ('instructions' in fields) set.instructions = fields.instructions ?? null
+  return await db.update(projects).set(set).where(eq(projects.id, id)).returning()
+}
+
+export async function getProjectContext(id: number) {
+  const [row] = await db
+    .select({ memory: projects.memory, instructions: projects.instructions })
+    .from(projects)
+    .where(eq(projects.id, id))
+  return row ?? null
+}
+
 export async function getChats(projectId: number) {
   return await db.select().from(chats).where(
     and(eq(chats.projectId, projectId), eq(chats.archived, false))
