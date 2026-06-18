@@ -22,11 +22,9 @@ export interface SidebarProps {
 
 export const Sidebar = memo(function Sidebar({
   projects,
-  activeProjectId,
   chats,
   activeChatId,
   standaloneChats,
-  archivedChats,
   collapsed,
   actions,
 }: SidebarProps) {
