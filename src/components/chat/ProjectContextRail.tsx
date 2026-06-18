@@ -34,8 +34,8 @@ export function ProjectContextRail({ project, onSaveContext, onAddFiles }: Proje
   const saveMemory = useDebouncedSave(project.id, onSaveContext)
   const saveInstructions = useDebouncedSave(project.id, onSaveContext)
 
-  // Reset local fields when switching projects.
-  useEffect(() => { setMemory(project.memory ?? ''); setInstructions(project.instructions ?? '') }, [project.id, project.memory, project.instructions])
+  // Note: the parent remounts this component via `key={project.id}`, so local
+  // Memory/Instructions state initializes fresh per project — no reset effect needed.
 
   const loadDocuments = useCallback(async () => {
     try {

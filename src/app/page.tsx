@@ -7,7 +7,7 @@ import { DefaultChatTransport } from "ai"
 import { useEffect, useState, useRef, useCallback, useMemo } from "react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
-import { getProjects, createProject, getAllProjectChats, createChat, getChatMessages, saveMessage, deleteProject, updateProjectName, updateChatTitle, getStandaloneChats, createStandaloneChat, deleteChat, moveChatToProject, archiveChat, restoreChat, getArchivedChats, getMessageCount, getChatWithContext, updateChatSystemPrompt, getProjectDefaults, recordPersonaUsage, incrementUsageMessageCount, getProjectChatPreviews, saveMessageAttachments, getChatAttachments, getSetting } from "./actions"
+import { getProjects, createProject, getAllProjectChats, createChat, getChatMessages, saveMessage, deleteProject, updateProjectName, updateProjectContext, updateChatTitle, getStandaloneChats, createStandaloneChat, deleteChat, moveChatToProject, archiveChat, restoreChat, getArchivedChats, getMessageCount, getChatWithContext, updateChatSystemPrompt, getProjectDefaults, recordPersonaUsage, incrementUsageMessageCount, getProjectChatPreviews, saveMessageAttachments, getChatAttachments, getSetting } from "./actions"
 import { Sidebar } from "@/components/chat/sidebar"
 import type { SidebarActions, AppView } from "@/components/chat/sidebar"
 import { HomeGreeting } from "@/components/chat/HomeGreeting"
@@ -37,7 +37,7 @@ import type { FileUIPart } from "ai"
 import type { Model, ArtifactSummary } from "@/types"
 
 // Types matching DB schema roughly
-type Project = { id: number; name: string }
+type Project = { id: number; name: string; memory?: string | null; instructions?: string | null }
 type Chat = { id: number; projectId: number | null; title: string; archived?: boolean | null }
 
 export default function Home() {
@@ -887,6 +887,11 @@ export default function Home() {
     toast.success(`Switched to ${suggestedPersona.name}`)
   }, [suggestedPersona, handleSaveSystemPrompt, dismissSuggestion])
 
+  const handleSaveProjectContext = useCallback(async (id: number, fields: { memory?: string; instructions?: string }) => {
+    await updateProjectContext(id, fields)
+    setProjects(prev => prev.map(p => p.id === id ? { ...p, ...fields } : p))
+  }, [])
+
   const sidebarActions = useMemo<SidebarActions>(() => ({
     createProject: handleCreateProject,
     renameProject: handleRenameProject,
@@ -1030,6 +1035,7 @@ export default function Home() {
             onSelectChat={setActiveChatId}
             onCreateChat={handleCreateChat}
             onAddFiles={() => handleOpenProjectDocuments(activeProjectId)}
+            onSaveContext={handleSaveProjectContext}
           />
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center w-full max-w-(--thread-max-width) mx-auto px-4">
