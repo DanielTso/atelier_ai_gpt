@@ -2,6 +2,11 @@
 
 _Resume doc for the next session. Read `docs/SESSION_HANDOFF.md` for the full A→D1 program history; THIS file captures what's in-flight as of 2026-06-18. Project CLAUDE.md is the source of truth for how the code works._
 
+## 🏷️ Released v4.6.0 (2026-06-18)
+Tagged **v4.6.0** (annotated) on `phase-c-extraction` + GitHub release published; version aligned to CHANGELOG (git-tag track was at `v2.1.0`, GitHub Releases at `v1.9.0` — reconciled to CHANGELOG's 4.x). **README.md fully rewritten** to current architecture (was describing the old Gemini/Turso/SQLite stack). PLAN.md Tech Stack block corrected; CHANGELOG gained a "Deployment & release" note under 4.6.0.
+- **CI:** opened PR `phase-c-extraction → master` to run the CI workflow (lint→build→vitest→migrate→playwright) on the PR **without merging** — master held until the Preview native-canvas check passes.
+- **➡️ NEXT: validate the Preview deploy** (upload a PDF → thumbnail renders = `@napi-rs/canvas` works on Vercel Linux), then **merge the PR to master** for the production cutover. Preview URL from `vercel ls atelier-ai`.
+
 ## Where we are
 - **Program: A ✓ · B ✓ · B2 ✓ · C (C2+C-storage+C3) ✓ · D1 ✓.** All on branch **`phase-c-extraction`**, **pushed to origin** (`github.com/DanielTso/atelier_ai_gpt`). HEAD ≈ `4b8e99d` + any env/docs commits.
 - **Supabase** project `evhgyudnjyryayazupgh` (`atelier_ai_gpt`) is live; migrations `0000`→`0005` applied. **Supabase MCP is connected** (OAuth) — `mcp__plugin_supabase_supabase__*` tools work.

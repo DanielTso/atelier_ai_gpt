@@ -24,6 +24,15 @@ Spec at `docs/specs/2026-06-17-phase-d1-artifact-engine-design.md`; plan at `doc
 - Artifacts are keyed by chat; per-message pinning is D2. **D2 next: artifact workspace panel, live preview, versioning, edit/regenerate, PPTX.**
 - Chat-driven live smoke (ask Claude to generate a schedule) is best done in-browser with the real Anthropic key + Storage configured.
 
+### Deployment & release (2026-06-18)
+
+Tagged and released as **v4.6.0** — the production-readiness milestone for Phases A→D1.
+
+- **Supabase live:** project `evhgyudnjyryayazupgh`, migrations `0000`–`0005` applied. **RLS enabled on all 11 public tables** (the app connects as the `postgres` table owner, which bypasses RLS; the anon key is used only for Storage uploads).
+- **D1 artifact smoke PASSED live:** a real Claude `generate_artifact` tool call rendered a valid `.xlsx` (6492 bytes), stored it, and produced a working signed download URL — the engine works end-to-end against live Supabase Storage.
+- **Vercel env configured:** all 8 runtime vars set for **Production + Preview** (`DATABASE_URL`, `DIRECT_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`). Stored as Sensitive type — verify by presence (`vercel env ls`), not value (`vercel env pull` cannot read sensitive values back).
+- **Production cutover held:** released/tagged on `phase-c-extraction`; `master` is **not** yet merged. The one open risk is whether `@napi-rs/canvas` (native PDF render for thumbnails/vision) loads on Vercel's Linux runtime — validate on a Preview deploy first (upload a PDF, confirm a thumbnail renders), then merge `phase-c-extraction` → `master` for the production deploy. Thumbnails are best-effort and degrade gracefully if it fails.
+
 ## [4.5.0] - 2026-06-17 — Phase C3: documents UI — thumbnail cards, tabbed preview, extraction badge
 
 Spec at `docs/specs/2026-06-17-phase-c3-documents-ui-design.md`; plan at `docs/plans/2026-06-17-phase-c3-documents-ui.md`. **This release closes Phase C (C2 + C-storage + C3).**
