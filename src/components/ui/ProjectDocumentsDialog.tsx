@@ -136,7 +136,7 @@ export const ProjectDocumentsDialog = memo(function ProjectDocumentsDialog({
                   Drop a file here or click to upload
                 </p>
                 <p className="text-xs text-muted-foreground/60">
-                  PDF, DOCX, images, text, and code files up to 50MB
+                  PDF, DOCX, images, text, and code files up to 100MB
                 </p>
               </div>
             )}

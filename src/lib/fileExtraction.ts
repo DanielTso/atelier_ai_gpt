@@ -1,7 +1,10 @@
-// Construction plan sets are routinely large (the IFC sample is ~17MB). Note: on
-// Vercel the platform request-body limit may bite before this — large-file uploads
-// are ultimately solved by C-storage (direct upload to Supabase Storage).
-export const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB
+// Construction plan sets are routinely large (the IFC sample is ~17MB). The
+// direct-to-Storage upload flow (upload-url → uploadToSignedUrl → process)
+// bypasses Vercel's request-body limit, so this constant is the app-side gate.
+// NOTE: Supabase must also allow it — the `atelier-files` bucket `file_size_limit`
+// AND the project-global Storage upload limit must be >= this value, or the
+// signed upload is rejected server-side regardless of this constant.
+export const MAX_FILE_SIZE = 100 * 1024 * 1024 // 100MB
 export const MAX_TEXT_LENGTH = 100_000 // 100K characters
 
 export const SUPPORTED_EXTENSIONS = new Set([
