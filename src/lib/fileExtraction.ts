@@ -4,7 +4,7 @@
 // NOTE: Supabase must also allow it — the `atelier-files` bucket `file_size_limit`
 // AND the project-global Storage upload limit must be >= this value, or the
 // signed upload is rejected server-side regardless of this constant.
-export const MAX_FILE_SIZE = 100 * 1024 * 1024 // 100MB
+export const MAX_FILE_SIZE = 200 * 1024 * 1024 // 200MB
 export const MAX_TEXT_LENGTH = 100_000 // 100K characters
 
 export const SUPPORTED_EXTENSIONS = new Set([
