@@ -4,10 +4,8 @@ import { memo, useMemo } from 'react'
 import { SidebarActionsProvider } from './SidebarActionsContext'
 import { CollapsedSidebar } from './CollapsedSidebar'
 import { SidebarHeader } from './SidebarHeader'
-import { SmartChatMenu } from './SmartChatMenu'
-import { QuickChatsSection } from './QuickChatsSection'
-import { ProjectsSection } from './ProjectsSection'
-import { ArchivedSection } from './ArchivedSection'
+import { SidebarNav } from './SidebarNav'
+import { RecentsSection } from './RecentsSection'
 import { SidebarFooter } from './SidebarFooter'
 import type { SidebarActions, Project, Chat } from './types'
 
@@ -37,51 +35,26 @@ export const Sidebar = memo(function Sidebar({
     [projects]
   )
 
-  const projectChatsMap = useMemo(() => {
-    const map = new Map<number, Chat[]>()
-    for (const chat of chats) {
-      if (chat.projectId !== null) {
-        const existing = map.get(chat.projectId) || []
-        existing.push(chat)
-        map.set(chat.projectId, existing)
-      }
-    }
-    return map
-  }, [chats])
+  // Flat Recents: all chats (standalone + project) by recency. The page passes
+  // chats already newest-first; combine with standaloneChats, de-duped by id.
+  const recents = useMemo(() => {
+    const byId = new Map<number, Chat>()
+    for (const c of [...standaloneChats, ...chats]) byId.set(c.id, c)
+    return Array.from(byId.values())
+  }, [chats, standaloneChats])
 
   return (
     <SidebarActionsProvider actions={actions}>
       {collapsed ? (
         <CollapsedSidebar sortedProjects={sortedProjects} />
       ) : (
-        <aside className="w-72 flex flex-col glass-panel rounded-2xl transition-all duration-300 shrink-0 overflow-hidden">
+        <aside className="w-(--sidebar-width) flex flex-col glass-panel rounded-2xl transition-all duration-300 shrink-0 overflow-hidden">
           <SidebarHeader />
-          <SmartChatMenu sortedProjects={sortedProjects} variant="expanded" />
-
-          <div className="flex-1 overflow-y-auto space-y-4 px-4">
-            <QuickChatsSection
-              standaloneChats={standaloneChats}
-              activeChatId={activeChatId}
-              projects={projects}
-            />
-
-            <div className="h-px bg-border" />
-
-            <ProjectsSection
-              sortedProjects={sortedProjects}
-              projectChatsMap={projectChatsMap}
-              activeProjectId={activeProjectId}
-              activeChatId={activeChatId}
-              projects={projects}
-            />
-
-            <ArchivedSection
-              archivedChats={archivedChats}
-              activeChatId={activeChatId}
-              projects={projects}
-            />
+          <SidebarNav />
+          <div className="h-px bg-border mx-4 my-3" />
+          <div className="flex-1 overflow-y-auto px-2">
+            <RecentsSection chats={recents} activeChatId={activeChatId} projects={projects} />
           </div>
-
           <SidebarFooter />
         </aside>
       )}

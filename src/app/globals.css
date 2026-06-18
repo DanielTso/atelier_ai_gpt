@@ -47,6 +47,11 @@
   --ring: var(--brand-steel-blue);
   --radius: 0.625rem;
 
+  /* Layout structure dimensions — keep structure separable from theme. */
+  --sidebar-width: 18rem;     /* 288px — matches the prior w-72 sidebar */
+  --rail-width: 20rem;        /* 320px — project context rail (Slice 2) */
+  --thread-max-width: 48rem;  /* 768px — centered conversation/composer column */
+
   /* Layered surfaces — for elevation hierarchy */
   --surface-raised: var(--brand-pure-surface);
   --surface-sunken: var(--brand-soft-mist);
