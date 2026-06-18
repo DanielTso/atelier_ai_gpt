@@ -8,13 +8,12 @@ _Resume doc for the next session. Read `docs/SESSION_HANDOFF.md` for the full A�
 - **RLS: ✅ DONE today** — enabled on all **11** public tables (verified `rls_on=11/11`). App still works because it connects as the `postgres` table owner (bypasses RLS); anon key only does Storage uploads.
 - **D1 artifact smoke: ✅ PASSED today** — real Claude `generate_artifact` tool call → `.xlsx` rendered, stored, downloaded (6492 bytes, valid). Pipeline works end-to-end live.
 
-## 🔧 IN FLIGHT — Vercel env push (FINISH THIS FIRST)
-Setting the 8 env vars in Vercel (project linked: `danieltsos-projects/atelier-ai`) so the auto-deploy boots.
-- **CLI gotcha (important):** `vercel env add` in **agent/non-interactive mode IGNORES piped stdin** → creates **empty** vars. The ONLY method that works:
-  `vercel env add <NAME> <production|preview> --value "<VALUE>" --force --yes`
-- Helper scripts (throwaway): **`c:\tmp\set-vercel-env.ps1`** (pushes all 8 × prod+preview via `--value --force`, reads values from `.env.local`) and **`c:\tmp\verify-env.ps1`** (pulls production, compares to `.env.local`, prints `ALL_MATCH`).
-- **Last action:** ran `set-vercel-env.ps1` (the `--value --force` version) then `verify-env.ps1` in background task `b2krxux67` — **its result was not yet confirmed when context ran out.**
-- **➡️ NEXT SESSION: run `& c:\tmp\verify-env.ps1` and confirm `ALL_MATCH=True`.** If any var shows `prod=0` (empty) or mismatch, re-run `& c:\tmp\set-vercel-env.ps1` (the `--value --force` method) and re-verify. The 8 vars: `DATABASE_URL, DIRECT_URL, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, ANTHROPIC_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY` — all already in `.env.local`.
+## ✅ DONE — Vercel env push (2026-06-18)
+All 8 env vars are set in Vercel (`danieltsos-projects/atelier-ai`) for **both Production and Preview** — confirmed via `vercel env ls production` / `vercel env ls preview` (each of the 8 listed in both). The 8: `DATABASE_URL, DIRECT_URL, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, ANTHROPIC_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY`.
+- **⚠️ FALSE-ALARM LESSON:** `verify-env.ps1` (length comparison via `vercel env pull`) reported `ALL_MATCH=False` with `prod=0` for everything. This is a **structural false negative** — Vercel stores these as **Sensitive/Encrypted** type, and `vercel env pull` **cannot read sensitive values back** (returns empty). Do NOT trust length/value comparison for sensitive vars. **Verify by PRESENCE** (`vercel env ls <env>`), not value.
+- **CLI gotchas confirmed:** working push is `vercel env add <NAME> <production|preview> --value "<VALUE>" --force --yes` (piped stdin is ignored in non-interactive mode). Adding to **preview** also prompts interactively for a git-branch scope even with `--yes` — leave **blank** (Enter) to apply to all preview branches.
+- **Note:** project is NOT linked via `.vercel/project.json`, but the CLI still resolves `danieltsos-projects/atelier-ai` for `env ls`/`env add`. Stale `TURSO_*` (old pre-Phase-B DB) + `DASHSCOPE_API_KEY` rows remain in Vercel — harmless, prune later if desired.
+- Helper scripts (throwaway, in `c:\tmp\`): `set-vercel-env.ps1`, `verify-env.ps1` (deprecated — see false-alarm note), `diag-vercel-env.ps1`, `finish-vercel-env.ps1`.
 
 ## ⚠️ .env.local caution
 `vercel link` / `vercel env pull` **overwrote `.env.local`** down to just `VERCEL_OIDC_TOKEN` earlier; I **restored** all 10 keys (DB pooled+session, Supabase URL/secret/anon, bucket, Anthropic, Gemini, DashScope). **Do NOT run `vercel env pull` / `vercel dev`** without expecting it to clobber `.env.local` again. Values are recoverable from `c:\tmp\set-vercel-env.ps1`'s source map / the restore command in the transcript. Note `DATABASE_URL`/`DIRECT_URL` use the **pooler** host `aws-1-us-east-2.pooler.supabase.com` (`:6543` runtime / `:5432` migrations); password `@`→`%40`.
