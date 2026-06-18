@@ -3,8 +3,10 @@
 import { memo, useState, useEffect, useCallback, useRef } from "react"
 import { Folder, Plus, MessageSquare, FileText, Loader2, CheckCircle2, Upload } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { formatFileSize, getFileTypeBadge } from "@/lib/fileUtils"
 import { toast } from "sonner"
+import type { DocumentSummary } from "@/types"
+import { useDocumentUpload } from "@/hooks/useDocumentUpload"
+import { DocumentCard } from "@/components/chat/DocumentCard"
 import { DocumentPreviewDialog } from "@/components/ui/DocumentPreviewDialog"
 
 interface ChatPreview {
@@ -12,15 +14,6 @@ interface ChatPreview {
   title: string
   preview: string | null
   createdAt: Date | null
-}
-
-interface Document {
-  id: number
-  filename: string
-  mimeType: string
-  fileSize: number
-  chunkCount: number | null
-  status: string
 }
 
 interface ProjectLandingPageProps {
@@ -46,12 +39,11 @@ export const ProjectLandingPage = memo(function ProjectLandingPage({
   onCreateChat,
   onAddFiles,
 }: ProjectLandingPageProps) {
-  const [documents, setDocuments] = useState<Document[]>([])
+  const [documents, setDocuments] = useState<DocumentSummary[]>([])
   const [docsLoading, setDocsLoading] = useState(true)
   const [dragOver, setDragOver] = useState(false)
-  const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [previewDoc, setPreviewDoc] = useState<Document | null>(null)
+  const [previewDoc, setPreviewDoc] = useState<DocumentSummary | null>(null)
 
   const loadDocuments = useCallback(async () => {
     try {
@@ -72,24 +64,23 @@ export const ProjectLandingPage = memo(function ProjectLandingPage({
     loadDocuments()
   }, [loadDocuments])
 
+  const { upload, uploading } = useDocumentUpload()
   const handleUpload = async (file: File) => {
-    setUploading(true)
+    if (uploading) return // guard against a second concurrent upload (button or drop)
     try {
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('projectId', String(project.id))
-      const res = await fetch('/api/documents', { method: 'POST', body: formData })
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Upload failed')
-      }
+      await upload(file, project.id)
       toast.success(`Uploaded and indexed: ${file.name}`)
       await loadDocuments()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Upload failed')
-    } finally {
-      setUploading(false)
     }
+  }
+
+  const handleDelete = async (docId: number) => {
+    try {
+      const res = await fetch(`/api/documents?id=${docId}`, { method: 'DELETE' })
+      if (res.ok) { setDocuments(prev => prev.filter(d => d.id !== docId)); toast.success('Deleted') }
+    } catch { toast.error('Failed to delete') }
   }
 
   const handleDrop = (e: React.DragEvent) => {
@@ -205,7 +196,7 @@ export const ProjectLandingPage = memo(function ProjectLandingPage({
             ref={fileInputRef}
             type="file"
             className="hidden"
-            accept=".pdf,.docx,.txt,.md,.csv,.py,.js,.ts,.tsx,.jsx,.json,.html,.css,.java,.c,.cpp,.go,.rs,.rb,.php,.sh,.yaml,.yml,.xml,.sql"
+            accept=".pdf,.docx,.xlsx,.txt,.md,.csv,.py,.js,.ts,.tsx,.jsx,.json,.html,.css,.java,.c,.cpp,.go,.rs,.rb,.php,.sh,.yaml,.yml,.xml,.sql,.png,.jpg,.jpeg,.webp"
             onChange={handleFileChange}
           />
           {/* Files header */}
@@ -215,8 +206,12 @@ export const ProjectLandingPage = memo(function ProjectLandingPage({
               Files
             </h2>
             <button
-              onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+              onClick={() => !uploading && fileInputRef.current?.click()}
+              disabled={uploading}
+              className={cn(
+                "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors",
+                uploading && "opacity-50 cursor-not-allowed"
+              )}
               title="Upload document"
             >
               <Plus className="h-3.5 w-3.5" />
@@ -287,38 +282,9 @@ export const ProjectLandingPage = memo(function ProjectLandingPage({
               </div>
             ) : (
               <div className="grid grid-cols-2 xl:grid-cols-3 gap-2.5 mt-1">
-                {documents.map(doc => {
-                  const badge = getFileTypeBadge(doc.mimeType, doc.filename)
-                  return (
-                    <button
-                      key={doc.id}
-                      onClick={() => setPreviewDoc(doc)}
-                      className="text-left rounded-xl border border-border/30 p-3 hover:bg-muted/30 hover:border-border/50 transition-colors group"
-                    >
-                      <span className={cn(
-                        "inline-block text-[10px] font-medium px-1.5 py-0.5 rounded-full mb-2",
-                        badge.className
-                      )}>
-                        {badge.label}
-                      </span>
-                      <p className="text-sm text-foreground truncate leading-tight">
-                        {doc.filename}
-                      </p>
-                      <div className="flex items-center gap-2 mt-1.5 text-[11px] text-muted-foreground">
-                        {doc.status === 'ready' && doc.chunkCount != null && (
-                          <span>{doc.chunkCount} chunk{doc.chunkCount !== 1 ? 's' : ''}</span>
-                        )}
-                        {doc.status === 'processing' && (
-                          <span className="flex items-center gap-1 text-amber-400">
-                            <Loader2 className="h-2.5 w-2.5 animate-spin" />
-                            Indexing
-                          </span>
-                        )}
-                        <span>{formatFileSize(doc.fileSize)}</span>
-                      </div>
-                    </button>
-                  )
-                })}
+                {documents.map(doc => (
+                  <DocumentCard key={doc.id} doc={doc} onOpen={setPreviewDoc} onDelete={(d) => handleDelete(d.id)} />
+                ))}
               </div>
             )}
           </div>

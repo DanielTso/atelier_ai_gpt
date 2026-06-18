@@ -15,18 +15,17 @@ export interface Persona {
   description?: string
 }
 
-/** Short, human-friendly labels for the curated Gemini models (used on combo chips). */
+/** Short, human-friendly labels for the curated models (used on combo chips). */
 const MODEL_SHORT_LABELS: Record<string, string> = {
-  'gemini-3.5-flash': '3.5 Flash',
-  'gemini-3.1-pro-preview': '3.1 Pro',
-  'gemini-3.1-pro-preview-deep-think': 'Deep Think',
-  'gemini-3.1-flash-lite': '3.1 Flash-Lite',
+  'claude-opus-4-8': 'Opus 4.8',
+  'claude-sonnet-4-6': 'Sonnet 4.6',
+  'claude-haiku-4-5': 'Haiku 4.5',
   'gemini-3.1-flash-image': 'Nano Banana 2',
 }
 
 export function modelShortLabel(modelId?: string): string | null {
   if (!modelId) return null
-  return MODEL_SHORT_LABELS[modelId] ?? modelId.replace(/^gemini-/, '')
+  return MODEL_SHORT_LABELS[modelId] ?? modelId.replace(/^(claude|gemini)-/, '')
 }
 
 // Default personas that ship with the app
@@ -172,7 +171,7 @@ You are a meticulous code reviewer with expertise in software quality, security,
 - Summarize findings at the end
 </formatting>`,
     isDefault: true,
-    preferredModel: 'gemini-3.1-pro-preview',
+    preferredModel: 'claude-opus-4-8',
     isCombo: true,
     description: 'Rigorous review for bugs, security & style',
   },
@@ -198,7 +197,7 @@ You are a creative writing partner specializing in fiction, poetry, and imaginat
 - Offer alternatives in bullet points
 </formatting>`,
     isDefault: true,
-    preferredModel: 'gemini-3.5-flash',
+    preferredModel: 'claude-sonnet-4-6',
     isCombo: true,
     description: 'Creative writing and storytelling',
   },
@@ -224,7 +223,7 @@ You are a fast, concise coding assistant optimized for quick answers.
 - No headers or bullet points unless listing options
 </formatting>`,
     isDefault: true,
-    preferredModel: 'gemini-3.5-flash',
+    preferredModel: 'claude-haiku-4-5',
     isCombo: true,
     description: 'Fast, concise coding answers',
   },
@@ -251,9 +250,9 @@ You are a thorough analytical thinker who reasons carefully through complex prob
 - Use tables for comparisons when helpful
 </formatting>`,
     isDefault: true,
-    preferredModel: 'gemini-3.1-pro-preview-deep-think',
+    preferredModel: 'claude-opus-4-8',
     isCombo: true,
-    description: 'Step-by-step reasoning with Deep Think',
+    description: 'Step-by-step reasoning with Opus 4.8',
   },
   {
     id: 'combo-general-assistant',
@@ -276,7 +275,7 @@ You are a helpful, well-rounded assistant for everyday tasks.
 - Keep a professional but friendly tone
 </formatting>`,
     isDefault: true,
-    preferredModel: 'gemini-3.5-flash',
+    preferredModel: 'claude-sonnet-4-6',
     isCombo: true,
     description: 'Versatile everyday assistant',
   },

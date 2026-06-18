@@ -15,6 +15,8 @@ import { TypingIndicator } from "@/components/ui/TypingIndicator"
 import { formatMessageTime, formatFullTime } from "@/lib/formatTime"
 import { parseFileMetadata, stripFilePrefix, getFileTypeLabel, type FileMetadata } from "@/lib/fileAttachments"
 import { formatFileSize } from "@/lib/fileUtils"
+import type { ArtifactSummary } from "@/types"
+import { ArtifactCard } from "./ArtifactCard"
 
 export type ChatMessage = UIMessage & { createdAt?: Date }
 
@@ -24,6 +26,7 @@ interface MessagesListProps {
   activeChatId: number | null
   selectedModel: string
   onDeleteMessage?: (id: string) => void
+  artifacts?: ArtifactSummary[]
 }
 
 // Helper to extract text content from message parts, stripping file prefix for display
@@ -153,6 +156,7 @@ export const MessagesList = memo(function MessagesList({
   activeChatId,
   selectedModel,
   onDeleteMessage,
+  artifacts,
 }: MessagesListProps) {
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
   const onImageClick = useCallback((url: string) => setLightboxUrl(url), [])
@@ -324,6 +328,11 @@ export const MessagesList = memo(function MessagesList({
             </motion.div>
           )})}
         </AnimatePresence>
+
+        {/* Artifact Cards */}
+        {artifacts && artifacts.length > 0 && (
+          <div className="px-4 pb-2">{artifacts.map(a => <ArtifactCard key={a.id} artifact={a} />)}</div>
+        )}
 
         {/* Typing Indicator */}
         <AnimatePresence>

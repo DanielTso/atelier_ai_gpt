@@ -2,6 +2,200 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.6.0] - 2026-06-17 — Phase D1: artifact engine — Claude-generated downloadable XLSX/DOCX/PDF
+
+Spec at `docs/specs/2026-06-17-phase-d1-artifact-engine-design.md`; plan at `docs/plans/2026-06-17-phase-d1-artifact-engine.md`.
+
+### Added
+
+- **`generate_artifact` tool** (`src/lib/artifacts/tool.ts`) — AI SDK v6 `tool()` definition wired into `POST /api/chat` for Claude models when a `chatId` is present and Storage is configured. Claude calls it with `{ type: 'xlsx'|'docx'|'pdf', title, format: 'markdown'|'sheets', content }`; `execute` renders the file, uploads to `artifacts/<projectId|standalone>/<id>/<slug>.<ext>` in the `atelier-files` bucket, persists an `artifacts` row, and returns `{ artifactId, title, type, downloadUrl }`.
+- **Renderers** (`src/lib/artifacts/`): `toXlsx.ts` (exceljs), `toDocx.ts` (docx; Markdown → headings/paragraphs/bullets), `toPdf.ts` (pdf-lib; Markdown → clean wrapped-text PDF), dispatched by `render.ts` `renderArtifact(type, title, content)`. Types in `types.ts` (`ArtifactType`, `SheetSpec`, `RenderedArtifact`).
+- **`artifacts` table** — migration `drizzle/0005_lyrical_onslaught.sql`: `id, chat_id, project_id, type, title, storage_path, status, error_message, created_at` + index on `chat_id`. Applied to live Supabase.
+- **Server actions**: `createArtifact`, `getArtifactById`, `getChatArtifacts` (rows + signed `downloadUrl`), `updateArtifactStoragePath`, `deleteArtifact` in `src/app/actions.ts`.
+- **`GET /api/artifacts?chatId=`** — returns all chat artifacts with short-lived signed `downloadUrl`. **`DELETE /api/artifacts?id=`** — removes the Storage object then the row (`src/app/api/artifacts/route.ts`).
+- **`ArtifactSummary` type** in `src/types.ts`; **`ArtifactCard`** (`src/components/chat/ArtifactCard.tsx`) — icon by type, title, type label, Download link. Rendered by `MessagesList` (new `artifacts?` prop).
+- **Client load + re-fetch** in `page.tsx`: artifacts fetched from `/api/artifacts?chatId=` on chat open and re-fetched after each assistant response.
+- **New deps**: `docx`, `pdf-lib` (pure-JS). `exceljs` already present.
+
+### Notes
+
+- Verification: lint 0 errors / 30 warnings (baseline — zero new), build clean, full suite **215 tests pass** (new: 4 render, 2 tool, 2 actions, 2 route, 2 ArtifactCard).
+- Migration `0005` applied to live Supabase. Migrations `0000`–`0005` are current.
+- Artifacts are keyed by chat; per-message pinning is D2. **D2 next: artifact workspace panel, live preview, versioning, edit/regenerate, PPTX.**
+- Chat-driven live smoke (ask Claude to generate a schedule) is best done in-browser with the real Anthropic key + Storage configured.
+
+### Deployment & release (2026-06-18)
+
+Tagged and released as **v4.6.0** — the production-readiness milestone for Phases A→D1.
+
+- **Supabase live:** project `evhgyudnjyryayazupgh`, migrations `0000`–`0005` applied. **RLS enabled on all 11 public tables** (the app connects as the `postgres` table owner, which bypasses RLS; the anon key is used only for Storage uploads).
+- **D1 artifact smoke PASSED live:** a real Claude `generate_artifact` tool call rendered a valid `.xlsx` (6492 bytes), stored it, and produced a working signed download URL — the engine works end-to-end against live Supabase Storage.
+- **Vercel env configured:** all 8 runtime vars set for **Production + Preview** (`DATABASE_URL`, `DIRECT_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`). Stored as Sensitive type — verify by presence (`vercel env ls`), not value (`vercel env pull` cannot read sensitive values back).
+- **Production cutover held:** released/tagged on `phase-c-extraction`; `master` is **not** yet merged. The one open risk is whether `@napi-rs/canvas` (native PDF render for thumbnails/vision) loads on Vercel's Linux runtime — validate on a Preview deploy first (upload a PDF, confirm a thumbnail renders), then merge `phase-c-extraction` → `master` for the production deploy. Thumbnails are best-effort and degrade gracefully if it fails.
+
+## [4.5.0] - 2026-06-17 — Phase C3: documents UI — thumbnail cards, tabbed preview, extraction badge
+
+Spec at `docs/specs/2026-06-17-phase-c3-documents-ui-design.md`; plan at `docs/plans/2026-06-17-phase-c3-documents-ui.md`. **This release closes Phase C (C2 + C-storage + C3).**
+
+### Added
+
+- **`src/components/chat/DocumentCard.tsx`** — shared thumbnail card component. Renders the signed `thumbnailUrl` (WebP first-page thumbnail from Storage) with a file-type-tile fallback for text/code/docx/xlsx. Shows filename, status icon (spinners for `uploading`/`processing`; check for `ready`; alert for `error`), chunk count, hover-to-reveal delete, and a `vision` chip when `extractionMethod === 'vision'`. Clicking the card opens `DocumentPreviewDialog`.
+- **`src/hooks/useDocumentUpload.ts`** — shared 3-step upload hook used by both document surfaces (request upload-url → `uploadToSignedUrl` → process). Centralises progress/error state; both surfaces now accept images (png/jpg/jpeg/webp) in addition to PDF/DOCX/XLSX.
+- **Tabbed `DocumentPreviewDialog`** — two tabs: "Preview" renders the original file inline (images directly; PDFs via `<iframe>` on the signed `url`; docx/text show text-only); "Extracted text" reconstructs chunks (existing behaviour). An "Open original" link is always present. Preview tab is only rendered for visual originals (image/* or pdf).
+- **`DocumentStatus` + `DocumentSummary` types** in `src/types.ts` — canonical document shape shared across `ProjectDocumentsDialog`, `ProjectLandingPage`, and `DocumentCard`, replacing three formerly duplicated local `Document` interfaces.
+- **`documents.extraction_method` column** — migration `drizzle/0004_sudden_ben_grimm.sql` adds `extraction_method text` (nullable) to the `documents` table. `/api/documents/process` records `'text'` or `'vision'`; `GET /api/documents` returns it; `DocumentCard` displays it as a badge.
+
+### Changed
+
+- **`ProjectDocumentsDialog`** and **`ProjectLandingPage`** both migrated to `DocumentCard` grid + `useDocumentUpload`; now accept image uploads.
+- **`updateDocumentStatus` server action** — accepts the new optional `extractionMethod` parameter.
+- Migration `0004` applied to the live Supabase project.
+
+### Fixed
+
+- **Project landing-page uploader regression** — `ProjectLandingPage` was still POSTing to the retired inline `/api/documents` endpoint (broken since C-storage Stage 1). Switching to `useDocumentUpload` restores drag-drop upload from the project Files panel.
+
+### Notes
+
+- Verification: lint 0 errors / 30 warnings (baseline — zero new), build clean, full Vitest + Playwright suite **203 tests pass** (new: 2 hook, 5 DocumentCard, 2 preview dialog, 2 process-method tests).
+- **Phase C is complete.** Next up: **Phase D (Artifacts)** — Claude-style artifact panel with versioned previews and export to PDF/DOCX/XLSX/PPTX. See `docs/SESSION_HANDOFF.md` for scope.
+
+## [4.4.0] - 2026-06-14 — Phase C-storage Stage 2: chat attachments to Storage
+
+Spec at `docs/specs/2026-06-14-phase-c-storage-design.md`; plan at `docs/plans/2026-06-14-phase-c-storage-stage2-attachments.md`.
+
+### Added
+
+- **Dual-write in `saveMessageAttachments`**: when Storage is configured, decodes the base64 data URL and uploads attachment bytes to `attachments/<chatId>/<messageId>/<i>-<filename>` in the private Supabase Storage bucket; stores `storage_path` with `data_url` null. When Storage is NOT configured, falls back to the base64 `data_url` column — chat image attach keeps working with no Storage configured (graceful degradation; unlike documents, which require Storage).
+- **Dual-read in `getChatAttachments`**: returns `{ messageId, mediaType, filename, url }` where `url` is a short-lived signed Storage URL for `storage_path` rows, or the legacy `data_url` for old rows. No backfill of old rows — they read unchanged.
+- **Delete cleanup**: `deleteChat` and `deleteMessage` remove relevant Storage objects best-effort before the DB cascade delete.
+- **Schema migration `drizzle/0003_superb_roughhouse.sql`**: adds `storage_path text` (nullable) to `message_attachments`; makes `data_url` nullable (was NOT NULL). One or the other column is populated per row.
+- **Client read-path (`page.tsx` `loadMessages`)**: resolves `att.url` (signed URL or legacy data URL) when building `file` parts; skips any that fail to resolve. No UI change — `MessagesList` and the lightbox already consume a URL string.
+
+### Changed
+
+- `message_attachments.data_url` is now nullable (migration `0003`). Existing rows are unaffected (they retain their base64 value).
+
+### Notes
+
+- Reuses Stage 1's `src/lib/storage.ts` and all `SUPABASE_*` / `NEXT_PUBLIC_SUPABASE_*` / `SUPABASE_STORAGE_BUCKET` env vars — no new env vars.
+- **Pending USER action:** run `DIRECT_URL=… npx drizzle-kit migrate` to apply migration `0003`.
+- **Known deferral:** deleting a whole **project** cascades `message_attachments` rows via FK but does NOT sweep their Storage objects — consistent with Stage 1's orphan-sweep deferral.
+- C-storage is now **complete** (Stage 1: documents; Stage 2: attachments). Next sub-phase is **C3 (UI)**.
+
+## [4.3.0] - 2026-06-14 — Phase C-storage Stage 1: document storage
+
+Spec at `docs/specs/2026-06-14-phase-c-storage-design.md`; plan at `docs/plans/2026-06-14-phase-c-storage-stage1-documents.md`.
+
+### Added
+
+- **`src/lib/storage.ts`** (server-only): Supabase Storage wrapper using `@supabase/supabase-js` (Storage API only; DB stays on Drizzle). Exports `isStorageConfigured`, `createSignedUploadUrl`, `uploadBuffer`, `downloadToBuffer`, `createSignedDownloadUrl`, `removeObjects`, `storageBucketName`. Reads `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` (service-role key never sent to client). Bucket name from `SUPABASE_STORAGE_BUCKET` (default `atelier-files`), private.
+- **`src/lib/thumbnails.ts`**: `generatePdfThumbnail` (renders page 1 at scale 1) and `generateImageThumbnail` (downscale), both → WebP at `THUMBNAIL_WIDTH` (default 600px) via `@napi-rs/canvas`. Best-effort; failures are non-fatal.
+- **`src/lib/storageClient.ts`** (browser): anon-key Supabase client for `uploadToSignedUrl`. Uses `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+- **3-step direct-upload flow** replacing the old inline `POST /api/documents`:
+  1. `POST /api/documents/upload-url` — validates name/type/size, creates a `documents` row with status `uploading`, returns `{documentId, path, token, bucket}`.
+  2. Browser `uploadToSignedUrl` — file goes straight to Supabase Storage, bypassing the Vercel function request-body limit (large construction plans now work).
+  3. `POST /api/documents/process` `{documentId}` — downloads from Storage, runs the C2 extract pipeline (text / thin-PDF vision fallback / image vision), uploads thumbnail, chunks + embeds, sets status `processing` → `ready | error`.
+- **Document originals + thumbnails persisted** in private Supabase Storage; paths recorded in `documents.storage_path` + `documents.thumbnail_path`.
+- **`GET /api/documents`** returns short-lived signed `url` (original) + `thumbnailUrl` (best-effort, `null` if absent). **`DELETE /api/documents`** removes Storage objects (original + thumbnail) before deleting the row.
+- **New server actions**: `createUploadingDocument`, `updateDocumentStoragePath`, `getDocumentById`; `updateDocumentStatus` widened (added `uploading`/`processing` to status union + accepts `charCount`/`thumbnailPath`); `deleteDocument` now returns the deleted row.
+- **Schema migration `drizzle/0002_left_patriot.sql`**: adds `storage_path` and `thumbnail_path` columns to `documents`; `status` enum extended with `uploading` and `processing`.
+- **New env vars**: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (server-only), `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (browser), `SUPABASE_STORAGE_BUCKET` (default `atelier-files`), `THUMBNAIL_WIDTH` (default 600).
+
+### Changed
+
+- **Old inline `POST /api/documents`** (extract → chunk → embed in one function body) retired. Replaced by the 3-step flow above.
+- **`createDocument` server action** retired; superseded by `createUploadingDocument`.
+
+### Notes
+
+- **Pending USER actions before this ships:**
+  1. Create a **private** Supabase Storage bucket named `atelier-files` (or set `SUPABASE_STORAGE_BUCKET`).
+  2. Add the four Supabase Storage env vars to `.env.local` and the Vercel dashboard.
+  3. Run `DIRECT_URL=… npx drizzle-kit migrate` to apply migration `0002`.
+- **Stage 2 (chat-attachment migration off base64 → Storage) not done** — its own brainstorm→spec→plan follows.
+- **Live-Storage smoke** (UI upload end-to-end with real Supabase bucket) not yet run; unit tests use mocked storage; build and Vitest suite are green locally.
+
+## [4.2.0] - 2026-06-07 — Phase C2: Vision extraction
+
+Spec at `docs/specs/2026-06-07-phase-c-construction-extraction-design.md`; plan at `docs/plans/2026-06-07-phase-c2-vision-extraction.md`.
+
+### Added
+
+- **Vision-extraction module** (`src/lib/visionExtraction.ts`) with two entry points: `extractViaVision(buffer)` renders each PDF page (pdfjs-dist@5 *legacy* build + `@napi-rs/canvas`, scale 3) and sends each page image to Gemini Flash (`generateText`, image content part `{ type: 'image', image: Uint8Array }`), best-effort per page (page failure is logged and skipped), capped at `EXTRACTION_MAX_PAGES`; `extractViaVisionImage(buffer, mimeType)` vision-extracts a single uploaded image. Both return `''` if no Gemini key (graceful degradation).
+- **Image-upload support in `/api/documents`**: PNG/JPG/JPEG/WEBP by extension, or any `image/*` MIME type, are routed directly to `extractViaVisionImage`. The upload guard was broadened to accept images (they intentionally remain outside the shared `isSupported` list — see Changed).
+- **Vision fallback for thin-text PDFs**: after standard text extraction via `unpdf`, if the result is shorter than `EXTRACTION_MIN_TEXT_CHARS` (default 100) the route falls back to `extractViaVision`; the vision result is used if it yields more text. All other files continue through `extractTextFromBuffer` unchanged. Downstream chunk → embed → pgvector RAG pipeline is untouched.
+- **`isImageExtension(ext)` helper** in `src/lib/fileExtraction.ts` and `IMAGE_EXTENSIONS` set for opt-in image acceptance per route.
+- **`EXTRACTION_*` env knobs** (read in `visionExtraction.ts`): `EXTRACTION_MODEL` (default `gemini-3.5-flash`), `EXTRACTION_MAX_PAGES` (default `30`), `EXTRACTION_RENDER_SCALE` (default `3`), `EXTRACTION_MAX_OUTPUT_TOKENS` (default `8000`); `EXTRACTION_MIN_TEXT_CHARS` (default `100`, read in the documents route).
+- **Tests**: `tests/unit/lib/visionExtraction.test.ts` (5 tests), `tests/unit/api/documents-route.test.ts` (3 tests). Full API suite: 39 tests green.
+
+### Changed
+
+- **Images intentionally excluded from shared `SUPPORTED_EXTENSIONS`/`isSupported`**: the shared `/api/extract` text extractor has no image handling and would emit garbage — image acceptance is localized to `/api/documents` only. A prior spike that widened `isSupported` globally was caught and reverted before merge.
+- **`pdfjs-dist@^5.7.284` and `@napi-rs/canvas@^0.1.100` promoted from devDependencies to dependencies** (they now run at request time, not only in tests). pdfjs-dist v5 *legacy* build (`pdfjs-dist/legacy/build/pdf.mjs`) is required; v6 breaks the API. `@napi-rs/canvas` 0.1.x is the verified compatible series.
+
+### Notes
+
+- **Unverified deploy risk**: whether native `@napi-rs/canvas` builds/runs on Vercel Fluid Compute has not yet been confirmed (Task 6). Documented fallback is client-side pdf.js rendering if the native canvas module is unavailable.
+- Page extraction is sequential (one page at a time) — rate-limit-safe and bounded by `EXTRACTION_MAX_PAGES`. Bounded concurrency is a later optimization if throughput becomes a bottleneck.
+- Spike-validated: `gemini-3.5-flash` (not a reasoning-heavy pro model) reads real IFC construction plans well.
+
+## [4.1.0] - 2026-06-07 — Phase B2: Advanced RAG
+
+Spec at `docs/specs/2026-06-07-phase-b2-advanced-rag-design.md`; plan at `docs/plans/2026-06-07-phase-b2-advanced-rag.md`.
+
+### Added
+
+- **Multi-stage retrieval pipeline** (`src/lib/retrieval.ts` `retrieveContext()`): query-rewrite → vector top-N → MMR diversity → LLM rerank → top-k. New modules: `ragConfig.ts`, `queryRewrite.ts`, `rerank.ts`, `mmr.ts`. Query-rewrite resolves follow-up pronouns into standalone search queries; MMR removes near-duplicate (overlapping) chunks; rerank re-scores candidates for precision. Rewrite + rerank run on in-stack Gemini Flash via the proven `generateText`+parse+fallback pattern.
+- **Tunable RAG config** (`ragConfig.ts`) with env overrides + sane defaults: `RAG_DOC_THRESHOLD`, `RAG_MSG_THRESHOLD`, `RAG_TOP_N`, `RAG_DOC_TOP_K`, `RAG_MSG_TOP_K`, `RAG_MMR_LAMBDA`, and per-stage toggles `RAG_REWRITE_ENABLED`/`RAG_RERANK_ENABLED`/`RAG_MMR_ENABLED`.
+
+### Changed
+
+- **Every retrieval stage is best-effort and degrades to the prior stage** — with all toggles off the pipeline reduces to plain pgvector top-k, so it can never retrieve worse than before. The chat route's inline retrieval block is replaced by a single `retrieveContext()` call.
+- **Test suite ~40s → ~15s**: `tests/helpers/test-db.ts` now reuses one PGlite instance per worker and `TRUNCATE … RESTART IDENTITY CASCADE`s between tests instead of recreating Postgres each time.
+
+### Notes
+
+- Rewrite + rerank add two Gemini Flash calls per message (~1–2s latency) — toggle off via env. Thresholds ship as configurable defaults (not data-tuned) since real construction-doc usage hasn't happened yet.
+
+## [4.0.0] - 2026-06-07 — Phase B: Supabase Postgres + pgvector
+
+Phase 2 of the workhorse program. Spec at `docs/specs/2026-06-07-phase-b-supabase-pgvector-design.md`; plan at `docs/plans/2026-06-07-phase-b-supabase-pgvector.md`.
+
+### Changed (Breaking)
+
+- **Data layer migrated from libSQL/SQLite (Turso) to Supabase Postgres.** Drizzle moved from `sqlite-core` to `pg-core` on the `postgres-js` driver (pooled `DATABASE_URL` with `prepare:false` at runtime; `DIRECT_URL` for migrations). All 10 tables ported with integer `GENERATED ALWAYS AS IDENTITY` PKs, `timestamptz`, `boolean`, and native FK cascade. **Fresh start — no data migrated.** `@libsql/client` removed; `TURSO_*` env vars replaced by `DATABASE_URL` + `DIRECT_URL`.
+- **RAG retrieval is now native pgvector.** The two `embedding` columns are `vector(768)` with **HNSW** (`vector_cosine_ops`) indexes. `findSimilarMessages`/`findSimilarDocumentChunks` run one indexed SQL query each via Drizzle `cosineDistance` (`1 - (embedding <=> query) > threshold`), replacing the brute-force "load every vector and loop in JS" path. Public signatures unchanged, so the chat context pipeline is untouched. Embeddings still generated by Gemini `gemini-embedding-001`.
+- **Versioned Drizzle migrations introduced** (`drizzle/`): `0000_enable_vector.sql` (`CREATE EXTENSION vector`) + `0001_init_schema.sql`. `drizzle-kit push` workflow replaced by `generate` + `migrate`.
+
+### Added
+
+- **PGlite test harness.** `tests/helpers/test-db.ts` runs an in-process Postgres (`@electric-sql/pglite`, pinned `^0.4.6`) with the `vector` extension and applies the real migrations — CI stays secret-free. New `tests/unit/db/harness.test.ts` + `tests/unit/db/vector-search.test.ts` (pgvector ordering/threshold/scoping).
+
+### Notes
+
+- Reranking/MMR/query-rewriting deferred to **Phase B2**. Test suite is slower (~40s) because PGlite provisions a fresh Postgres per test — a shared-instance optimization is a possible future nicety.
+
+## [3.0.0] - 2026-06-07 — Phase A: Claude provider
+
+First of a four-phase program (A: Claude provider · B: RAG upgrade · C: construction plan/image extraction · D: Excel/Word artifacts). Design spec at `docs/specs/2026-06-07-phase-a-claude-provider-design.md`; plan at `docs/plans/2026-06-07-phase-a-claude-provider.md`.
+
+### Added (Breaking)
+
+- **Claude is now the primary chat provider** via `@ai-sdk/anthropic`. Picker offers **Claude Opus 4.8** (`claude-opus-4-8`, default), **Sonnet 4.6** (`claude-sonnet-4-6`), and **Haiku 4.5** (`claude-haiku-4-5`). Claude text models have **web search** enabled (`anthropic.tools.webSearch_20250305`). New `getAnthropicApiKey()` (DB-first, env `ANTHROPIC_API_KEY`); `anthropic-api-key` added to the sensitive-key read block.
+- **API Keys settings tab.** New Settings → API Keys tab to view configured status and set the Gemini + Anthropic keys in-app (`getApiKeyStatus()` returns booleans only; inputs are write-only/password). Previously keys were `.env.local`-only.
+
+### Changed (Breaking)
+
+- **Gemini text models retired from the picker.** Only the Gemini **image** model (Nano Banana 2) remains user-selectable. Gemini still powers **embeddings** (`gemini-embedding-001`) and image generation under the hood — Anthropic has no embeddings API, so the RAG pipeline is unchanged. The Deep Think virtual model and per-level thinking handling were removed from `createProvider`.
+- **Persona "Model + Persona" combos repointed to Claude**: Code Review → Opus 4.8, Creative Writing → Sonnet 4.6, Quick Code Help → Haiku 4.5, Deep Analysis → Opus 4.8, General Assistant → Sonnet 4.6. `modelShortLabel`/`MODEL_SHORT_LABELS` updated to the Claude lineup.
+- **Housekeeping pinned to Gemini Flash.** `title` / `summarize` / `classify` always run on the internal `gemini-3.5-flash` regardless of the chat model — cheap, fast, no Claude tokens on background tasks.
+- **Default chat-model fallback** moved from `gemini-3.5-flash` to `claude-opus-4-8`.
+
+### Notes
+
+- **Thinking config deferred.** Opus 4.8 rejects `budget_tokens` (the only thinking knob AI SDK v6 exposes), so Claude ships without an explicit thinking config; adaptive thinking is a future follow-up.
+
 ## [2.1.0] - 2026-06-07
 
 ### Changed

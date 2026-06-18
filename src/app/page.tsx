@@ -30,7 +30,7 @@ import { ProjectLandingPage } from "@/components/chat/ProjectLandingPage"
 import type { AttachedFile, AttachedImage } from "@/lib/fileAttachments"
 import { buildFileMessage } from "@/lib/fileAttachments"
 import type { FileUIPart } from "ai"
-import type { Model } from "@/types"
+import type { Model, ArtifactSummary } from "@/types"
 
 // Types matching DB schema roughly
 type Project = { id: number; name: string }
@@ -64,6 +64,9 @@ export default function Home() {
   // Project landing page state
   const [chatPreviews, setChatPreviews] = useState<{ id: number; title: string; preview: string | null; createdAt: Date | null }[]>([])
   const [chatPreviewsLoading, setChatPreviewsLoading] = useState(false)
+
+  // Artifact state
+  const [artifacts, setArtifacts] = useState<ArtifactSummary[]>([])
 
   // Refs for values used in closures (must be after state declaration)
   const activeChatIdRef = useRef(activeChatId)
@@ -257,6 +260,12 @@ export default function Home() {
             }
           }
         }
+
+        // Best-effort: re-fetch artifacts so a freshly-generated one appears
+        fetch(`/api/artifacts?chatId=${currentChatId}`)
+          .then(r => r.ok ? r.json() : null)
+          .then(data => { if (data?.artifacts) setArtifacts(data.artifacts) })
+          .catch(() => {})
       }
     }
   })
@@ -372,6 +381,17 @@ export default function Home() {
         getChatAttachments(cid),
       ])
 
+      // Best-effort: fetch artifacts for this chat
+      try {
+        const artifactsRes = await fetch(`/api/artifacts?chatId=${cid}`)
+        if (artifactsRes.ok) {
+          const artifactsData = await artifactsRes.json()
+          setArtifacts(artifactsData.artifacts ?? [])
+        }
+      } catch {
+        // Artifact fetch failure must not break message loading
+      }
+
       // Group attachments by messageId
       const attachmentsByMessageId = new Map<number, typeof attachments>()
       for (const att of attachments) {
@@ -386,13 +406,16 @@ export default function Home() {
         const parts: Array<{ type: 'text'; text: string } | { type: 'file'; mediaType: string; url: string }> = [
           { type: 'text' as const, text: m.content },
         ]
-        // Append image file parts from saved attachments
+        // Append image file parts from saved attachments. `url` is resolved
+        // server-side: a signed Storage URL for storage-backed rows, or the
+        // legacy base64 data URL for old rows. Skip any that failed to resolve.
         if (msgAttachments) {
           for (const att of msgAttachments) {
+            if (!att.url) continue
             parts.push({
               type: 'file' as const,
               mediaType: att.mediaType,
-              url: att.dataUrl,
+              url: att.url,
             })
           }
         }
@@ -462,6 +485,7 @@ export default function Home() {
     } else {
       setMessages([])
       setCurrentSystemPrompt(null)
+      setArtifacts([])
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeChatId])
@@ -935,6 +959,7 @@ export default function Home() {
                 isLoading={isLoading}
                 activeChatId={activeChatId}
                 selectedModel={selectedModel}
+                artifacts={artifacts}
               />
             </div>
 

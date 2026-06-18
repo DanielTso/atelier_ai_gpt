@@ -1,15 +1,18 @@
 # Project Plan: Atelier Studio
 
 ## Tech Stack
-- **Framework:** Next.js 16 (App Router)
-- **Language:** TypeScript
+- **Framework:** Next.js 16 (App Router, Fluid Compute / Node)
+- **Language:** TypeScript (strict)
 - **Styling:** Tailwind CSS v4 (Atelier Technologies brand system, light-first)
 - **Icons:** Lucide React
-- **AI Integration:** Vercel AI SDK v6 (Google Gemini + Alibaba Cloud Qwen)
-- **Database:** SQLite via `@libsql/client` + `drizzle-orm/libsql` (local) / Turso (production)
+- **AI Integration:** Vercel AI SDK v6 — Anthropic Claude (chat brain) + Google Gemini (image gen, embeddings, housekeeping, vision)
+- **Database:** Supabase Postgres + pgvector (HNSW) via `drizzle-orm/postgres-js` (pooled runtime / direct migrations)
+- **Storage:** Supabase Storage (private bucket; signed upload/download URLs)
 - **Theme:** `next-themes` for Dark/Light mode
-- **Deployment:** Vercel + Turso
-- **CI:** GitHub Actions (lint → build → vitest → playwright)
+- **Deployment:** Vercel (Fluid Compute) + Supabase
+- **CI:** GitHub Actions (lint → build → vitest → drizzle migrate → playwright)
+
+> **Note:** the phase checklist below is the original v1 UI/feature build (historical). The current multi-phase program (A: Claude provider · B/B2: Supabase + RAG · C: vision extraction + Storage · D: artifacts) is tracked in [CHANGELOG.md](./CHANGELOG.md) and [docs/SESSION_HANDOFF.md](./docs/SESSION_HANDOFF.md).
 
 ## Phases
 

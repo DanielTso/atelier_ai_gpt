@@ -20,7 +20,7 @@ export async function POST(req: Request) {
     if (!body.success) {
       return apiError(body.error, 'Invalid request body', 400);
     }
-    const { chatId, cutoffMessageId, model } = body.data;
+    const { chatId, cutoffMessageId } = body.data;
 
     // Get chat to check for existing summary
     const chat = await getChatWithSummary(chatId);
@@ -51,8 +51,8 @@ export async function POST(req: Request) {
       ? `Previous conversation summary:\n${chat.summary}\n\nNew messages to incorporate:\n`
       : '';
 
-    // Select model for summarization
-    const modelName = model || 'gemini-3.5-flash';
+    // Housekeeping runs on a cheap internal Gemini model, never the chat model.
+    const modelName = 'gemini-3.5-flash';
     const { model: selectedModel } = await createProvider(modelName);
 
     // Generate summary

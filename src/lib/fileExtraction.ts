@@ -1,4 +1,7 @@
-export const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
+// Construction plan sets are routinely large (the IFC sample is ~17MB). Note: on
+// Vercel the platform request-body limit may bite before this — large-file uploads
+// are ultimately solved by C-storage (direct upload to Supabase Storage).
+export const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB
 export const MAX_TEXT_LENGTH = 100_000 // 100K characters
 
 export const SUPPORTED_EXTENSIONS = new Set([
@@ -9,6 +12,14 @@ export const SUPPORTED_EXTENSIONS = new Set([
   'java', 'c', 'cpp', 'go', 'rs', 'rb', 'php',
   'sh', 'yaml', 'yml', 'xml', 'sql',
 ])
+
+// Images are NOT in SUPPORTED_EXTENSIONS: the shared text extractor (/api/extract)
+// has no image handling and would emit garbage UTF-8. Image support is opt-in per
+// route — /api/documents accepts these via vision extraction (see its guard).
+export const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'webp'])
+export function isImageExtension(ext: string): boolean {
+  return IMAGE_EXTENSIONS.has(ext)
+}
 
 export const TEXT_MIME_PREFIXES = ['text/', 'application/json', 'application/xml']
 

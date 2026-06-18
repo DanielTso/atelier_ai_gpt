@@ -1,13 +1,44 @@
 'use server'
 
 import { db } from '@/db'
-import { projects, chats, messages, settings, messageEmbeddings, personaUsage, chatTopics, documents, documentChunks, messageAttachments } from '@/db/schema'
+import { projects, chats, messages, settings, messageEmbeddings, personaUsage, chatTopics, documents, documentChunks, messageAttachments, artifacts } from '@/db/schema'
 import { eq, desc, isNull, isNotNull, and, lte, asc, count, inArray, sql } from 'drizzle-orm'
+import { isStorageConfigured, uploadBuffer, createSignedDownloadUrl, removeObjects } from '@/lib/storage'
 
-const SENSITIVE_KEYS = new Set(['gemini-api-key'])
+function sanitizeAttachmentName(name: string): string {
+  return name.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/^\.+$/, '_')
+}
+
+// Cap decoded attachment size. User uploads are bounded by the server-action body
+// limit, but AI-generated images (saved in onFinish) are not — guard the decode so
+// an oversized data URL can't balloon server memory.
+const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024 // 20MB
+// Signed URLs for chat images live in the open page for a session; a short TTL would
+// break already-rendered <img> tags. Use a generous window (private bucket, single user).
+const ATTACHMENT_URL_TTL_SECONDS = 24 * 60 * 60 // 24h
+
+function dataUrlToBuffer(dataUrl: string): Buffer {
+  const comma = dataUrl.indexOf(',')
+  const b64 = comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl
+  if (b64.length > Math.ceil((MAX_ATTACHMENT_BYTES * 4) / 3)) {
+    throw new Error('Attachment too large')
+  }
+  return Buffer.from(b64, 'base64')
+}
+
+async function removeAttachmentObjects(where: ReturnType<typeof eq>) {
+  if (!isStorageConfigured()) return
+  const rows = await db.select({ storagePath: messageAttachments.storagePath }).from(messageAttachments).where(where)
+  const paths = rows.map(r => r.storagePath).filter((p): p is string => Boolean(p))
+  // Best-effort: the DB row (the recovery anchor) is about to be deleted, so log the
+  // exact paths if cleanup fails — they'd otherwise be untraceable orphans.
+  if (paths.length) await removeObjects(paths).catch(e => console.warn('[attachments] storage cleanup failed for paths:', paths, e instanceof Error ? e.message : e))
+}
+
+const SENSITIVE_KEYS = new Set(['gemini-api-key', 'anthropic-api-key'])
 
 export async function getProjects() {
-  return await db.select().from(projects).all()
+  return await db.select().from(projects)
 }
 
 export async function createProject(name: string) {
@@ -25,13 +56,13 @@ export async function updateProjectName(id: number, name: string) {
 export async function getChats(projectId: number) {
   return await db.select().from(chats).where(
     and(eq(chats.projectId, projectId), eq(chats.archived, false))
-  ).orderBy(desc(chats.createdAt)).all()
+  ).orderBy(desc(chats.createdAt))
 }
 
 export async function getProjectChatPreviews(projectId: number) {
   const projectChats = await db.select().from(chats).where(
     and(eq(chats.projectId, projectId), eq(chats.archived, false))
-  ).orderBy(desc(chats.createdAt)).all()
+  ).orderBy(desc(chats.createdAt))
 
   if (projectChats.length === 0) return []
 
@@ -45,7 +76,6 @@ export async function getProjectChatPreviews(projectId: number) {
       eq(messages.role, 'user')
     ))
     .orderBy(asc(messages.createdAt))
-    .all()
 
   // Keep only the first message per chat
   const firstMsgMap = new Map<number, string>()
@@ -67,13 +97,13 @@ export async function getAllProjectChats() {
   // Get all non-archived chats that belong to a project
   return await db.select().from(chats).where(
     and(isNotNull(chats.projectId), eq(chats.archived, false))
-  ).orderBy(desc(chats.createdAt)).all()
+  ).orderBy(desc(chats.createdAt))
 }
 
 export async function getStandaloneChats() {
   return await db.select().from(chats).where(
     and(isNull(chats.projectId), eq(chats.archived, false))
-  ).orderBy(desc(chats.createdAt)).all()
+  ).orderBy(desc(chats.createdAt))
 }
 
 export async function createChat(projectId: number, title: string) {
@@ -85,6 +115,7 @@ export async function createStandaloneChat(title: string) {
 }
 
 export async function deleteChat(id: number) {
+  await removeAttachmentObjects(eq(messageAttachments.chatId, id))
   await db.delete(chats).where(eq(chats.id, id))
 }
 
@@ -97,6 +128,7 @@ export async function saveMessage(chatId: number, role: string, content: string)
 }
 
 export async function deleteMessage(id: number) {
+  await removeAttachmentObjects(eq(messageAttachments.messageId, id))
   await db.delete(messages).where(eq(messages.id, id))
 }
 
@@ -108,7 +140,6 @@ export async function getChatMessages(chatId: number, limit: number = 100) {
     .where(eq(messages.chatId, chatId))
     .orderBy(desc(messages.createdAt))
     .limit(limit)
-    .all()
 
   // Reverse to get chronological order (oldest first)
   return recentMessages.reverse()
@@ -127,14 +158,14 @@ export async function restoreChat(id: number) {
 }
 
 export async function getArchivedChats() {
-  return await db.select().from(chats).where(eq(chats.archived, true)).orderBy(desc(chats.createdAt)).all()
+  return await db.select().from(chats).where(eq(chats.archived, true)).orderBy(desc(chats.createdAt))
 }
 
 // Context Management Actions
 
 export async function getChatWithContext(chatId: number) {
   // Get chat with summary and system prompt for context building
-  const result = await db.select().from(chats).where(eq(chats.id, chatId)).get()
+  const [result] = await db.select().from(chats).where(eq(chats.id, chatId))
   return result
 }
 
@@ -158,10 +189,9 @@ export async function updateChatSummary(chatId: number, summary: string, summary
 }
 
 export async function getMessageCount(chatId: number) {
-  const result = await db.select({ count: count() })
+  const [result] = await db.select({ count: count() })
     .from(messages)
     .where(eq(messages.chatId, chatId))
-    .get()
   return result?.count ?? 0
 }
 
@@ -175,7 +205,6 @@ export async function getMessagesForSummarization(chatId: number, upToMessageId:
       lte(messages.id, upToMessageId),
     ))
     .orderBy(asc(messages.createdAt))
-    .all()
 }
 
 // Settings Actions
@@ -184,14 +213,14 @@ export async function getSetting(key: string) {
   if (SENSITIVE_KEYS.has(key)) {
     throw new Error('Access denied: this setting cannot be read from the client')
   }
-  const result = await db.select().from(settings).where(eq(settings.key, key)).get()
+  const [result] = await db.select().from(settings).where(eq(settings.key, key))
   return result?.value ?? null
 }
 
 export async function getSettings(keys: string[]) {
   const safeKeys = keys.filter(k => !SENSITIVE_KEYS.has(k))
   if (safeKeys.length === 0) return {}
-  const results = await db.select().from(settings).where(inArray(settings.key, safeKeys)).all()
+  const results = await db.select().from(settings).where(inArray(settings.key, safeKeys))
   const map: Record<string, string> = {}
   for (const row of results) {
     map[row.key] = row.value
@@ -238,27 +267,25 @@ export async function saveMessageEmbedding(
     chatId,
     projectId,
     content,
-    embedding: JSON.stringify(embedding),
+    embedding,
   }).onConflictDoUpdate({
     target: messageEmbeddings.messageId,
-    set: { content, embedding: JSON.stringify(embedding), createdAt: new Date() },
+    set: { content, embedding, createdAt: new Date() },
   }).returning()
 }
 
 export async function getEmbeddingsForChat(chatId: number) {
   return await db.select().from(messageEmbeddings)
     .where(eq(messageEmbeddings.chatId, chatId))
-    .all()
 }
 
 export async function getEmbeddingsForProject(projectId: number) {
   return await db.select().from(messageEmbeddings)
     .where(eq(messageEmbeddings.projectId, projectId))
-    .all()
 }
 
 export async function getAllEmbeddings() {
-  return await db.select().from(messageEmbeddings).all()
+  return await db.select().from(messageEmbeddings)
 }
 
 export async function getEmbeddingCount(scope?: { chatId?: number; projectId?: number }) {
@@ -289,10 +316,10 @@ export async function updateProjectDefaults(
 }
 
 export async function getProjectDefaults(projectId: number) {
-  const result = await db.select({
+  const [result] = await db.select({
     defaultPersonaId: projects.defaultPersonaId,
     defaultModel: projects.defaultModel,
-  }).from(projects).where(eq(projects.id, projectId)).get()
+  }).from(projects).where(eq(projects.id, projectId))
   return result ?? { defaultPersonaId: null, defaultModel: null }
 }
 
@@ -316,11 +343,10 @@ export async function recordPersonaUsage(data: {
 
 export async function incrementUsageMessageCount(chatId: number) {
   // Get existing usage record for this chat
-  const existing = await db.select().from(personaUsage)
+  const [existing] = await db.select().from(personaUsage)
     .where(eq(personaUsage.chatId, chatId))
     .orderBy(desc(personaUsage.lastUsedAt))
     .limit(1)
-    .get()
 
   if (existing) {
     return await db.update(personaUsage)
@@ -338,7 +364,6 @@ export async function getProjectPersonaStats(projectId: number) {
   return await db.select().from(personaUsage)
     .where(eq(personaUsage.projectId, projectId))
     .orderBy(desc(personaUsage.messageCount))
-    .all()
 }
 
 // ── Chat Topics Actions ──
@@ -353,32 +378,39 @@ export async function getChatTopics(chatId: number) {
   return await db.select().from(chatTopics)
     .where(eq(chatTopics.chatId, chatId))
     .orderBy(desc(chatTopics.confidence))
-    .all()
 }
 
 // ── Document RAG Actions ──
 
-export async function createDocument(data: {
+export async function createUploadingDocument(data: {
   projectId: number
   filename: string
   mimeType: string
   fileSize: number
-  charCount: number
 }) {
   return await db.insert(documents).values({
     projectId: data.projectId,
     filename: data.filename,
     mimeType: data.mimeType,
     fileSize: data.fileSize,
-    charCount: data.charCount,
-    status: 'processing',
+    charCount: 0,
+    status: 'uploading',
   }).returning()
+}
+
+export async function updateDocumentStoragePath(id: number, storagePath: string) {
+  return await db.update(documents).set({ storagePath }).where(eq(documents.id, id)).returning()
+}
+
+export async function getDocumentById(id: number) {
+  const [doc] = await db.select().from(documents).where(eq(documents.id, id))
+  return doc ?? null
 }
 
 export async function updateDocumentStatus(
   id: number,
-  status: 'ready' | 'error',
-  updates?: { chunkCount?: number; errorMessage?: string }
+  status: 'uploading' | 'processing' | 'ready' | 'error',
+  updates?: { chunkCount?: number; errorMessage?: string; charCount?: number; thumbnailPath?: string; extractionMethod?: 'text' | 'vision' }
 ) {
   return await db.update(documents)
     .set({ status, ...updates })
@@ -390,11 +422,10 @@ export async function getProjectDocuments(projectId: number) {
   return await db.select().from(documents)
     .where(eq(documents.projectId, projectId))
     .orderBy(desc(documents.createdAt))
-    .all()
 }
 
 export async function deleteDocument(id: number) {
-  await db.delete(documents).where(eq(documents.id, id))
+  return await db.delete(documents).where(eq(documents.id, id)).returning()
 }
 
 export async function saveDocumentChunks(chunks: {
@@ -409,7 +440,7 @@ export async function saveDocumentChunks(chunks: {
 
 export async function updateChunkEmbedding(chunkId: number, embedding: number[]) {
   return await db.update(documentChunks)
-    .set({ embedding: JSON.stringify(embedding) })
+    .set({ embedding })
     .where(eq(documentChunks.id, chunkId))
     .returning()
 }
@@ -422,7 +453,6 @@ export async function getDocumentChunks(documentId: number) {
   }).from(documentChunks)
     .where(eq(documentChunks.documentId, documentId))
     .orderBy(documentChunks.chunkIndex)
-    .all()
 }
 
 export async function getDocumentChunksForProject(projectId: number) {
@@ -442,7 +472,6 @@ export async function getDocumentChunksForProject(projectId: number) {
         isNotNull(documentChunks.embedding)
       )
     )
-    .all()
 }
 
 // ── Message Attachment Actions ──
@@ -453,12 +482,74 @@ export async function saveMessageAttachments(
   attachments: { filename: string; mediaType: string; dataUrl: string; fileSize: number }[]
 ) {
   if (attachments.length === 0) return []
-  const rows = attachments.map(a => ({ messageId, chatId, ...a }))
+  if (isStorageConfigured()) {
+    // Upload serially and track what landed, so a mid-batch failure cleans up the
+    // already-uploaded objects instead of orphaning them (the insert below is
+    // all-or-nothing, so a partial upload must not leave stray blobs).
+    const rows: typeof messageAttachments.$inferInsert[] = []
+    const uploaded: string[] = []
+    try {
+      for (const [i, a] of attachments.entries()) {
+        const path = `attachments/${chatId}/${messageId}/${i}-${sanitizeAttachmentName(a.filename)}`
+        await uploadBuffer(path, dataUrlToBuffer(a.dataUrl), a.mediaType)
+        uploaded.push(path)
+        rows.push({ messageId, chatId, filename: a.filename, mediaType: a.mediaType, storagePath: path, dataUrl: null, fileSize: a.fileSize })
+      }
+      return await db.insert(messageAttachments).values(rows).returning()
+    } catch (e) {
+      if (uploaded.length) await removeObjects(uploaded).catch(() => {})
+      throw e
+    }
+  }
+  const rows = attachments.map(a => ({ messageId, chatId, filename: a.filename, mediaType: a.mediaType, dataUrl: a.dataUrl, fileSize: a.fileSize }))
   return await db.insert(messageAttachments).values(rows).returning()
 }
 
 export async function getChatAttachments(chatId: number) {
-  return await db.select().from(messageAttachments)
-    .where(eq(messageAttachments.chatId, chatId))
-    .all()
+  const rows = await db.select().from(messageAttachments).where(eq(messageAttachments.chatId, chatId))
+  return await Promise.all(rows.map(async (r) => {
+    let url = r.dataUrl ?? ''
+    if (r.storagePath) {
+      url = await createSignedDownloadUrl(r.storagePath, ATTACHMENT_URL_TTL_SECONDS).catch(() => '')
+    }
+    return { messageId: r.messageId, mediaType: r.mediaType, filename: r.filename, url }
+  }))
+}
+
+export async function getApiKeyStatus(): Promise<{ gemini: boolean; anthropic: boolean }> {
+  const { getGeminiApiKey, getAnthropicApiKey } = await import('@/lib/settings')
+  const [gemini, anthropic] = await Promise.all([getGeminiApiKey(), getAnthropicApiKey()])
+  return { gemini: Boolean(gemini), anthropic: Boolean(anthropic) }
+}
+
+// ── Artifact Actions ──
+
+export async function createArtifact(data: {
+  chatId: number; projectId: number | null; type: string; title: string; storagePath: string; status?: string; errorMessage?: string
+}) {
+  return await db.insert(artifacts).values({
+    chatId: data.chatId, projectId: data.projectId ?? null, type: data.type, title: data.title,
+    storagePath: data.storagePath, status: data.status ?? 'ready', errorMessage: data.errorMessage ?? null,
+  }).returning()
+}
+
+export async function getArtifactById(id: number) {
+  const [a] = await db.select().from(artifacts).where(eq(artifacts.id, id))
+  return a ?? null
+}
+
+export async function getChatArtifacts(chatId: number) {
+  const rows = await db.select().from(artifacts).where(eq(artifacts.chatId, chatId)).orderBy(asc(artifacts.createdAt))
+  return await Promise.all(rows.map(async (r) => ({
+    id: r.id, chatId: r.chatId, type: r.type, title: r.title, status: r.status, createdAt: r.createdAt,
+    downloadUrl: r.storagePath ? await createSignedDownloadUrl(r.storagePath).catch(() => null) : null,
+  })))
+}
+
+export async function deleteArtifact(id: number) {
+  return await db.delete(artifacts).where(eq(artifacts.id, id)).returning()
+}
+
+export async function updateArtifactStoragePath(id: number, storagePath: string) {
+  return await db.update(artifacts).set({ storagePath }).where(eq(artifacts.id, id)).returning()
 }

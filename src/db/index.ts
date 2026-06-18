@@ -1,15 +1,9 @@
 import 'dotenv/config';
-import { drizzle } from 'drizzle-orm/libsql';
-import { createClient } from '@libsql/client';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import postgres from 'postgres';
 import * as schema from './schema';
 
-const client = createClient({
-  url: process.env.TURSO_DATABASE_URL || 'file:sqlite.db',
-  authToken: process.env.TURSO_AUTH_TOKEN,
-});
+// Supabase transaction pooler requires prepare:false (no prepared statements).
+const client = postgres(process.env.DATABASE_URL!, { prepare: false });
 
-// Enable foreign key enforcement for local SQLite
-// Turso remote mode already enforces FKs; this ensures local dev parity
-client.execute('PRAGMA foreign_keys = ON').catch(() => {})
-
-export const db = drizzle(client, { schema });
+export const db = drizzle({ client, schema });

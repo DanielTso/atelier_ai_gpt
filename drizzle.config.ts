@@ -3,9 +3,9 @@ import { defineConfig } from "drizzle-kit";
 export default defineConfig({
   schema: "./src/db/schema.ts",
   out: "./drizzle",
-  dialect: "turso",
+  dialect: "postgresql",
   dbCredentials: {
-    url: process.env.TURSO_DATABASE_URL || "file:sqlite.db",
-    authToken: process.env.TURSO_AUTH_TOKEN,
+    // Direct (non-pooled) connection — migrations must not run through the pooler.
+    url: process.env.DIRECT_URL || process.env.DATABASE_URL!,
   },
 });

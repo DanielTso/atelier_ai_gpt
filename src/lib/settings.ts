@@ -23,7 +23,7 @@ export async function getServerSetting(key: string, envFallback?: string): Promi
     return cached.value
   }
 
-  const result = await db.select().from(settings).where(eq(settings.key, key)).get()
+  const [result] = await db.select().from(settings).where(eq(settings.key, key))
   let value: string | null = null
   if (result?.value) {
     value = result.value
@@ -37,4 +37,8 @@ export async function getServerSetting(key: string, envFallback?: string): Promi
 
 export async function getGeminiApiKey(): Promise<string | null> {
   return getServerSetting('gemini-api-key', 'GOOGLE_GENERATIVE_AI_API_KEY')
+}
+
+export async function getAnthropicApiKey(): Promise<string | null> {
+  return getServerSetting('anthropic-api-key', 'ANTHROPIC_API_KEY')
 }

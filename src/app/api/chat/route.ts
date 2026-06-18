@@ -1,9 +1,11 @@
 import { streamText, convertToModelMessages, type UIMessage } from 'ai';
 import { getChatWithContext } from '@/app/actions';
-import { generateEmbedding, findSimilarMessages, findSimilarDocumentChunks } from '@/lib/embeddings';
+import { retrieveContext } from '@/lib/retrieval';
 import { createProvider } from '@/lib/providers';
 import { apiError } from '@/lib/errors';
 import { chatRequestSchema } from '@/lib/validation';
+import { createGenerateArtifactTool } from '@/lib/artifacts/tool';
+import { isStorageConfigured } from '@/lib/storage';
 
 // Configuration for hybrid context management
 const RECENT_MESSAGES_LIMIT = 20; // Keep last N messages in full detail
@@ -42,16 +44,19 @@ export async function POST(req: Request) {
       return apiError(body.error, 'Invalid request body', 400);
     }
     const { messages, model, chatId } = body.data;
-    const modelName = model || 'gemini-3.5-flash';
+    const modelName = model || 'claude-opus-4-8';
 
     // Create provider (handles virtual model resolution, tools, and options)
-    const { model: selectedModel, tools: googleTools, providerOptions } = await createProvider(modelName);
+    const { model: selectedModel, tools: providerTools, providerOptions } = await createProvider(modelName);
 
     // Build context with hybrid approach: system prompt + semantic context + summary + recent messages
     let contextMessages = messages as UIMessage[];
     let systemPrompt: string | undefined;
     let semanticContext: string | null = null;
     let documentContext: string | null = null;
+    // Start with provider tools (web_search for Claude, google_search for Gemini, undefined for image)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let tools: Record<string, any> | undefined = providerTools;
 
     if (chatId) {
       const chat = await getChatWithContext(chatId);
@@ -61,52 +66,14 @@ export async function POST(req: Request) {
         systemPrompt = chat.systemPrompt;
       }
 
-      // 2. Semantic retrieval — find relevant past messages + document chunks
-      try {
-        const userMessages = (messages as UIMessage[]).filter(m => m.role === 'user');
-        const lastUserMessage = userMessages[userMessages.length - 1];
-        if (lastUserMessage) {
-          const queryText = lastUserMessage.parts
-            ?.filter((part: { type: string }): part is { type: 'text'; text: string } => part.type === 'text')
-            .map((part: { text: string }) => part.text)
-            .join('') || '';
-
-          if (queryText) {
-            const queryEmbedding = await generateEmbedding(queryText, 'query');
-
-            // Message semantic retrieval
-            const similar = await findSimilarMessages(queryEmbedding, {
-              projectId: chat?.projectId ?? undefined,
-              chatId: !chat?.projectId ? chatId : undefined,
-            }, 5, 0.7);
-
-            const recentIds = new Set((messages as UIMessage[]).map((m: UIMessage) => m.id));
-            const relevantPast = similar.filter(s => !recentIds.has(String(s.messageId)));
-
-            if (relevantPast.length > 0) {
-              semanticContext = relevantPast.map(s => s.content).join('\n---\n');
-            }
-
-            // Document chunk retrieval (project-scoped)
-            if (chat?.projectId) {
-              try {
-                const relevantChunks = await findSimilarDocumentChunks(
-                  queryEmbedding, chat.projectId, 3, 0.5
-                );
-                if (relevantChunks.length > 0) {
-                  documentContext = relevantChunks
-                    .map(c => `[From: ${c.filename}]\n${c.content}`)
-                    .join('\n---\n');
-                }
-              } catch {
-                // Document retrieval is best-effort
-              }
-            }
-          }
-        }
-      } catch {
-        // Embedding unavailable — silently skip
-      }
+      // 2. Retrieval pipeline (rewrite -> vector top-N -> MMR -> rerank -> top-k).
+      // Best-effort: returns nulls if embeddings/providers are unavailable.
+      const retrieved = await retrieveContext(messages as UIMessage[], {
+        chatId,
+        projectId: chat?.projectId ?? null,
+      });
+      semanticContext = retrieved.semanticContext;
+      documentContext = retrieved.documentContext;
 
       // 3. Build context prefix (document chunks + semantic context + summary)
       const contextPrefix = buildContextPrefix(documentContext, semanticContext, chat?.summary ?? null);
@@ -115,6 +82,12 @@ export async function POST(req: Request) {
           ? contextMessages.slice(-RECENT_MESSAGES_LIMIT)
           : contextMessages;
         contextMessages = [...contextPrefix, ...recentMessages];
+      }
+
+      // 4. Merge generate_artifact tool for Claude when Storage is configured
+      if (modelName.startsWith('claude') && isStorageConfigured()) {
+        const projectId = chat?.projectId ?? null;
+        tools = { ...(providerTools ?? {}), generate_artifact: createGenerateArtifactTool({ chatId, projectId }) };
       }
     }
 
@@ -125,7 +98,7 @@ export async function POST(req: Request) {
       model: selectedModel,
       system: systemPrompt, // System instruction is always first, never trimmed
       messages: modelMessages,
-      ...(googleTools && { tools: googleTools }),
+      ...(tools && { tools }),
       ...(providerOptions && { providerOptions }),
     });
 

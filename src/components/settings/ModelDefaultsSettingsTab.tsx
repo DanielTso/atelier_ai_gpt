@@ -85,7 +85,8 @@ export const ModelDefaultsSettingsTab = memo(function ModelDefaultsSettingsTab({
     )
   }
 
-  const geminiModels = models.filter(m => m.model.startsWith('gemini'))
+  const claudeModels = models.filter(m => m.model.startsWith('claude'))
+  const imageModels = models.filter(m => m.model.includes('image'))
 
   return (
     <div className="space-y-6">
@@ -101,9 +102,16 @@ export const ModelDefaultsSettingsTab = memo(function ModelDefaultsSettingsTab({
           className="w-full px-3 py-2 bg-black/20 border border-white/10 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all appearance-none"
         >
           <option value="">Use first available</option>
-          {geminiModels.length > 0 && (
-            <optgroup label="Google Gemini">
-              {geminiModels.map(m => (
+          {claudeModels.length > 0 && (
+            <optgroup label="Claude">
+              {claudeModels.map(m => (
+                <option key={m.model} value={m.model}>{m.name}</option>
+              ))}
+            </optgroup>
+          )}
+          {imageModels.length > 0 && (
+            <optgroup label="Image">
+              {imageModels.map(m => (
                 <option key={m.model} value={m.model}>{m.name}</option>
               ))}
             </optgroup>

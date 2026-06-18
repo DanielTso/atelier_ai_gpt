@@ -54,7 +54,7 @@ describe('usePersonas', () => {
     expect(found).toBeDefined()
     expect(found!.name).toBe('Code Review')
     expect(found!.isCombo).toBe(true)
-    expect(found!.preferredModel).toBe('gemini-3.1-pro-preview')
+    expect(found!.preferredModel).toBe('claude-opus-4-8')
   })
 
   it('getPersonaByPrompt with null returns Default', () => {
@@ -64,11 +64,11 @@ describe('usePersonas', () => {
     expect(found!.id).toBe('default')
   })
 
-  it('combo presets are flagged and pair a current Gemini model', () => {
+  it('combo presets are flagged and pair a current Claude model', () => {
     const { result } = renderHook(() => usePersonas())
     const combos = result.current.comboPresets
     expect(combos).toHaveLength(5)
     expect(combos.every(p => p.isCombo)).toBe(true)
-    expect(combos.every(p => p.preferredModel?.startsWith('gemini-'))).toBe(true)
+    expect(combos.every(p => p.preferredModel?.startsWith('claude-'))).toBe(true)
   })
 })

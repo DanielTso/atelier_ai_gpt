@@ -5,39 +5,43 @@ describe('GET /api/models', () => {
     vi.resetModules()
   })
 
-  function mockSettings(apiKey: string | null = 'test-key') {
+  function mockKeys({ anthropic = null as string | null, gemini = null as string | null } = {}) {
     vi.doMock('@/lib/settings', () => ({
-      getGeminiApiKey: () => Promise.resolve(apiKey),
+      getAnthropicApiKey: () => Promise.resolve(anthropic),
+      getGeminiApiKey: () => Promise.resolve(gemini),
     }))
   }
 
-  it('returns Gemini models when API key is set', async () => {
-    mockSettings()
-
+  it('lists Claude models (Opus first) when Anthropic key is set', async () => {
+    mockKeys({ anthropic: 'a-key' })
     const { GET } = await import('@/app/api/models/route')
-    const response = await GET()
-    const data = await response.json()
-
-    expect(data.models.length).toBeGreaterThanOrEqual(5)
-    expect(data.models.every((m: { model: string }) => m.model.startsWith('gemini'))).toBe(true)
+    const data = await (await GET()).json()
+    expect(data.models[0].model).toBe('claude-opus-4-8')
+    const ids = data.models.map((m: { model: string }) => m.model)
+    expect(ids).toContain('claude-sonnet-4-6')
+    expect(ids).toContain('claude-haiku-4-5')
   })
 
-  it('excludes models when no API key', async () => {
-    mockSettings(null)
-
+  it('includes Nano Banana when Gemini key is set, no Gemini text models', async () => {
+    mockKeys({ anthropic: 'a-key', gemini: 'g-key' })
     const { GET } = await import('@/app/api/models/route')
-    const response = await GET()
-    const data = await response.json()
+    const data = await (await GET()).json()
+    const ids = data.models.map((m: { model: string }) => m.model)
+    expect(ids).toContain('gemini-3.1-flash-image')
+    expect(ids.some((id: string) => id.startsWith('gemini') && !id.includes('image'))).toBe(false)
+  })
 
+  it('returns no models when no keys are set', async () => {
+    mockKeys()
+    const { GET } = await import('@/app/api/models/route')
+    const data = await (await GET()).json()
     expect(data.models).toHaveLength(0)
   })
 
   it('sets cache-control header', async () => {
-    mockSettings()
-
+    mockKeys({ anthropic: 'a-key' })
     const { GET } = await import('@/app/api/models/route')
     const response = await GET()
-
     expect(response.headers.get('Cache-Control')).toBe('public, max-age=300')
   })
 })

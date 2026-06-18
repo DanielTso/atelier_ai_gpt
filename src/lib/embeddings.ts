@@ -1,7 +1,10 @@
 import { embed } from 'ai'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
+import { sql, and, eq, gt, desc, cosineDistance } from 'drizzle-orm'
+import { db } from '@/db'
+import { messageEmbeddings, documentChunks, documents } from '@/db/schema'
 import { getGeminiApiKey } from './settings'
-import { saveMessageEmbedding, getEmbeddingsForChat, getEmbeddingsForProject, getAllEmbeddings, getDocumentChunksForProject } from '@/app/actions'
+import { saveMessageEmbedding } from '@/app/actions'
 
 const GEMINI_EMBEDDING_MODEL = 'gemini-embedding-001'
 
@@ -60,64 +63,31 @@ export async function generateEmbedding(
 }
 
 /**
- * Compute cosine similarity between two vectors.
- * Returns a value between -1 and 1 (1 = identical direction).
- */
-export function cosineSimilarity(a: number[], b: number[]): number {
-  if (a.length !== b.length) {
-    console.warn(`[Embeddings] Vector dimension mismatch: ${a.length} vs ${b.length}`)
-    return 0
-  }
-
-  let dotProduct = 0
-  let normA = 0
-  let normB = 0
-
-  for (let i = 0; i < a.length; i++) {
-    dotProduct += a[i] * b[i]
-    normA += a[i] * a[i]
-    normB += b[i] * b[i]
-  }
-
-  const denominator = Math.sqrt(normA) * Math.sqrt(normB)
-  if (denominator === 0) return 0
-
-  return dotProduct / denominator
-}
-
-/**
  * Find messages semantically similar to the query embedding.
- * Searches within the specified scope (chat, project, or all).
+ * Searches within the specified scope (chat or project).
  */
 export async function findSimilarMessages(
   queryEmbedding: number[],
   scope: { chatId?: number; projectId?: number },
   topK: number = 5,
   threshold: number = 0.7
-): Promise<{ content: string; similarity: number; chatId: number; messageId: number }[]> {
-  let embeddings
-  if (scope.projectId) {
-    embeddings = await getEmbeddingsForProject(scope.projectId)
-  } else if (scope.chatId) {
-    embeddings = await getEmbeddingsForChat(scope.chatId)
-  } else {
-    embeddings = await getAllEmbeddings()
-  }
-
-  const scored = embeddings.map(e => {
-    const vector = JSON.parse(e.embedding) as number[]
-    return {
-      content: e.content,
-      similarity: cosineSimilarity(queryEmbedding, vector),
-      chatId: e.chatId,
-      messageId: e.messageId,
-    }
-  })
-
-  return scored
-    .filter(s => s.similarity >= threshold)
-    .sort((a, b) => b.similarity - a.similarity)
-    .slice(0, topK)
+): Promise<{ content: string; similarity: number; chatId: number; messageId: number; embedding: number[] }[]> {
+  const similarity = sql<number>`1 - (${cosineDistance(messageEmbeddings.embedding, queryEmbedding)})`
+  const scopeFilter = scope.projectId
+    ? eq(messageEmbeddings.projectId, scope.projectId)
+    : scope.chatId
+      ? eq(messageEmbeddings.chatId, scope.chatId)
+      : undefined
+  return db.select({
+    content: messageEmbeddings.content,
+    similarity,
+    chatId: messageEmbeddings.chatId,
+    messageId: messageEmbeddings.messageId,
+    embedding: messageEmbeddings.embedding,
+  }).from(messageEmbeddings)
+    .where(scopeFilter ? and(scopeFilter, gt(similarity, threshold)) : gt(similarity, threshold))
+    .orderBy(desc(similarity))
+    .limit(topK)
 }
 
 /**
@@ -129,24 +99,20 @@ export async function findSimilarDocumentChunks(
   projectId: number,
   topK: number = 3,
   threshold: number = 0.5
-): Promise<{ content: string; similarity: number; chunkId: number; documentId: number; filename: string }[]> {
-  const chunks = await getDocumentChunksForProject(projectId)
-
-  const scored = chunks.map(c => {
-    const vector = JSON.parse(c.embedding!) as number[]
-    return {
-      content: c.content,
-      similarity: cosineSimilarity(queryEmbedding, vector),
-      chunkId: c.id,
-      documentId: c.documentId,
-      filename: c.filename,
-    }
-  })
-
-  return scored
-    .filter(s => s.similarity >= threshold)
-    .sort((a, b) => b.similarity - a.similarity)
-    .slice(0, topK)
+): Promise<{ content: string; similarity: number; chunkId: number; documentId: number; filename: string; embedding: number[] | null }[]> {
+  const similarity = sql<number>`1 - (${cosineDistance(documentChunks.embedding, queryEmbedding)})`
+  return db.select({
+    content: documentChunks.content,
+    similarity,
+    chunkId: documentChunks.id,
+    documentId: documentChunks.documentId,
+    filename: documents.filename,
+    embedding: documentChunks.embedding,
+  }).from(documentChunks)
+    .innerJoin(documents, eq(documentChunks.documentId, documents.id))
+    .where(and(eq(documentChunks.projectId, projectId), gt(similarity, threshold)))
+    .orderBy(desc(similarity))
+    .limit(topK)
 }
 
 /**

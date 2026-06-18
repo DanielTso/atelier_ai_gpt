@@ -11,7 +11,7 @@ export async function POST(req: Request) {
     if (!body.success) {
       return apiError(body.error, 'Invalid request body', 400);
     }
-    const { chatId, messages, model } = body.data;
+    const { chatId, messages } = body.data;
 
     // Format conversation for title generation
     const conversationText = messages
@@ -20,8 +20,8 @@ export async function POST(req: Request) {
       )
       .join('\n\n');
 
-    // Select model
-    const modelName = model || 'gemini-3.5-flash';
+    // Housekeeping runs on a cheap internal Gemini model, never the chat model.
+    const modelName = 'gemini-3.5-flash';
     const { model: selectedModel } = await createProvider(modelName);
 
     const result = await generateText({
