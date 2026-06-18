@@ -216,7 +216,7 @@ Config: `playwright.config.ts`. Tests in `e2e/`. Chromium only. Auto-starts dev 
 
 ## Deployment
 
-Production: **Vercel** at [atelier-ai.vercel.app](https://atelier-ai.vercel.app). GitHub: [DanielTso/atelier-ai](https://github.com/DanielTso/atelier-ai). Deploy with `vercel --prod`. Set `DATABASE_URL` (Supabase pooled, :6543) and `DIRECT_URL` (Supabase direct, :5432) in the Vercel dashboard. Apply schema changes separately: `DIRECT_URL=... npx drizzle-kit migrate`.
+Production: **Vercel** at [atelier-ai-app.vercel.app](https://atelier-ai-app.vercel.app) (also [atelier-ai-studio.vercel.app](https://atelier-ai-studio.vercel.app)). Note: the bare `atelier-ai.vercel.app` is a **different, unrelated project** — do not use it. GitHub: [DanielTso/atelier_ai_gpt](https://github.com/DanielTso/atelier_ai_gpt). Production deploys automatically on push to `master`; `vercel --prod` also works. Set `DATABASE_URL` (Supabase pooled, :6543) and `DIRECT_URL` (Supabase direct, :5432) in the Vercel dashboard. Apply schema changes separately: `DIRECT_URL=... npx drizzle-kit migrate`.
 
 ## CI (GitHub Actions)
 

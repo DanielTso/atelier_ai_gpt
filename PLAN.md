@@ -118,4 +118,4 @@
 - [x] **Test:** All 105 Vitest + 8 Playwright tests pass in CI.
 
 ## Status
-All planned phases complete. Production deployed at [atelier-ai.vercel.app](https://atelier-ai.vercel.app).
+Original v1 phases complete; the A→D program (v4.6.0) is now in production. Production deployed at [atelier-ai-app.vercel.app](https://atelier-ai-app.vercel.app) (also `atelier-ai-studio.vercel.app`). See [CHANGELOG.md](./CHANGELOG.md) and [docs/SESSION_HANDOFF.md](./docs/SESSION_HANDOFF.md).

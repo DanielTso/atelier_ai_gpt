@@ -2,6 +2,16 @@
 
 _Resume doc for the next session. Read `docs/SESSION_HANDOFF.md` for the full A→D1 program history; THIS file captures what's in-flight as of 2026-06-18. Project CLAUDE.md is the source of truth for how the code works._
 
+## 🚀 PRODUCTION LIVE — v4.6.0 merged to master (2026-06-18)
+**`phase-c-extraction` → `master` merged** (PR #1, merge commit `8d4aac1`); CI was green on the exact gate (lint→build→vitest→migrate→playwright). Vercel auto-deployed production from `master` — **deploy Ready and serving HTTP 200 "Atelier Studio"**:
+- ✅ **https://atelier-ai-app.vercel.app** ✅ **https://atelier-ai-studio.vercel.app** (the real prod aliases — public)
+- ⚠️ The bare **`atelier-ai.vercel.app` is a DIFFERENT, unrelated project** ("Video Generator"); CLAUDE.md/PLAN/TECH_STACKS were wrong and are now corrected. The auto-generated team URLs (`atelier-ai-danieltsos-projects.vercel.app`, `…-git-master-…`) return 401 (Vercel Deployment Protection) but the two app aliases above are public.
+- **Migrations** `0000`–`0005` already applied to live Supabase (this release added none). RLS on all 11 tables.
+- **Production-grade check before merge:** confirmed the `@napi-rs/canvas` paths degrade gracefully — thumbnail generation is try/caught in `/api/documents/process` (failure → no thumbnail, doc still `ready`); vision per-page render is try/caught (failure → partial/empty, scanned-only PDF lands on terminal `error`, never a route 500); all canvas imports are dynamic. So a canvas-load failure on Vercel Linux is cosmetic/degraded, not a crash.
+
+### ⏳ One remaining nice-to-have smoke (USER, in browser)
+**Native-canvas runtime check on production:** open https://atelier-ai-app.vercel.app, upload a PDF to a project's Files panel. If a first-page **thumbnail renders** → `@napi-rs/canvas` works on Vercel Linux (last C2 unknown closed). If not (doc `ready` but generic tile, or scanned PDF → `error`) → canvas didn't load; fall back to client-side pdf.js render (documented in the C spec). Either way the app is up and text docs/chat/artifacts work.
+
 ## 🏷️ Released v4.6.0 (2026-06-18)
 Tagged **v4.6.0** (annotated) on `phase-c-extraction` + GitHub release published; version aligned to CHANGELOG (git-tag track was at `v2.1.0`, GitHub Releases at `v1.9.0` — reconciled to CHANGELOG's 4.x). **README.md fully rewritten** to current architecture (was describing the old Gemini/Turso/SQLite stack). PLAN.md Tech Stack block corrected; CHANGELOG gained a "Deployment & release" note under 4.6.0.
 - **CI:** opened PR `phase-c-extraction → master` to run the CI workflow (lint→build→vitest→migrate→playwright) on the PR **without merging** — master held until the Preview native-canvas check passes.

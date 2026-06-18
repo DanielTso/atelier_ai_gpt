@@ -39,6 +39,6 @@ This document outlines the final technology choices used in the "Atelier Studio"
 
 ## Deployment / Runtime
 *   **Node.js:** The runtime environment.
-*   **Vercel:** Production deployment at [atelier-ai.vercel.app](https://atelier-ai.vercel.app). CLI deployments via `npx vercel --prod`.
-*   **Turso:** Remote libSQL database for production. Local development uses `file:sqlite.db`.
+*   **Vercel:** Production deployment at [atelier-ai-app.vercel.app](https://atelier-ai-app.vercel.app) (also `atelier-ai-studio.vercel.app`). Auto-deploys on push to `master`; `npx vercel --prod` also works. (The bare `atelier-ai.vercel.app` is an unrelated project — do not use it.)
+*   **Supabase:** Postgres + pgvector for production (pooled URL at runtime, direct URL for migrations) and Supabase Storage (private bucket) for document/attachment/artifact files.
 *   **GitHub Actions:** CI pipeline (lint → build → vitest → playwright) on push to `master` and PRs.
