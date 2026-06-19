@@ -1,20 +1,21 @@
 'use client'
 
-import { FolderPlus, Upload, PenLine, Code2 } from 'lucide-react'
+import { FolderPlus, Upload, FileText, CalendarRange } from 'lucide-react'
 
 interface QuickActionsProps {
   onNewProject: () => void
-  onUpload: () => void
-  onWrite: () => void
-  onCode: () => void
+  onAddDocuments: () => void
+  onDraftRfi: () => void
+  onLookahead: () => void
 }
 
-export function QuickActions({ onNewProject, onUpload, onWrite, onCode }: QuickActionsProps) {
+export function QuickActions({ onNewProject, onAddDocuments, onDraftRfi, onLookahead }: QuickActionsProps) {
+  // Chip config — construction-flavored starters. Swap/add here in one line.
   const chips = [
     { label: 'New project', icon: FolderPlus, onClick: onNewProject },
-    { label: 'Upload', icon: Upload, onClick: onUpload },
-    { label: 'Write', icon: PenLine, onClick: onWrite },
-    { label: 'Code', icon: Code2, onClick: onCode },
+    { label: 'Add documents', icon: Upload, onClick: onAddDocuments },
+    { label: 'Draft RFI', icon: FileText, onClick: onDraftRfi },
+    { label: '3-week look-ahead', icon: CalendarRange, onClick: onLookahead },
   ]
   return (
     <div className="flex flex-wrap items-center justify-center gap-2 mt-4">

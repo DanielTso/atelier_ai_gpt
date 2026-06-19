@@ -323,7 +323,7 @@ export const ChatInputArea = memo(function ChatInputArea({
             onClick={() => fileInputRef.current?.click()}
             disabled={isLoading}
             className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-white/10 transition-colors disabled:opacity-50"
-            title="Attach file or image"
+            title="Attach to this message"
           >
             <Paperclip className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Attach</span>

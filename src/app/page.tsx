@@ -1088,9 +1088,9 @@ export default function Home() {
             </div>
             <QuickActions
               onNewProject={handleCreateProject}
-              onUpload={() => activeProjectId && handleOpenProjectDocuments(activeProjectId)}
-              onWrite={() => setInput('Help me write ')}
-              onCode={() => setInput('Help me write code for ')}
+              onAddDocuments={() => activeProjectId ? handleOpenProjectDocuments(activeProjectId) : setActiveView('projects')}
+              onDraftRfi={() => setInput('Draft an RFI for: ')}
+              onLookahead={() => setInput('Build a 3-week look-ahead schedule for: ')}
             />
           </div>
         )}
