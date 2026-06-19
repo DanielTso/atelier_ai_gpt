@@ -1035,7 +1035,7 @@ export default function Home() {
               onImagesChange={setAttachedImages}
             />
           </>
-        ) : activeProjectId ? (
+        ) : activeProjectId && projects.find(p => p.id === activeProjectId) ? (
           <ProjectLandingPage
             project={projects.find(p => p.id === activeProjectId)!}
             chatPreviews={chatPreviews}
