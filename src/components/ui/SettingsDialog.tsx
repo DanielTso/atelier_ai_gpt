@@ -21,6 +21,8 @@ interface SettingsDialogProps {
   onFontSizeChange: (size: FontSize) => void
   messageDensity: MessageDensity
   onMessageDensityChange: (density: MessageDensity) => void
+  displayName: string
+  onDisplayNameChange: (value: string) => void
 }
 
 const tabs: { id: SettingsTab; label: string; icon: typeof Palette }[] = [
@@ -38,6 +40,8 @@ export const SettingsDialog = memo(function SettingsDialog({
   onFontSizeChange,
   messageDensity,
   onMessageDensityChange,
+  displayName,
+  onDisplayNameChange,
 }: SettingsDialogProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>('appearance')
 
@@ -93,6 +97,8 @@ export const SettingsDialog = memo(function SettingsDialog({
                   onFontSizeChange={onFontSizeChange}
                   messageDensity={messageDensity}
                   onMessageDensityChange={onMessageDensityChange}
+                  displayName={displayName}
+                  onDisplayNameChange={onDisplayNameChange}
                 />
               )}
               {activeTab === 'defaults' && (

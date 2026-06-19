@@ -1,15 +1,19 @@
 "use client"
 
-import { AlertCircle } from "lucide-react"
+import { AlertCircle, Menu } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useChat } from "@ai-sdk/react"
 import { DefaultChatTransport } from "ai"
 import { useEffect, useState, useRef, useCallback, useMemo } from "react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
-import { getProjects, createProject, getAllProjectChats, createChat, getChatMessages, saveMessage, deleteProject, updateProjectName, updateChatTitle, getStandaloneChats, createStandaloneChat, deleteChat, moveChatToProject, archiveChat, restoreChat, getArchivedChats, getMessageCount, getChatWithContext, updateChatSystemPrompt, getProjectDefaults, recordPersonaUsage, incrementUsageMessageCount, getProjectChatPreviews, saveMessageAttachments, getChatAttachments, getSetting } from "./actions"
+import { getProjects, createProject, getAllProjectChats, createChat, getChatMessages, saveMessage, deleteProject, updateProjectName, updateProjectContext, updateChatTitle, getStandaloneChats, createStandaloneChat, deleteChat, moveChatToProject, archiveChat, restoreChat, getArchivedChats, getMessageCount, getChatWithContext, updateChatSystemPrompt, getProjectDefaults, recordPersonaUsage, incrementUsageMessageCount, getProjectChatPreviews, saveMessageAttachments, getChatAttachments, getSetting, setSetting } from "./actions"
 import { Sidebar } from "@/components/chat/sidebar"
-import type { SidebarActions } from "@/components/chat/sidebar"
+import type { SidebarActions, AppView } from "@/components/chat/sidebar"
+import { HomeGreeting } from "@/components/chat/HomeGreeting"
+import { QuickActions } from "@/components/chat/QuickActions"
+import { ProjectsView } from "@/components/chat/ProjectsView"
+import { ArtifactsView } from "@/components/chat/ArtifactsView"
 import { ChatHeader } from "@/components/chat/ChatHeader"
 import { ChatInputArea } from "@/components/chat/ChatInputArea"
 import { MessagesList, type ChatMessage } from "@/components/chat/MessagesList"
@@ -33,7 +37,7 @@ import type { FileUIPart } from "ai"
 import type { Model, ArtifactSummary } from "@/types"
 
 // Types matching DB schema roughly
-type Project = { id: number; name: string }
+type Project = { id: number; name: string; memory?: string | null; instructions?: string | null }
 type Chat = { id: number; projectId: number | null; title: string; archived?: boolean | null }
 
 export default function Home() {
@@ -60,6 +64,8 @@ export default function Home() {
   const [chats, setChats] = useState<Chat[]>([])
   const [standaloneChats, setStandaloneChats] = useState<Chat[]>([])
   const [activeChatId, setActiveChatId] = useLocalStorage<number | null>('activeChatId', null)
+  const [activeView, setActiveView] = useState<AppView>('home')
+  const [displayName, setDisplayName] = useState('')
 
   // Project landing page state
   const [chatPreviews, setChatPreviews] = useState<{ id: number; title: string; preview: string | null; createdAt: Date | null }[]>([])
@@ -882,18 +888,30 @@ export default function Home() {
     toast.success(`Switched to ${suggestedPersona.name}`)
   }, [suggestedPersona, handleSaveSystemPrompt, dismissSuggestion])
 
+  const handleSaveProjectContext = useCallback(async (id: number, fields: { memory?: string; instructions?: string }) => {
+    await updateProjectContext(id, fields)
+    setProjects(prev => prev.map(p => p.id === id ? { ...p, ...fields } : p))
+  }, [])
+
+  useEffect(() => { getSetting('display-name').then(v => { if (v) setDisplayName(v) }).catch(() => {}) }, [])
+
+  const handleDisplayNameChange = useCallback((value: string) => {
+    setDisplayName(value)
+    setSetting('display-name', value).catch(() => {})
+  }, [])
+
   const sidebarActions = useMemo<SidebarActions>(() => ({
     createProject: handleCreateProject,
     renameProject: handleRenameProject,
     deleteProject: handleDeleteProject,
-    selectProject: handleSelectProject,
+    selectProject: (id: number) => { setActiveView('home'); handleSelectProject(id); },
     openProjectDocuments: handleOpenProjectDocuments,
     openProjectSettings: handleOpenProjectSettings,
     createChat: handleCreateChat,
     createStandaloneChat: handleCreateStandaloneChat,
     createChatInProject: handleCreateChatInProject,
-    selectChat: setActiveChatId,
-    selectStandaloneChat: handleSelectStandaloneChat,
+    selectChat: (id: number) => { setActiveView('home'); setActiveChatId(id); },
+    selectStandaloneChat: (id: number) => { setActiveView('home'); handleSelectStandaloneChat(id); },
     moveChat: handleMoveChat,
     renameChat: handleRequestRename,
     archiveChat: handleArchiveChat,
@@ -902,7 +920,9 @@ export default function Home() {
     toggleTheme: () => setTheme(theme === "dark" ? "light" : "dark"),
     toggleCollapse: () => setSidebarCollapsed(prev => !prev),
     openSettings: () => setSettingsDialogOpen(true),
-  }), [handleCreateProject, handleRenameProject, handleDeleteProject, handleSelectProject, handleOpenProjectDocuments, handleOpenProjectSettings, handleCreateChat, handleCreateStandaloneChat, handleCreateChatInProject, setActiveChatId, handleSelectStandaloneChat, handleMoveChat, handleRequestRename, handleArchiveChat, handleRestoreChat, handleRequestDelete, theme])
+    selectView: (view: AppView) => { setActiveView(view); setActiveChatId(null); },
+    activeView,
+  }), [handleCreateProject, handleRenameProject, handleDeleteProject, handleSelectProject, handleOpenProjectDocuments, handleOpenProjectSettings, handleCreateChat, handleCreateStandaloneChat, handleCreateChatInProject, setActiveChatId, handleSelectStandaloneChat, handleMoveChat, handleRequestRename, handleArchiveChat, handleRestoreChat, handleRequestDelete, theme, activeView])
 
   // Get the current chat title from either chats or standaloneChats
   const currentChatTitle = activeChatId
@@ -915,20 +935,37 @@ export default function Home() {
       fontSize === 'small' && 'text-sm',
       fontSize === 'large' && 'text-lg',
     )}>
-      <Sidebar
-        projects={projects}
-        activeProjectId={activeProjectId}
-        chats={chats}
-        activeChatId={activeChatId}
-        standaloneChats={standaloneChats}
-        archivedChats={archivedChats}
-        collapsed={sidebarCollapsed}
-        actions={sidebarActions}
-      />
+      <div className={cn(
+        "shrink-0 transition-transform duration-300",
+        "max-md:absolute max-md:z-30 max-md:h-[calc(100vh-2rem)]",
+        sidebarCollapsed && "max-md:-translate-x-[120%]",
+      )}>
+        <Sidebar
+          projects={projects}
+          activeProjectId={activeProjectId}
+          chats={chats}
+          activeChatId={activeChatId}
+          standaloneChats={standaloneChats}
+          archivedChats={archivedChats}
+          collapsed={sidebarCollapsed}
+          actions={sidebarActions}
+        />
+      </div>
 
       {/* Main Chat Area */}
       <main className="flex-1 flex flex-col glass-panel rounded-2xl overflow-hidden relative">
-        {activeChatId ? (
+        <button
+          onClick={() => setSidebarCollapsed(prev => !prev)}
+          className="md:hidden absolute top-3 left-3 z-20 p-2 rounded-lg hover:bg-accent text-muted-foreground"
+          aria-label="Toggle sidebar"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+        {activeView === 'projects' ? (
+          <ProjectsView projects={projects} onSelectProject={(id) => { setActiveView('home'); handleSelectProject(id); }} />
+        ) : activeView === 'artifacts' ? (
+          <ArtifactsView />
+        ) : activeChatId ? (
           <>
             <ChatHeader
               chatId={activeChatId}
@@ -998,7 +1035,7 @@ export default function Home() {
               onImagesChange={setAttachedImages}
             />
           </>
-        ) : activeProjectId ? (
+        ) : activeProjectId && projects.find(p => p.id === activeProjectId) ? (
           <ProjectLandingPage
             project={projects.find(p => p.id === activeProjectId)!}
             chatPreviews={chatPreviews}
@@ -1006,36 +1043,39 @@ export default function Home() {
             onSelectChat={setActiveChatId}
             onCreateChat={handleCreateChat}
             onAddFiles={() => handleOpenProjectDocuments(activeProjectId)}
+            onSaveContext={handleSaveProjectContext}
           />
         ) : (
-          <>
-            <div className="flex-1 flex flex-col items-center justify-center gap-4">
-              <img src="/logo.svg" alt="Atelier Studio" className="h-12 w-12 opacity-60" />
-              <h2 className="text-2xl font-bold text-foreground">
-                Atelier Studio
-              </h2>
-              <p className="text-sm text-muted-foreground">Create a chat or select a project to begin.</p>
+          <div className="flex-1 flex flex-col items-center justify-center w-full max-w-(--thread-max-width) mx-auto px-4">
+            <HomeGreeting displayName={displayName || undefined} />
+            <div className="w-full">
+              <ChatInputArea
+                input={input}
+                onInputChange={setInput}
+                onFormSubmit={handleFormSubmit}
+                onKeyDown={handleKeyDown}
+                isLoading={isLoading}
+                activeChatId={activeChatId}
+                activeProjectId={activeProjectId}
+                systemPrompt={currentSystemPrompt}
+                onSystemPromptChange={handleSaveSystemPrompt}
+                onSystemPromptClick={() => setSystemPromptDialogOpen(true)}
+                models={models}
+                selectedModel={selectedModel}
+                onModelChange={handleModelChange}
+                attachedFiles={attachedFiles}
+                onFilesChange={setAttachedFiles}
+                attachedImages={attachedImages}
+                onImagesChange={setAttachedImages}
+              />
             </div>
-            <ChatInputArea
-              input={input}
-              onInputChange={setInput}
-              onFormSubmit={handleFormSubmit}
-              onKeyDown={handleKeyDown}
-              isLoading={isLoading}
-              activeChatId={activeChatId}
-              activeProjectId={activeProjectId}
-              systemPrompt={currentSystemPrompt}
-              onSystemPromptChange={handleSaveSystemPrompt}
-              onSystemPromptClick={() => setSystemPromptDialogOpen(true)}
-              models={models}
-              selectedModel={selectedModel}
-              onModelChange={handleModelChange}
-              attachedFiles={attachedFiles}
-              onFilesChange={setAttachedFiles}
-              attachedImages={attachedImages}
-              onImagesChange={setAttachedImages}
+            <QuickActions
+              onNewProject={handleCreateProject}
+              onUpload={() => activeProjectId && handleOpenProjectDocuments(activeProjectId)}
+              onWrite={() => setInput('Help me write ')}
+              onCode={() => setInput('Help me write code for ')}
             />
-          </>
+          </div>
         )}
       </main>
 
@@ -1098,6 +1138,8 @@ export default function Home() {
         onFontSizeChange={setFontSize}
         messageDensity={messageDensity}
         onMessageDensityChange={setMessageDensity}
+        displayName={displayName}
+        onDisplayNameChange={handleDisplayNameChange}
       />
 
       {/* Project Defaults Dialog */}

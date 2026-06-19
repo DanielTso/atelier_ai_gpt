@@ -43,6 +43,13 @@
       "when": 1781733730239,
       "tag": "0005_lyrical_onslaught",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1781821392111,
+      "tag": "0006_short_fantastic_four",
+      "breakpoints": true
     }
   ]
 }

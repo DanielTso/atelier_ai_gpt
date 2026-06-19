@@ -1,5 +1,6 @@
 import { streamText, convertToModelMessages, type UIMessage } from 'ai';
-import { getChatWithContext } from '@/app/actions';
+import { getChatWithContext, getProjectContext } from '@/app/actions';
+import { buildProjectPreamble } from '@/lib/projectPreamble';
 import { retrieveContext } from '@/lib/retrieval';
 import { createProvider } from '@/lib/providers';
 import { apiError } from '@/lib/errors';
@@ -61,10 +62,16 @@ export async function POST(req: Request) {
     if (chatId) {
       const chat = await getChatWithContext(chatId);
 
-      // 1. System prompt (always included, never trimmed)
-      if (chat?.systemPrompt) {
-        systemPrompt = chat.systemPrompt;
+      // 1. System prompt (always included, never trimmed). Project Memory +
+      //    Instructions are prepended so they steer every chat in the project.
+      let preamble = '';
+      if (chat?.projectId) {
+        const ctx = await getProjectContext(chat.projectId);
+        if (ctx) preamble = buildProjectPreamble(ctx.memory, ctx.instructions);
       }
+      const base = chat?.systemPrompt ?? '';
+      const combined = [preamble, base].filter(s => s.trim().length > 0).join('\n\n');
+      systemPrompt = combined.length > 0 ? combined : undefined;
 
       // 2. Retrieval pipeline (rewrite -> vector top-N -> MMR -> rerank -> top-k).
       // Best-effort: returns nulls if embeddings/providers are unavailable.

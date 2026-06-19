@@ -10,6 +10,8 @@ export interface Chat {
   archived?: boolean | null
 }
 
+export type AppView = 'home' | 'projects' | 'artifacts'
+
 export interface SidebarActions {
   // Project actions
   createProject: () => void
@@ -33,4 +35,6 @@ export interface SidebarActions {
   toggleTheme: () => void
   toggleCollapse: () => void
   openSettings: () => void
+  selectView: (view: AppView) => void
+  activeView: AppView
 }
