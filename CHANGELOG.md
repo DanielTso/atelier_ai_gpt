@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.9.0] - 2026-06-19 — Document re-versioning (replace in place + retained history)
+
+Spec at `docs/specs/2026-06-19-document-reversioning-design.md`. Construction plans/specs get revised constantly; this lets a document be **updated in place** instead of delete + re-upload.
+
+### Added
+
+- **Replace / Update document** — a `DocumentCard` action (beside delete) swaps a document's file for a **new revision** on the *same* record. The new revision is re-extracted → re-chunked → re-embedded and becomes the active RAG knowledge; the card shows a **"Rev N"** badge + updated date.
+- **Retained revision history** — `document_revisions` table (migration `0007`) snapshots each superseded revision (filename, size, retained Storage file, etc.); `documents` gains `revision` + `updated_at`. Prior files are **kept in Storage** (no chunks) so an audit trail exists and a future restore/compare UI is additive. RAG always searches the latest revision only.
+- **Pipeline** — `POST /api/documents/upload-url` gains `replaceDocumentId` (new revision path, old file untouched); `POST /api/documents/process` gains the replace path (snapshot old → delete old chunks → process new → `applyDocumentReplacement` → bump revision). `DELETE` sweeps retained revision files. New actions: `createDocumentRevision`, `deleteDocumentChunks`, `getDocumentRevisions`, `applyDocumentReplacement`. `useDocumentUpload.replace(file, documentId)`.
+
+### Notes
+
+- Verification: lint 0 errors / 26 warnings, build clean, **248 tests pass** (new: re-versioning actions). **Migration `0007` applied to live Supabase.** Browser-verified end-to-end: upload Rev A → Replace with Rev B → card shows Rev 2, `documents` at revision 2 (new path), Rev 1 retained in `document_revisions`; delete sweeps both.
+- **Known:** the project capacity meter counts current revisions only (retained files aren't counted) — accepted on Supabase Pro; a revision-aware meter is a deferred follow-up. No retention/pruning policy yet.
+
 ## [4.8.0] - 2026-06-19 — Persona system v2 (adaptive thinking + effort) + construction quick actions
 
 Specs at `docs/specs/2026-06-19-persona-system-v2-design.md` and `docs/specs/2026-06-19-quick-actions-file-flow-clarity-design.md`.
