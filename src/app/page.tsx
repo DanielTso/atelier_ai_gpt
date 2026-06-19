@@ -60,10 +60,11 @@ export default function Home() {
 
   // Data State
   const [projects, setProjects] = useState<Project[]>([])
-  const [activeProjectId, setActiveProjectId] = useLocalStorage<number | null>('activeProjectId', null)
+  // Not persisted: the app should start on Home each launch, not reopen the last project/chat.
+  const [activeProjectId, setActiveProjectId] = useState<number | null>(null)
   const [chats, setChats] = useState<Chat[]>([])
   const [standaloneChats, setStandaloneChats] = useState<Chat[]>([])
-  const [activeChatId, setActiveChatId] = useLocalStorage<number | null>('activeChatId', null)
+  const [activeChatId, setActiveChatId] = useState<number | null>(null)
   const [activeView, setActiveView] = useState<AppView>('home')
   const [displayName, setDisplayName] = useState('')
 
@@ -603,17 +604,14 @@ export default function Home() {
     }
   }
 
-  const handleCreateStandaloneChat = async () => {
-    try {
-      const [newC] = await createStandaloneChat("New Chat")
-      setStandaloneChats([newC, ...standaloneChats])
-      setActiveChatId(newC.id)
-      setActiveProjectId(null) // Clear project selection
-      toast.success("Chat created")
-    } catch (e) {
-      console.error(e)
-      setError("Failed to create chat.")
-    }
+  // "New chat" goes to a fresh Home compose — it does NOT persist an empty chat.
+  // The first message sent auto-creates the standalone chat (see handleSendMessage),
+  // so clicking New chat repeatedly no longer spawns empty "New Chat" rows.
+  const handleCreateStandaloneChat = () => {
+    setActiveView('home')
+    setActiveChatId(null)
+    setActiveProjectId(null)
+    setInput('')
   }
 
   const handleSendMessage = async () => {
