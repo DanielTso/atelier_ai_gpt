@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDocumentById, updateDocumentStatus, saveDocumentChunks, updateChunkEmbedding } from '@/app/actions'
+import { getDocumentById, updateDocumentStatus, saveDocumentChunks, updateChunkEmbedding, createDocumentRevision, deleteDocumentChunks, applyDocumentReplacement } from '@/app/actions'
 import { generateEmbedding, ensureEmbeddingModel } from '@/lib/embeddings'
 import { chunkText } from '@/lib/chunking'
 import { MAX_TEXT_LENGTH, getExtension, isImageExtension, extractTextFromBuffer } from '@/lib/fileExtraction'
@@ -19,6 +19,15 @@ export async function POST(request: NextRequest) {
     const doc = await getDocumentById(parsed.data.documentId)
     if (!doc || !doc.storagePath) return NextResponse.json({ error: 'Document not found' }, { status: 404 })
 
+    // Replace flow: process the new revision file + metadata (sent by the client);
+    // the document's current file/metadata stay until we successfully apply.
+    const isReplace = !!parsed.data.storagePath
+    const sourcePath = parsed.data.storagePath ?? doc.storagePath
+    const effFilename = parsed.data.filename ?? doc.filename
+    const effMimeType = parsed.data.mimeType ?? doc.mimeType
+    const effFileSize = parsed.data.fileSize ?? doc.fileSize
+    const nextRevision = doc.revision + 1
+
     const { available } = await ensureEmbeddingModel()
     if (!available) {
       await updateDocumentStatus(doc.id, 'error', { errorMessage: 'No embedding provider available.' })
@@ -26,12 +35,12 @@ export async function POST(request: NextRequest) {
     }
 
     await updateDocumentStatus(doc.id, 'processing')
-    const ext = getExtension(doc.filename)
-    const isImage = isImageExtension(ext) || doc.mimeType.startsWith('image/')
+    const ext = getExtension(effFilename)
+    const isImage = isImageExtension(ext) || effMimeType.startsWith('image/')
 
     let buffer: Buffer
     try {
-      buffer = await downloadToBuffer(doc.storagePath)
+      buffer = await downloadToBuffer(sourcePath)
     } catch (e) {
       await updateDocumentStatus(doc.id, 'error', { errorMessage: 'Failed to download uploaded file.' })
       return apiError(e, 'Failed to download uploaded file', 500, false)
@@ -41,7 +50,7 @@ export async function POST(request: NextRequest) {
     let extractionMethod: 'text' | 'vision' = 'text'
     try {
       if (isImage) {
-        textContent = await extractViaVisionImage(buffer, doc.mimeType)
+        textContent = await extractViaVisionImage(buffer, effMimeType)
         extractionMethod = 'vision'
       } else {
         textContent = await extractTextFromBuffer(buffer, ext)
@@ -74,12 +83,25 @@ export async function POST(request: NextRequest) {
         ? await generateImageThumbnail(buffer)
         : ext === 'pdf' ? await generatePdfThumbnail(buffer) : undefined
       if (thumb) {
-        thumbnailPath = `documents/${doc.projectId}/${doc.id}/thumb.webp`
+        // Revision-scoped path on replace so the prior thumbnail is retained.
+        thumbnailPath = `documents/${doc.projectId}/${doc.id}/${isReplace ? `rev${nextRevision}/` : ''}thumb.webp`
         await uploadBuffer(thumbnailPath, thumb, 'image/webp')
       }
     } catch (e) {
       console.warn('[documents/process] thumbnail failed:', e instanceof Error ? e.message : e)
       thumbnailPath = undefined
+    }
+
+    // Extraction succeeded. On replace, snapshot the superseded revision (its file
+    // stays in Storage for the audit trail) and clear its chunks before re-chunking.
+    if (isReplace) {
+      await createDocumentRevision({
+        documentId: doc.id, projectId: doc.projectId, revision: doc.revision,
+        filename: doc.filename, mimeType: doc.mimeType, fileSize: doc.fileSize,
+        storagePath: doc.storagePath, thumbnailPath: doc.thumbnailPath,
+        charCount: doc.charCount, chunkCount: doc.chunkCount, extractionMethod: doc.extractionMethod,
+      })
+      await deleteDocumentChunks(doc.id)
     }
 
     const textChunks = chunkText(textContent)
@@ -95,9 +117,20 @@ export async function POST(request: NextRequest) {
       console.warn(`[documents/process] ${results.length - embedded}/${saved.length} chunks failed to embed`)
     }
     const status = embedded === 0 && saved.length > 0 ? 'error' : 'ready'
-    await updateDocumentStatus(doc.id, status, { chunkCount: saved.length, charCount: textContent.length, thumbnailPath, extractionMethod })
+    if (isReplace) {
+      // Swap the active revision in place: new file metadata + bump revision.
+      await applyDocumentReplacement(doc.id, {
+        filename: effFilename, mimeType: effMimeType, fileSize: effFileSize, storagePath: sourcePath,
+        thumbnailPath, charCount: textContent.length, chunkCount: saved.length, extractionMethod, revision: nextRevision,
+      })
+      if (status === 'error') {
+        await updateDocumentStatus(doc.id, 'error', { errorMessage: 'New revision saved but embeddings failed.' })
+      }
+    } else {
+      await updateDocumentStatus(doc.id, status, { chunkCount: saved.length, charCount: textContent.length, thumbnailPath, extractionMethod })
+    }
 
-    return NextResponse.json({ documentId: doc.id, status, chunkCount: saved.length, charCount: textContent.length })
+    return NextResponse.json({ documentId: doc.id, status, revision: isReplace ? nextRevision : doc.revision, chunkCount: saved.length, charCount: textContent.length })
   } catch (error) {
     return apiError(error, 'Failed to process document', 500, true)
   }

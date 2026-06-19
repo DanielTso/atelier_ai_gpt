@@ -74,9 +74,31 @@ export const documents = pgTable('documents', {
   storagePath: text('storage_path'),
   thumbnailPath: text('thumbnail_path'),
   extractionMethod: text('extraction_method'),
+  revision: integer('revision').notNull().default(1),
+  updatedAt: timestamp('updated_at', { withTimezone: true }),
   createdAt: createdAt(),
 }, (table) => [
   index('idx_documents_project_id').on(table.projectId),
+]);
+
+// Superseded document revisions — files retained for an audit trail; no chunks
+// (RAG only searches the current revision, which lives on the `documents` row).
+export const documentRevisions = pgTable('document_revisions', {
+  id: idPk(),
+  documentId: integer('document_id').references(() => documents.id, { onDelete: 'cascade' }).notNull(),
+  projectId: integer('project_id').references(() => projects.id, { onDelete: 'cascade' }).notNull(),
+  revision: integer('revision').notNull(),
+  filename: text('filename').notNull(),
+  mimeType: text('mime_type').notNull(),
+  fileSize: integer('file_size').notNull(),
+  storagePath: text('storage_path'),
+  thumbnailPath: text('thumbnail_path'),
+  charCount: integer('char_count'),
+  chunkCount: integer('chunk_count'),
+  extractionMethod: text('extraction_method'),
+  createdAt: createdAt(),
+}, (table) => [
+  index('idx_doc_revisions_document_id').on(table.documentId),
 ]);
 
 export const documentChunks = pgTable('document_chunks', {

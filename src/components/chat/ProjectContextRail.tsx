@@ -45,11 +45,16 @@ export function ProjectContextRail({ project, onSaveContext, onAddFiles }: Proje
   }, [project.id])
   useEffect(() => { loadDocuments() }, [loadDocuments])
 
-  const { upload, uploading } = useDocumentUpload()
+  const { upload, replace, uploading } = useDocumentUpload()
   const handleUpload = async (file: File) => {
     if (uploading) return
     try { await upload(file, project.id); toast.success(`Uploaded: ${file.name}`); await loadDocuments() }
     catch (e) { toast.error(e instanceof Error ? e.message : 'Upload failed') }
+  }
+  const handleReplace = async (docId: number, file: File) => {
+    if (uploading) return
+    try { await replace(file, docId); toast.success(`Updated: ${file.name}`); await loadDocuments() }
+    catch (e) { toast.error(e instanceof Error ? e.message : 'Replace failed') }
   }
   const handleDelete = async (docId: number) => {
     try {
@@ -111,7 +116,7 @@ export function ProjectContextRail({ project, onSaveContext, onAddFiles }: Proje
         ) : (
           <div className="grid grid-cols-2 gap-2.5">
             {documents.map(doc => (
-              <DocumentCard key={doc.id} doc={doc} onOpen={setPreviewDoc} onDelete={(d) => handleDelete(d.id)} />
+              <DocumentCard key={doc.id} doc={doc} onOpen={setPreviewDoc} onDelete={(d) => handleDelete(d.id)} onReplace={(d, f) => handleReplace(d.id, f)} />
             ))}
           </div>
         )}

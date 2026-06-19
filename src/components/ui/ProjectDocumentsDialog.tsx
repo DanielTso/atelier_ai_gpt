@@ -50,7 +50,7 @@ export const ProjectDocumentsDialog = memo(function ProjectDocumentsDialog({
     }
   }, [open, loadDocuments])
 
-  const { upload, uploading } = useDocumentUpload()
+  const { upload, replace, uploading } = useDocumentUpload()
   const handleUpload = async (file: File) => {
     try {
       await upload(file, projectId)
@@ -58,6 +58,15 @@ export const ProjectDocumentsDialog = memo(function ProjectDocumentsDialog({
       await loadDocuments()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Upload failed')
+    }
+  }
+  const handleReplace = async (docId: number, file: File) => {
+    try {
+      await replace(file, docId)
+      toast.success(`Updated: ${file.name}`)
+      await loadDocuments()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Replace failed')
     }
   }
 
@@ -158,6 +167,7 @@ export const ProjectDocumentsDialog = memo(function ProjectDocumentsDialog({
                     doc={doc}
                     onOpen={setPreviewDoc}
                     onDelete={(d) => handleDelete(d.id, d.filename)}
+                    onReplace={(d, f) => handleReplace(d.id, f)}
                   />
                 ))}
               </div>

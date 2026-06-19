@@ -37,12 +37,21 @@ export const classifyRequestSchema = z.object({
 })
 
 export const uploadUrlRequestSchema = z.object({
-  projectId: z.number().int().positive(),
+  // Required for a new upload; omitted for a replace (derived from the existing doc).
+  projectId: z.number().int().positive().optional(),
   filename: z.string().min(1).max(255),
   contentType: z.string().min(1),
   size: z.number().int().positive(),
+  // When set, this upload replaces an existing document with a new revision.
+  replaceDocumentId: z.number().int().positive().optional(),
 })
 
 export const processDocumentRequestSchema = z.object({
   documentId: z.number().int().positive(),
+  // Replace flow: process this new revision file (and its metadata) instead of
+  // the document's current file. All four are sent together by the client.
+  storagePath: z.string().min(1).optional(),
+  filename: z.string().min(1).max(255).optional(),
+  mimeType: z.string().min(1).optional(),
+  fileSize: z.number().int().positive().optional(),
 })

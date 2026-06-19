@@ -1,6 +1,6 @@
 'use client'
-import { memo } from 'react'
-import { Loader2, CheckCircle2, AlertCircle, Trash2, Sparkles } from 'lucide-react'
+import { memo, useRef } from 'react'
+import { Loader2, CheckCircle2, AlertCircle, Trash2, Sparkles, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatFileSize, getFileTypeBadge } from '@/lib/fileUtils'
 import type { DocumentSummary } from '@/types'
@@ -9,10 +9,17 @@ interface DocumentCardProps {
   doc: DocumentSummary
   onOpen: (doc: DocumentSummary) => void
   onDelete: (doc: DocumentSummary) => void
+  onReplace?: (doc: DocumentSummary, file: File) => void
 }
 
-export const DocumentCard = memo(function DocumentCard({ doc, onOpen, onDelete }: DocumentCardProps) {
+function shortDate(iso: string | null): string {
+  if (!iso) return ''
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+export const DocumentCard = memo(function DocumentCard({ doc, onOpen, onDelete, onReplace }: DocumentCardProps) {
   const badge = getFileTypeBadge(doc.mimeType, doc.filename)
+  const replaceInputRef = useRef<HTMLInputElement>(null)
   return (
     <div
       onClick={() => onOpen(doc)}
@@ -24,6 +31,14 @@ export const DocumentCard = memo(function DocumentCard({ doc, onOpen, onDelete }
           <img src={doc.thumbnailUrl} alt={doc.filename} className="h-full w-full object-cover" />
         ) : (
           <span className={cn('text-xs font-semibold px-2 py-1 rounded-full', badge.className)}>{badge.label}</span>
+        )}
+        {doc.revision > 1 && (
+          <span
+            className="absolute top-1.5 left-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded bg-primary/15 text-primary"
+            title={doc.updatedAt ? `Updated ${shortDate(doc.updatedAt)}` : undefined}
+          >
+            Rev {doc.revision}
+          </span>
         )}
       </div>
 
@@ -52,13 +67,35 @@ export const DocumentCard = memo(function DocumentCard({ doc, onOpen, onDelete }
         </div>
       </div>
 
-      <button
-        onClick={(e) => { e.stopPropagation(); onDelete(doc) }}
-        className="absolute top-1.5 right-1.5 p-1 rounded bg-background/70 text-muted-foreground hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
-        title="Delete document"
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-      </button>
+      <div className="absolute top-1.5 right-1.5 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        {onReplace && (
+          <button
+            onClick={(e) => { e.stopPropagation(); replaceInputRef.current?.click() }}
+            className="p-1 rounded bg-background/70 text-muted-foreground hover:text-primary"
+            title="Replace with a new revision"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+          </button>
+        )}
+        <button
+          onClick={(e) => { e.stopPropagation(); onDelete(doc) }}
+          className="p-1 rounded bg-background/70 text-muted-foreground hover:text-red-400"
+          title="Delete document"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      {onReplace && (
+        <input
+          ref={replaceInputRef}
+          type="file"
+          className="hidden"
+          accept=".pdf,.docx,.xlsx,.txt,.md,.csv,.py,.js,.ts,.tsx,.jsx,.json,.html,.css,.java,.c,.cpp,.go,.rs,.rb,.php,.sh,.yaml,.yml,.xml,.sql,.png,.jpg,.jpeg,.webp"
+          onClick={(e) => e.stopPropagation()}
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) onReplace(doc, f); e.target.value = '' }}
+        />
+      )}
     </div>
   )
 })

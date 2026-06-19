@@ -12,6 +12,7 @@ async function importRoute() {
     getProjectDocuments: mockGetProjectDocuments,
     getDocumentById: mockGetDocumentById,
     deleteDocument: mockDeleteDocument,
+    getDocumentRevisions: vi.fn(async () => []),
   }))
   vi.doMock('@/lib/storage', () => ({
     createSignedDownloadUrl: mockCreateSignedDownloadUrl,
