@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.7.0] - 2026-06-19 — Claude.ai-style layout
+
+Spec at `docs/specs/2026-06-18-claude-ai-layout-design.md`; plans at `docs/plans/2026-06-18-claude-ai-layout-slice1-shell-home.md`, `…-slice2-context-rail.md`, `docs/plans/2026-06-19-claude-ai-layout-slice3-artifacts-displayname.md`. Restyles three surfaces to the Claude.ai layout on the existing Atelier brand. Built in three verified slices.
+
+### Added
+
+- **Home screen** — centered time-of-day greeting (`HomeGreeting` + `greetingForHour`), centered composer, and quick-action chips (`QuickActions`: New project / Upload / Write / Code). Greeting reads a **display name** from settings ("Good morning, Daniel").
+- **Claude.ai sidebar** — `SidebarNav` (New chat · Projects · Artifacts · Customize) + flat `RecentsSection`; `Sidebar` rebuilt. New `AppView` view-router (`home` | `projects` | `artifacts`) via `selectView`/`activeView` on `SidebarActions`. New `ProjectsView` grid and `ArtifactsView`.
+- **Project context rail (3-pane)** — `ProjectContextRail` with editable, debounced-save **Memory** + **Instructions** and a **Files** section (`DocumentCard` grid moved in) with a **capacity bar** (`CapacityBar`, `PROJECT_CAPACITY_BYTES` default 2 GB, env-overridable). `ProjectLandingPage` refactored to chats-column + rail (keyed per project).
+- **Functional Memory + Instructions** — `projects.memory` + `projects.instructions` columns (migration `0006`, applied live); `updateProjectContext`/`getProjectContext` actions; the chat route prepends them to the system prompt via `buildProjectPreamble` so they steer every chat in the project.
+- **Artifacts list** — `getAllArtifacts` action; `ArtifactsView` renders the real grid of generated artifacts (reuses `ArtifactCard`) with signed download links.
+- **Display name** — non-sensitive `display-name` setting; editable in Settings → Appearance; drives the home greeting.
+- **Layout tokens** — `--sidebar-width`, `--rail-width`, `--thread-max-width` in `globals.css` (structure/theme separated). Responsive off-canvas sidebar on narrow widths.
+
+### Fixed
+
+- **Project-view race crash** — guarded the `ProjectLandingPage` render until the `projects` list has loaded (restored `activeProjectId` no longer dereferences an undefined project).
+
+### Notes
+
+- Verification: lint 0 errors / 30 warnings (baseline), build clean, **242 tests pass** (+27 across the three slices). Migration `0006` is additive + nullable, applied to live Supabase. Browser-verified: home greeting with name, sidebar view routing, 3-pane rail with live Memory persistence + capacity bar, Artifacts list with downloads.
+- Out of scope (Claude.ai products, not layout): Cowork/Code tabs, Google integrations, share chip, full D2 artifact preview panel.
+
 ## [4.6.0] - 2026-06-17 — Phase D1: artifact engine — Claude-generated downloadable XLSX/DOCX/PDF
 
 Spec at `docs/specs/2026-06-17-phase-d1-artifact-engine-design.md`; plan at `docs/plans/2026-06-17-phase-d1-artifact-engine.md`.

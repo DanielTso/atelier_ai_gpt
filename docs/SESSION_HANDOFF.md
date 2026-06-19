@@ -2,7 +2,7 @@
 
 _Last updated: 2026-06-18 (released **v4.6.0**). This is the bootstrap doc for a new session. The project CLAUDE.md is the source of truth for how the code works; this doc tracks **where we are in the multi-phase build**. For the in-flight deploy/release status, read `docs/SESSION_HANDOFF_2026-06-18.md` first._
 
-> **Release status (2026-06-18):** Phases A→D1 tagged + GitHub-released as **v4.6.0** on `phase-c-extraction`. Supabase live (migrations `0000`–`0005`, RLS on all 11 tables); Vercel env set for Production + Preview. **`master` held** (production still on the old stack) pending a Preview validation of `@napi-rs/canvas` on Vercel Linux — a CI PR (`phase-c-extraction → master`) is open but unmerged. See the dated handoff for the exact next steps.
+> **Release status (2026-06-19):** **v4.7.0 — Claude.ai-style layout** merged to `master` + GitHub-released. Three slices (shell+home · project context rail · artifacts+display-name) on the existing Atelier brand; migration `0006` (`projects.memory`/`instructions`) applied live; 242 tests pass; browser-verified. Spec: `docs/specs/2026-06-18-claude-ai-layout-design.md`. Prior: Phases A→D1 released as **v4.6.0**; Supabase live (migrations `0000`–`0006`, RLS on 11 tables); Vercel env set for Production + Preview.
 
 ## The program
 
