@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.8.0] - 2026-06-19 — Persona system v2 (adaptive thinking + effort) + construction quick actions
+
+Specs at `docs/specs/2026-06-19-persona-system-v2-design.md` and `docs/specs/2026-06-19-quick-actions-file-flow-clarity-design.md`.
+
+### Added
+
+- **Unified persona system** (`src/hooks/usePersonas.ts`) — collapsed the two-tier "Personas" + "Model + Persona" model into **one flat list** where every persona carries **prompt + model + effort**. `Persona.effort?: 'low'|'medium'|'high'|'max'`; `modelShortLabel`/`effortLabel` helpers. Roster (9): General Assistant (default), Coding, Code Review, Deep Analysis, Creative Writing, Brief, Teacher, plus new **🏗️ Construction Pro** and **📐 Plan & Spec Reader**. Dropped the duplicates (Debug Mode, Quick Code Help, the regular Coding/Creative).
+- **Default = General Assistant · Sonnet 4.6 · Medium effort.** Fresh chats seed the model from the default persona (live `default-model` setting aligned to `claude-sonnet-4-6`).
+- **Adaptive thinking + effort on Claude** — `createProvider(modelName, effort?)` sets `providerOptions.anthropic = { thinking: { type: 'adaptive' }, effort }`. **Effort omitted for `claude-haiku-*`** (the API 400s on Haiku). `chatRequestSchema.effort` enum; effort flows client → chat body → provider. (Corrects the stale "no thinking config" note — AI SDK v6 supports both.)
+- **Composer effort pill** (`src/components/ui/EffortPill.tsx`) — Low/Med/High/Max selector that defaults to the active persona's effort and overrides per-chat; hidden for Haiku/image models. Plus a flat-list `PersonaSelector` with `model · effort` chips that set model+effort on select.
+- **Construction quick actions** (`src/components/chat/QuickActions.tsx`) — Home chips are now **New project · Add documents · Draft RFI · 3-week look-ahead** (replaced placeholder Write/Code). **Add documents is project-aware**: opens the project's docs dialog when a project is active, else routes to the Projects view (no more silent no-op on Home).
+- **File-flow clarity** — persistent project knowledge ("Add documents" / project Files, RAG) vs per-message input: the composer **Attach** tooltip now reads "Attach to this message".
+
+### Notes
+
+- Verification: lint 0 errors / 26 warnings, build clean, **247 tests pass** (new: providers effort + Haiku guard, usePersonas v2, PersonaSelector, updated QuickActions). Browser-verified: flat persona list + chips, default General Assistant/Sonnet/Medium, effort pill, Brief-on-Haiku omits effort, project-aware Add documents.
+- No DB migration — personas are code/localStorage; chats match personas by prompt (unmatched → "Custom").
+- Informed by a comparison of Claude Projects / ChatGPT Projects+GPTs / Gemini Gems: the app's three-layer model (Personas = behavior · Projects = knowledge+memory+instructions · Attach = per-message) matches industry best practice.
+
 ## [4.7.0] - 2026-06-19 — Claude.ai-style layout
 
 Spec at `docs/specs/2026-06-18-claude-ai-layout-design.md`; plans at `docs/plans/2026-06-18-claude-ai-layout-slice1-shell-home.md`, `…-slice2-context-rail.md`, `docs/plans/2026-06-19-claude-ai-layout-slice3-artifacts-displayname.md`. Restyles three surfaces to the Claude.ai layout on the existing Atelier brand. Built in three verified slices.
