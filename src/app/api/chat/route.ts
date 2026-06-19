@@ -44,11 +44,11 @@ export async function POST(req: Request) {
     if (!body.success) {
       return apiError(body.error, 'Invalid request body', 400);
     }
-    const { messages, model, chatId } = body.data;
+    const { messages, model, chatId, effort } = body.data;
     const modelName = model || 'claude-opus-4-8';
 
     // Create provider (handles virtual model resolution, tools, and options)
-    const { model: selectedModel, tools: providerTools, providerOptions } = await createProvider(modelName);
+    const { model: selectedModel, tools: providerTools, providerOptions } = await createProvider(modelName, effort);
 
     // Build context with hybrid approach: system prompt + semantic context + summary + recent messages
     let contextMessages = messages as UIMessage[];

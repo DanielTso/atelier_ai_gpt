@@ -37,6 +37,42 @@ describe('createProvider', () => {
     expect(mockWebSearch).toHaveBeenCalled()
   })
 
+  it('claude with effort sets adaptive thinking AND effort', async () => {
+    mockProviders()
+    vi.doMock('@/lib/settings', () => ({
+      getAnthropicApiKey: () => Promise.resolve('anthropic-key'),
+      getGeminiApiKey: () => Promise.resolve(null),
+    }))
+    const { createProvider } = await import('@/lib/providers')
+    const result = await createProvider('claude-opus-4-8', 'high')
+    expect(result.providerOptions?.anthropic?.thinking).toEqual({ type: 'adaptive' })
+    expect(result.providerOptions?.anthropic?.effort).toBe('high')
+  })
+
+  it('haiku OMITS effort (API rejects it) but keeps adaptive thinking', async () => {
+    mockProviders()
+    vi.doMock('@/lib/settings', () => ({
+      getAnthropicApiKey: () => Promise.resolve('anthropic-key'),
+      getGeminiApiKey: () => Promise.resolve(null),
+    }))
+    const { createProvider } = await import('@/lib/providers')
+    const result = await createProvider('claude-haiku-4-5', 'high')
+    expect(result.providerOptions?.anthropic?.thinking).toEqual({ type: 'adaptive' })
+    expect(result.providerOptions?.anthropic?.effort).toBeUndefined()
+  })
+
+  it('claude with no effort still enables adaptive thinking', async () => {
+    mockProviders()
+    vi.doMock('@/lib/settings', () => ({
+      getAnthropicApiKey: () => Promise.resolve('anthropic-key'),
+      getGeminiApiKey: () => Promise.resolve(null),
+    }))
+    const { createProvider } = await import('@/lib/providers')
+    const result = await createProvider('claude-opus-4-8')
+    expect(result.providerOptions?.anthropic?.thinking).toEqual({ type: 'adaptive' })
+    expect(result.providerOptions?.anthropic?.effort).toBeUndefined()
+  })
+
   it('throws when claude selected but no Anthropic key', async () => {
     mockProviders()
     vi.doMock('@/lib/settings', () => ({

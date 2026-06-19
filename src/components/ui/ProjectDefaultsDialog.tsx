@@ -88,7 +88,7 @@ export const ProjectDefaultsDialog = memo(function ProjectDefaultsDialog({
                   <option value="">None (use global default)</option>
                   {personas.map(p => (
                     <option key={p.id} value={p.id}>
-                      {p.icon} {p.name}{p.isCombo && p.preferredModel ? ` (${modelShortLabel(p.preferredModel)})` : ''}
+                      {p.icon} {p.name} ({modelShortLabel(p.model)}{p.effort ? ` · ${p.effort}` : ''})
                     </option>
                   ))}
                 </select>

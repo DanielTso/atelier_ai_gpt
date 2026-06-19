@@ -5,7 +5,9 @@ import { Send, Loader2, FileText, Brain, Paperclip, Upload, X } from 'lucide-rea
 import TextareaAutosize from 'react-textarea-autosize'
 import { toast } from 'sonner'
 import { PersonaSelector } from '@/components/ui/PersonaSelector'
+import { EffortPill } from '@/components/ui/EffortPill'
 import { ModelSelect } from '@/components/ui/ModelSelect'
+import type { Effort } from '@/hooks/usePersonas'
 import type { AttachedFile, AttachedImage } from '@/lib/fileAttachments'
 import { getFileTypeLabel, isImageFile, fileToAttachedImage } from '@/lib/fileAttachments'
 import { formatFileSize } from '@/lib/fileUtils'
@@ -31,6 +33,8 @@ interface ChatInputAreaProps {
   models?: Model[]
   selectedModel?: string
   onModelChange?: (model: string) => void
+  selectedEffort?: Effort
+  onEffortChange?: (effort?: Effort) => void
   attachedFiles: AttachedFile[]
   onFilesChange: (files: AttachedFile[]) => void
   attachedImages: AttachedImage[]
@@ -51,6 +55,8 @@ export const ChatInputArea = memo(function ChatInputArea({
   models,
   selectedModel,
   onModelChange,
+  selectedEffort,
+  onEffortChange,
   attachedFiles,
   onFilesChange,
   attachedImages,
@@ -297,9 +303,13 @@ export const ChatInputArea = memo(function ChatInputArea({
             onSelect={onSystemPromptChange}
             onCustomize={onSystemPromptClick}
             onModelChange={onModelChange}
+            onEffortChange={onEffortChange}
             disabled={false}
             side="top"
           />
+          {onEffortChange && selectedModel?.startsWith('claude') && !selectedModel.startsWith('claude-haiku') && (
+            <EffortPill value={selectedEffort} onChange={onEffortChange} side="top" />
+          )}
           <button
             onClick={onSystemPromptClick}
             className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-white/10 transition-colors"

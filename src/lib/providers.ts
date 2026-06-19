@@ -10,10 +10,12 @@ export interface ProviderResult {
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-export async function createProvider(modelName: string): Promise<ProviderResult> {
-  // Claude (Anthropic) — the primary chat brain. Web search enabled; no
-  // explicit thinking config (Opus 4.8 rejects budget_tokens; adaptive thinking
-  // is a deferred follow-up).
+export type Effort = 'low' | 'medium' | 'high' | 'max';
+
+export async function createProvider(modelName: string, effort?: Effort): Promise<ProviderResult> {
+  // Claude (Anthropic) — the primary chat brain. Web search enabled. Adaptive
+  // thinking is on for all Claude models; `effort` (low|medium|high|max) is
+  // applied via providerOptions — EXCEPT on Haiku, which 400s on the effort param.
   if (modelName.startsWith('claude')) {
     const apiKey = await getAnthropicApiKey();
     if (!apiKey) {
@@ -25,7 +27,12 @@ export async function createProvider(modelName: string): Promise<ProviderResult>
     const tools: Record<string, any> = {
       web_search: anthropic.tools.webSearch_20250305({ maxUses: 5 }),
     };
-    return { model, tools };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const anthropicOptions: Record<string, any> = { thinking: { type: 'adaptive' } };
+    if (effort && !modelName.startsWith('claude-haiku')) {
+      anthropicOptions.effort = effort;
+    }
+    return { model, tools, providerOptions: { anthropic: anthropicOptions } };
   }
 
   // Gemini — image generation (Nano Banana) + internal utility/embedding text.
