@@ -7,7 +7,7 @@ import { DefaultChatTransport } from "ai"
 import { useEffect, useState, useRef, useCallback, useMemo } from "react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
-import { getProjects, createProject, getAllProjectChats, createChat, getChatMessages, saveMessage, deleteProject, updateProjectName, updateProjectContext, updateChatTitle, getStandaloneChats, createStandaloneChat, deleteChat, moveChatToProject, archiveChat, restoreChat, getArchivedChats, getMessageCount, getChatWithContext, updateChatSystemPrompt, getProjectDefaults, recordPersonaUsage, incrementUsageMessageCount, getProjectChatPreviews, saveMessageAttachments, getChatAttachments, getSetting } from "./actions"
+import { getProjects, createProject, getAllProjectChats, createChat, getChatMessages, saveMessage, deleteProject, updateProjectName, updateProjectContext, updateChatTitle, getStandaloneChats, createStandaloneChat, deleteChat, moveChatToProject, archiveChat, restoreChat, getArchivedChats, getMessageCount, getChatWithContext, updateChatSystemPrompt, getProjectDefaults, recordPersonaUsage, incrementUsageMessageCount, getProjectChatPreviews, saveMessageAttachments, getChatAttachments, getSetting, setSetting } from "./actions"
 import { Sidebar } from "@/components/chat/sidebar"
 import type { SidebarActions, AppView } from "@/components/chat/sidebar"
 import { HomeGreeting } from "@/components/chat/HomeGreeting"
@@ -65,6 +65,7 @@ export default function Home() {
   const [standaloneChats, setStandaloneChats] = useState<Chat[]>([])
   const [activeChatId, setActiveChatId] = useLocalStorage<number | null>('activeChatId', null)
   const [activeView, setActiveView] = useState<AppView>('home')
+  const [displayName, setDisplayName] = useState('')
 
   // Project landing page state
   const [chatPreviews, setChatPreviews] = useState<{ id: number; title: string; preview: string | null; createdAt: Date | null }[]>([])
@@ -892,6 +893,13 @@ export default function Home() {
     setProjects(prev => prev.map(p => p.id === id ? { ...p, ...fields } : p))
   }, [])
 
+  useEffect(() => { getSetting('display-name').then(v => { if (v) setDisplayName(v) }).catch(() => {}) }, [])
+
+  const handleDisplayNameChange = useCallback((value: string) => {
+    setDisplayName(value)
+    setSetting('display-name', value).catch(() => {})
+  }, [])
+
   const sidebarActions = useMemo<SidebarActions>(() => ({
     createProject: handleCreateProject,
     renameProject: handleRenameProject,
@@ -1039,7 +1047,7 @@ export default function Home() {
           />
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center w-full max-w-(--thread-max-width) mx-auto px-4">
-            <HomeGreeting />
+            <HomeGreeting displayName={displayName || undefined} />
             <div className="w-full">
               <ChatInputArea
                 input={input}
@@ -1130,6 +1138,8 @@ export default function Home() {
         onFontSizeChange={setFontSize}
         messageDensity={messageDensity}
         onMessageDensityChange={setMessageDensity}
+        displayName={displayName}
+        onDisplayNameChange={handleDisplayNameChange}
       />
 
       {/* Project Defaults Dialog */}

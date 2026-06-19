@@ -11,6 +11,8 @@ interface AppearanceSettingsTabProps {
   onFontSizeChange: (size: FontSize) => void
   messageDensity: MessageDensity
   onMessageDensityChange: (density: MessageDensity) => void
+  displayName: string
+  onDisplayNameChange: (value: string) => void
 }
 
 export const AppearanceSettingsTab = memo(function AppearanceSettingsTab({
@@ -18,6 +20,8 @@ export const AppearanceSettingsTab = memo(function AppearanceSettingsTab({
   onFontSizeChange,
   messageDensity,
   onMessageDensityChange,
+  displayName,
+  onDisplayNameChange,
 }: AppearanceSettingsTabProps) {
   const { theme, setTheme } = useTheme()
 
@@ -41,6 +45,17 @@ export const AppearanceSettingsTab = memo(function AppearanceSettingsTab({
 
   return (
     <div className="space-y-6">
+      {/* Display name */}
+      <div className="space-y-2">
+        <label htmlFor="display-name" className="text-sm font-medium">Display name</label>
+        <input
+          id="display-name" aria-label="Display name" type="text" value={displayName}
+          onChange={(e) => onDisplayNameChange(e.target.value)}
+          placeholder="Your name (shown in the greeting)"
+          className="w-full rounded-lg border border-border bg-background p-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-ring"
+        />
+      </div>
+
       {/* Theme */}
       <div className="space-y-2">
         <label className="text-sm font-medium">Theme</label>
