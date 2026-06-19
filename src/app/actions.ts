@@ -1,7 +1,7 @@
 'use server'
 
 import { db } from '@/db'
-import { projects, chats, messages, settings, messageEmbeddings, personaUsage, chatTopics, documents, documentChunks, messageAttachments, artifacts } from '@/db/schema'
+import { projects, chats, messages, settings, messageEmbeddings, personaUsage, chatTopics, documents, documentChunks, documentRevisions, messageAttachments, artifacts } from '@/db/schema'
 import { eq, desc, isNull, isNotNull, and, lte, asc, count, inArray, sql } from 'drizzle-orm'
 import { isStorageConfigured, uploadBuffer, createSignedDownloadUrl, removeObjects } from '@/lib/storage'
 
@@ -444,6 +444,55 @@ export async function getProjectDocuments(projectId: number) {
 
 export async function deleteDocument(id: number) {
   return await db.delete(documents).where(eq(documents.id, id)).returning()
+}
+
+// --- Re-versioning ---
+
+/** Snapshot a superseded revision (file retained in Storage; no chunks copied). */
+export async function createDocumentRevision(data: {
+  documentId: number
+  projectId: number
+  revision: number
+  filename: string
+  mimeType: string
+  fileSize: number
+  storagePath: string | null
+  thumbnailPath: string | null
+  charCount: number | null
+  chunkCount: number | null
+  extractionMethod: string | null
+}) {
+  return await db.insert(documentRevisions).values(data).returning()
+}
+
+/** Remove all chunks for a document (used before re-chunking a new revision). */
+export async function deleteDocumentChunks(documentId: number) {
+  return await db.delete(documentChunks).where(eq(documentChunks.documentId, documentId)).returning()
+}
+
+/** Superseded revisions for a document, newest first (for a future history UI). */
+export async function getDocumentRevisions(documentId: number) {
+  return await db.select().from(documentRevisions)
+    .where(eq(documentRevisions.documentId, documentId))
+    .orderBy(desc(documentRevisions.revision))
+}
+
+/** Swap a document's active revision in place: new file metadata + bump revision. */
+export async function applyDocumentReplacement(documentId: number, fields: {
+  filename: string
+  mimeType: string
+  fileSize: number
+  storagePath: string
+  thumbnailPath?: string | null
+  charCount: number
+  chunkCount: number
+  extractionMethod: 'text' | 'vision'
+  revision: number
+}) {
+  return await db.update(documents)
+    .set({ ...fields, status: 'ready', updatedAt: new Date() })
+    .where(eq(documents.id, documentId))
+    .returning()
 }
 
 export async function saveDocumentChunks(chunks: {

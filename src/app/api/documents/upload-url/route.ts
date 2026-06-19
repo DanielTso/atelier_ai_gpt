@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createUploadingDocument, updateDocumentStoragePath } from '@/app/actions'
+import { createUploadingDocument, updateDocumentStoragePath, getDocumentById, updateDocumentStatus } from '@/app/actions'
 import { isStorageConfigured, createSignedUploadUrl, storageBucketName } from '@/lib/storage'
 import { MAX_FILE_SIZE, isSupported, isImageExtension, getExtension } from '@/lib/fileExtraction'
 import { uploadUrlRequestSchema } from '@/lib/validation'
@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
     }
     const parsed = uploadUrlRequestSchema.safeParse(await request.json())
     if (!parsed.success) return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
-    const { projectId, filename, contentType, size } = parsed.data
+    const { projectId, filename, contentType, size, replaceDocumentId } = parsed.data
 
     if (size > MAX_FILE_SIZE) {
       return NextResponse.json({ error: `File too large. Maximum size is ${MAX_FILE_SIZE / (1024 * 1024)}MB.` }, { status: 400 })
@@ -29,6 +29,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Unsupported file type: ${filename}.` }, { status: 400 })
     }
 
+    // Replace flow: upload a new revision of an existing document. Keep the old
+    // file/path reachable (do NOT overwrite doc.storagePath) — the process step
+    // snapshots it and the new path is returned to the client for the process call.
+    if (replaceDocumentId) {
+      const existing = await getDocumentById(replaceDocumentId)
+      if (!existing) return NextResponse.json({ error: 'Document not found' }, { status: 404 })
+      const newPath = `documents/${existing.projectId}/${existing.id}/rev${existing.revision + 1}/${sanitize(filename)}`
+      await updateDocumentStatus(existing.id, 'uploading')
+      const { token } = await createSignedUploadUrl(newPath)
+      return NextResponse.json({ documentId: existing.id, path: newPath, token, bucket: storageBucketName })
+    }
+
+    if (!projectId) return NextResponse.json({ error: 'projectId is required for a new upload' }, { status: 400 })
     const [doc] = await createUploadingDocument({
       projectId, filename, mimeType: contentType || 'application/octet-stream', fileSize: size,
     })

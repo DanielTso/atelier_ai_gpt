@@ -18,6 +18,8 @@ export interface DocumentSummary {
   url: string | null
   thumbnailUrl: string | null
   extractionMethod: 'text' | 'vision' | null
+  revision: number
+  updatedAt: string | null
 }
 
 export interface ArtifactSummary {

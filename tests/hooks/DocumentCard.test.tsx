@@ -6,7 +6,7 @@ import type { DocumentSummary } from '@/types'
 
 const base: DocumentSummary = {
   id: 1, filename: 'GradingPlan.pdf', mimeType: 'application/pdf', fileSize: 1000,
-  chunkCount: 42, status: 'ready', errorMessage: null,
+  chunkCount: 42, status: 'ready', errorMessage: null, revision: 1, updatedAt: null,
   url: 'signed:orig', thumbnailUrl: 'signed:thumb', extractionMethod: 'vision',
 }
 
