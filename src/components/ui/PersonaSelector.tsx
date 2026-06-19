@@ -4,13 +4,14 @@ import { memo, useState } from 'react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { ChevronDown, Check, Settings2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { usePersonas, modelShortLabel, type Persona } from '@/hooks/usePersonas'
+import { usePersonas, modelShortLabel, effortLabel, type Persona, type Effort } from '@/hooks/usePersonas'
 
 interface PersonaSelectorProps {
   currentPrompt: string | null
   onSelect: (prompt: string | null) => void
   onCustomize?: () => void
   onModelChange?: (model: string) => void
+  onEffortChange?: (effort?: Effort) => void
   disabled?: boolean
   side?: 'top' | 'bottom'
 }
@@ -20,6 +21,7 @@ export const PersonaSelector = memo(function PersonaSelector({
   onSelect,
   onCustomize,
   onModelChange,
+  onEffortChange,
   disabled = false,
   side = 'bottom',
 }: PersonaSelectorProps) {
@@ -27,18 +29,13 @@ export const PersonaSelector = memo(function PersonaSelector({
   const { personas, getPersonaByPrompt } = usePersonas()
 
   const currentPersona = getPersonaByPrompt(currentPrompt)
-  const isCustomPrompt = currentPrompt && !currentPersona
-
-  // Split personas into regular and "Model + Persona" combos
-  const regularPersonas = personas.filter(p => !p.isCombo)
-  const comboPresets = personas.filter(p => p.isCombo)
+  const isCustom = currentPersona.id === 'custom'
 
   const handleSelect = (persona: Persona) => {
     onSelect(persona.prompt || null)
-    // If combo preset has a preferred model, auto-switch
-    if (persona.preferredModel && onModelChange) {
-      onModelChange(persona.preferredModel)
-    }
+    // Selecting a persona sets its model and effort together.
+    if (persona.model && onModelChange) onModelChange(persona.model)
+    if (onEffortChange) onEffortChange(persona.effort)
     setOpen(false)
   }
 
@@ -48,108 +45,63 @@ export const PersonaSelector = memo(function PersonaSelector({
         <button
           className={cn(
             "flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs transition-colors",
-            "hover:bg-white/10",
+            "hover:bg-accent",
             disabled && "opacity-50 cursor-not-allowed",
-            currentPersona && currentPersona.id !== 'default'
+            !currentPersona.isDefault && !isCustom
               ? "bg-primary/20 text-primary"
               : "text-muted-foreground hover:text-foreground"
           )}
           title="Select persona"
         >
-          <span className="text-sm">
-            {isCustomPrompt ? '✏️' : currentPersona?.icon || '🤖'}
-          </span>
-          <span className="hidden sm:inline max-w-[80px] truncate">
-            {isCustomPrompt ? 'Custom' : currentPersona?.name || 'Default'}
-          </span>
+          <span className="text-sm">{currentPersona.icon}</span>
+          <span className="hidden sm:inline max-w-25 truncate">{currentPersona.name}</span>
           <ChevronDown className="h-3 w-3 opacity-50" />
         </button>
       </DropdownMenu.Trigger>
 
       <DropdownMenu.Portal>
         <DropdownMenu.Content
-          className="min-w-[220px] max-h-[400px] overflow-y-auto glass-panel rounded-lg p-1.5 shadow-xl z-50"
+          className="min-w-65 max-h-105 overflow-y-auto glass-panel rounded-lg p-1.5 shadow-xl z-50"
           sideOffset={5}
           side={side}
           align="start"
         >
-          {/* Regular Personas Section */}
           <DropdownMenu.Label className="px-2 py-1.5 text-xs text-muted-foreground font-medium">
             Personas
           </DropdownMenu.Label>
 
-          {regularPersonas.map((persona) => (
+          {personas.map((persona) => (
             <DropdownMenu.Item
               key={persona.id}
               className={cn(
                 "flex items-center gap-2 px-2 py-1.5 text-sm rounded cursor-pointer outline-none transition-colors",
-                "hover:bg-white/10",
-                currentPersona?.id === persona.id && "bg-primary/10 text-primary"
+                "hover:bg-accent",
+                currentPersona.id === persona.id && "bg-primary/10 text-primary"
               )}
               onSelect={() => handleSelect(persona)}
             >
-              <span className="text-base w-5 text-center">{persona.icon}</span>
-              <span className="flex-1">{persona.name}</span>
-              {currentPersona?.id === persona.id && (
-                <Check className="h-3.5 w-3.5" />
-              )}
-              {!persona.isDefault && (
-                <span className="text-[10px] px-1 py-0.5 bg-white/10 rounded">
-                  custom
-                </span>
-              )}
+              <span className="text-base w-5 text-center shrink-0">{persona.icon}</span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="truncate">{persona.name}</span>
+                  <span className="shrink-0 text-[10px] px-1 py-0.5 bg-primary/15 text-primary rounded">
+                    {modelShortLabel(persona.model)}{persona.effort ? ` · ${effortLabel(persona.effort)}` : ''}
+                  </span>
+                </div>
+                {persona.description && (
+                  <p className="text-[10px] text-muted-foreground mt-0.5 truncate">{persona.description}</p>
+                )}
+              </div>
+              {currentPersona.id === persona.id && <Check className="h-3.5 w-3.5 shrink-0" />}
             </DropdownMenu.Item>
           ))}
 
-          {/* Combo Presets Section */}
-          {comboPresets.length > 0 && (
-            <>
-              <DropdownMenu.Separator className="h-px bg-white/10 my-1" />
-              <DropdownMenu.Label className="px-2 py-1.5 text-xs text-muted-foreground font-medium">
-                Model + Persona
-              </DropdownMenu.Label>
-
-              {comboPresets.map((persona) => (
-                <DropdownMenu.Item
-                  key={persona.id}
-                  className={cn(
-                    "flex items-center gap-2 px-2 py-1.5 text-sm rounded cursor-pointer outline-none transition-colors",
-                    "hover:bg-white/10",
-                    currentPersona?.id === persona.id && "bg-primary/10 text-primary"
-                  )}
-                  onSelect={() => handleSelect(persona)}
-                >
-                  <span className="text-base w-5 text-center">{persona.icon}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <span className="truncate">{persona.name}</span>
-                      {modelShortLabel(persona.preferredModel) && (
-                        <span className="shrink-0 text-[10px] px-1 py-0.5 bg-primary/15 text-primary rounded">
-                          {modelShortLabel(persona.preferredModel)}
-                        </span>
-                      )}
-                    </div>
-                    {persona.description && (
-                      <p className="text-[10px] text-muted-foreground mt-0.5 truncate">{persona.description}</p>
-                    )}
-                  </div>
-                  {currentPersona?.id === persona.id && (
-                    <Check className="h-3.5 w-3.5 shrink-0" />
-                  )}
-                </DropdownMenu.Item>
-              ))}
-            </>
-          )}
-
           {onCustomize && (
             <>
-              <DropdownMenu.Separator className="h-px bg-white/10 my-1" />
+              <DropdownMenu.Separator className="h-px bg-border my-1" />
               <DropdownMenu.Item
-                className="flex items-center gap-2 px-2 py-1.5 text-sm rounded cursor-pointer outline-none hover:bg-white/10 text-muted-foreground"
-                onSelect={() => {
-                  onCustomize()
-                  setOpen(false)
-                }}
+                className="flex items-center gap-2 px-2 py-1.5 text-sm rounded cursor-pointer outline-none hover:bg-accent text-muted-foreground"
+                onSelect={() => { onCustomize(); setOpen(false) }}
               >
                 <Settings2 className="h-4 w-4" />
                 <span>Customize...</span>

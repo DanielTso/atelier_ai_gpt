@@ -4,6 +4,7 @@ export const chatRequestSchema = z.object({
   messages: z.array(z.any()).min(1),
   model: z.string().optional(),
   chatId: z.number().nullable().optional(),
+  effort: z.enum(['low', 'medium', 'high', 'max']).optional(),
 })
 
 export const summarizeRequestSchema = z.object({

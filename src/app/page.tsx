@@ -28,7 +28,7 @@ import { CreateProjectDialog } from "@/components/ui/CreateProjectDialog"
 import { useAppearanceSettings } from "@/hooks/useAppearanceSettings"
 import { useLocalStorage } from "@/hooks/useLocalStorage"
 import { useSmartDefaults } from "@/hooks/useSmartDefaults"
-import { usePersonas } from "@/hooks/usePersonas"
+import { usePersonas, type Effort } from "@/hooks/usePersonas"
 import { PersonaSuggestionBanner } from "@/components/chat/PersonaSuggestionBanner"
 import { ProjectLandingPage } from "@/components/chat/ProjectLandingPage"
 import type { AttachedFile, AttachedImage } from "@/lib/fileAttachments"
@@ -112,7 +112,14 @@ export default function Home() {
   const { fontSize, setFontSize, messageDensity, setMessageDensity } = useAppearanceSettings()
 
   // Persona management
-  const { getPersonaById, getPersonaByPrompt } = usePersonas()
+  const { getPersonaById, getPersonaByPrompt, defaultPersona } = usePersonas()
+
+  // Reasoning effort (Claude adaptive thinking). Defaults to the default persona's
+  // effort; selecting a persona sets it; the composer effort pill can override it.
+  const [selectedEffort, setSelectedEffort] = useState<Effort | undefined>(defaultPersona.effort)
+  const selectedEffortRef = useRef(selectedEffort)
+  selectedEffortRef.current = selectedEffort
+  const handleEffortChange = useCallback((effort?: Effort) => setSelectedEffort(effort), [])
 
   // Create transport with body as function to always get current values
   const transport = useMemo(() => new DefaultChatTransport({
@@ -120,6 +127,7 @@ export default function Home() {
     body: () => ({
       model: selectedModelRef.current,
       chatId: activeChatIdRef.current,
+      effort: selectedEffortRef.current,
     }),
   }), [])
 
@@ -331,7 +339,11 @@ export default function Home() {
          // Use configured default model if it exists in the available models
          const defaultModel = await getSetting('default-model')
          const modelExists = defaultModel && data.models.some((m: { model: string }) => m.model === defaultModel)
-         setSelectedModel(modelExists ? defaultModel : data.models[0].model)
+         // Fallback seeds from the default persona's model (Sonnet 4.6) if available,
+         // else the first listed model — keeps model + default persona consistent.
+         const personaModelAvailable = data.models.some((m: { model: string }) => m.model === defaultPersona.model)
+         const fallbackModel = personaModelAvailable ? defaultPersona.model : data.models[0].model
+         setSelectedModel(modelExists ? defaultModel : fallbackModel)
       } else {
          setError("No models found. Please check your API keys in Settings.")
       }
@@ -555,6 +567,7 @@ export default function Home() {
           if (persona?.prompt) {
             await updateChatSystemPrompt(newC.id, persona.prompt)
             setCurrentSystemPrompt(persona.prompt)
+            setSelectedEffort(persona.effort)
             toast.success(`Applied project default: ${persona.name}`)
           }
         }
@@ -587,6 +600,7 @@ export default function Home() {
           if (persona?.prompt) {
             await updateChatSystemPrompt(newC.id, persona.prompt)
             setCurrentSystemPrompt(persona.prompt)
+            setSelectedEffort(persona.effort)
             toast.success(`Applied project default: ${persona.name}`)
           }
         }
@@ -879,9 +893,10 @@ export default function Home() {
   const handleApplySuggestion = useCallback(async () => {
     if (!suggestedPersona) return
     await handleSaveSystemPrompt(suggestedPersona.prompt || null)
-    if (suggestedPersona.preferredModel) {
-      setSelectedModel(suggestedPersona.preferredModel)
+    if (suggestedPersona.model) {
+      setSelectedModel(suggestedPersona.model)
     }
+    setSelectedEffort(suggestedPersona.effort)
     dismissSuggestion()
     toast.success(`Switched to ${suggestedPersona.name}`)
   }, [suggestedPersona, handleSaveSystemPrompt, dismissSuggestion])
@@ -1027,6 +1042,8 @@ export default function Home() {
               models={models}
               selectedModel={selectedModel}
               onModelChange={handleModelChange}
+              selectedEffort={selectedEffort}
+              onEffortChange={handleEffortChange}
               attachedFiles={attachedFiles}
               onFilesChange={setAttachedFiles}
               attachedImages={attachedImages}
@@ -1061,6 +1078,8 @@ export default function Home() {
                 models={models}
                 selectedModel={selectedModel}
                 onModelChange={handleModelChange}
+                selectedEffort={selectedEffort}
+                onEffortChange={handleEffortChange}
                 attachedFiles={attachedFiles}
                 onFilesChange={setAttachedFiles}
                 attachedImages={attachedImages}
@@ -1069,9 +1088,9 @@ export default function Home() {
             </div>
             <QuickActions
               onNewProject={handleCreateProject}
-              onUpload={() => activeProjectId && handleOpenProjectDocuments(activeProjectId)}
-              onWrite={() => setInput('Help me write ')}
-              onCode={() => setInput('Help me write code for ')}
+              onAddDocuments={() => activeProjectId ? handleOpenProjectDocuments(activeProjectId) : setActiveView('projects')}
+              onDraftRfi={() => setInput('Draft an RFI for: ')}
+              onLookahead={() => setInput('Build a 3-week look-ahead schedule for: ')}
             />
           </div>
         )}
