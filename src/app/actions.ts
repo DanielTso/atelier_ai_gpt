@@ -571,3 +571,11 @@ export async function deleteArtifact(id: number) {
 export async function updateArtifactStoragePath(id: number, storagePath: string) {
   return await db.update(artifacts).set({ storagePath }).where(eq(artifacts.id, id)).returning()
 }
+
+export async function getAllArtifacts() {
+  const rows = await db.select().from(artifacts).orderBy(desc(artifacts.createdAt))
+  return await Promise.all(rows.map(async (r) => ({
+    id: r.id, chatId: r.chatId, type: r.type, title: r.title, status: r.status, createdAt: r.createdAt,
+    downloadUrl: r.storagePath ? await createSignedDownloadUrl(r.storagePath).catch(() => null) : null,
+  })))
+}
