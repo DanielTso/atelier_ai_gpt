@@ -5,7 +5,7 @@ _Resume doc for the next session. Read `docs/SESSION_HANDOFF.md` for the long pr
 ## TL;DR — where we are
 - **Everything is merged to `master` and released.** Working tree clean (only pre-existing untracked files: `ATELIER_BRAND_SKILL_V2.md`, `atelier_brand_board.html`, `docs/plans/Coding_Sessions_Agent_Stack_Reference.docx.pdf`, `scripts/smoke-*.mjs`). No open feature branches.
 - **Three releases shipped today:** v4.7.0, v4.8.0, v4.9.0 (details below). Prior: v4.6.0 (A→D1 program).
-- **Next up: auto-memory** — design approved (mode: *suggest-you-approve*), **not yet spec'd or built**. This is the immediate next task (see §Next).
+- **Next up: auto-memory** — design approved (mode: *suggest-you-approve*). _Update 2026-06-20: spec'd + built on branch `feat/auto-memory` (v4.10.0), gate green, pending live `0008` migration + merge. See `docs/SESSION_HANDOFF_2026-06-20.md`._
 - **Live Supabase:** migrations `0000`–`0007` applied. Org on **Pro**. Production: **https://atelier-ai-app.vercel.app** (and `atelier-ai-studio.vercel.app`). ⚠️ bare `atelier-ai.vercel.app` is a DIFFERENT project — don't use it.
 
 ## Shipped today (all on `master`, GitHub-released, prod-deployed)
