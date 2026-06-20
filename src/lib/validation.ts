@@ -36,6 +36,16 @@ export const classifyRequestSchema = z.object({
   model: z.string().optional(),
 })
 
+export const memorySuggestRequestSchema = z.object({
+  projectId: z.number().int().positive(),
+  chatId: z.number().int().positive().optional(),
+  messages: z.array(z.object({
+    role: z.string(),
+    content: z.string().optional(),
+    parts: z.array(z.any()).optional(),
+  })).min(1),
+})
+
 export const uploadUrlRequestSchema = z.object({
   // Required for a new upload; omitted for a replace (derived from the existing doc).
   projectId: z.number().int().positive().optional(),
