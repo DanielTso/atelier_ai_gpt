@@ -1,7 +1,7 @@
 'use server'
 
 import { db } from '@/db'
-import { projects, chats, messages, settings, messageEmbeddings, personaUsage, chatTopics, documents, documentChunks, documentRevisions, messageAttachments, artifacts } from '@/db/schema'
+import { projects, chats, messages, settings, messageEmbeddings, personaUsage, chatTopics, documents, documentChunks, documentRevisions, messageAttachments, artifacts, memorySuggestions } from '@/db/schema'
 import { eq, desc, isNull, isNotNull, and, lte, asc, count, inArray, sql } from 'drizzle-orm'
 import { isStorageConfigured, uploadBuffer, createSignedDownloadUrl, removeObjects } from '@/lib/storage'
 
@@ -627,4 +627,48 @@ export async function getAllArtifacts() {
     id: r.id, chatId: r.chatId, type: r.type, title: r.title, status: r.status, createdAt: r.createdAt,
     downloadUrl: r.storagePath ? await createSignedDownloadUrl(r.storagePath).catch(() => null) : null,
   })))
+}
+
+// ── Memory Suggestion Actions (auto-memory) ──
+
+export async function createMemorySuggestions(projectId: number, chatId: number | null, texts: string[]) {
+  if (texts.length === 0) return []
+  const rows = texts.map(text => ({ projectId, chatId, text }))
+  return await db.insert(memorySuggestions).values(rows).returning()
+}
+
+export async function getPendingSuggestions(projectId: number) {
+  return await db.select().from(memorySuggestions)
+    .where(and(eq(memorySuggestions.projectId, projectId), eq(memorySuggestions.status, 'pending')))
+    .orderBy(desc(memorySuggestions.createdAt))
+}
+
+export async function countPendingSuggestions(projectId: number) {
+  const [row] = await db.select({ value: count() }).from(memorySuggestions)
+    .where(and(eq(memorySuggestions.projectId, projectId), eq(memorySuggestions.status, 'pending')))
+  return row?.value ?? 0
+}
+
+export async function getRecentlyDismissed(projectId: number, limit = 50) {
+  const rows = await db.select({ text: memorySuggestions.text }).from(memorySuggestions)
+    .where(and(eq(memorySuggestions.projectId, projectId), eq(memorySuggestions.status, 'dismissed')))
+    .orderBy(desc(memorySuggestions.createdAt))
+    .limit(limit)
+  return rows.map(r => r.text)
+}
+
+export async function acceptSuggestion(id: number, overrideText?: string) {
+  const [row] = await db.select().from(memorySuggestions).where(eq(memorySuggestions.id, id))
+  if (!row) return null
+  const text = (overrideText ?? row.text).trim()
+  const [proj] = await db.select({ memory: projects.memory }).from(projects).where(eq(projects.id, row.projectId))
+  const existing = proj?.memory?.trim() ?? ''
+  const memory = existing ? `${existing}\n${text}` : text
+  await db.update(projects).set({ memory }).where(eq(projects.id, row.projectId))
+  await db.update(memorySuggestions).set({ status: 'accepted' }).where(eq(memorySuggestions.id, id))
+  return { memory }
+}
+
+export async function dismissSuggestion(id: number) {
+  return await db.update(memorySuggestions).set({ status: 'dismissed' }).where(eq(memorySuggestions.id, id))
 }
