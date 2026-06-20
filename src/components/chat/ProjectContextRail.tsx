@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { FileText, Plus, Upload, Loader2 } from 'lucide-react'
+import { FileText, Plus, Upload, Loader2, Check, X, Pencil, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
-import type { DocumentSummary } from '@/types'
+import type { DocumentSummary, MemorySuggestion } from '@/types'
+import { getPendingSuggestions, acceptSuggestion, dismissSuggestion } from '@/app/actions'
 import { useDocumentUpload } from '@/hooks/useDocumentUpload'
 import { DocumentCard } from '@/components/chat/DocumentCard'
 import { DocumentPreviewDialog } from '@/components/ui/DocumentPreviewDialog'
@@ -45,6 +46,34 @@ export function ProjectContextRail({ project, onSaveContext, onAddFiles }: Proje
   }, [project.id])
   useEffect(() => { loadDocuments() }, [loadDocuments])
 
+  const [suggestions, setSuggestions] = useState<MemorySuggestion[]>([])
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editText, setEditText] = useState('')
+
+  const loadSuggestions = useCallback(async () => {
+    try {
+      const rows = await getPendingSuggestions(project.id)
+      setSuggestions(rows.map(r => ({ id: r.id, text: r.text, createdAt: r.createdAt })))
+    } catch { /* silent */ }
+  }, [project.id])
+  useEffect(() => { loadSuggestions() }, [loadSuggestions])
+
+  const handleAccept = async (id: number, text?: string) => {
+    try {
+      const res = await acceptSuggestion(id, text)
+      if (res) setMemory(res.memory)
+      setSuggestions(prev => prev.filter(s => s.id !== id))
+      setEditingId(null)
+      toast.success('Added to memory')
+    } catch { toast.error('Failed to accept') }
+  }
+  const handleDismiss = async (id: number) => {
+    try {
+      await dismissSuggestion(id)
+      setSuggestions(prev => prev.filter(s => s.id !== id))
+    } catch { toast.error('Failed to dismiss') }
+  }
+
   const { upload, replace, uploading } = useDocumentUpload()
   const handleUpload = async (file: File) => {
     if (uploading) return
@@ -75,6 +104,33 @@ export function ProjectContextRail({ project, onSaveContext, onAddFiles }: Proje
           placeholder="Purpose & context for this project…"
           className="mt-2 w-full min-h-20 resize-y rounded-lg border border-border bg-background p-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-ring"
         />
+        {suggestions.length > 0 && (
+          <div className="mt-2 space-y-1.5">
+            <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+              <Sparkles className="h-3.5 w-3.5" /> Suggested memories ({suggestions.length})
+            </p>
+            {suggestions.map(s => (
+              <div key={s.id} className="flex items-start gap-1.5 rounded-lg border border-border/60 bg-muted/30 p-2 text-xs">
+                {editingId === s.id ? (
+                  <input
+                    aria-label="Edit suggestion" value={editText}
+                    onChange={e => setEditText(e.target.value)}
+                    className="flex-1 rounded border border-border bg-background px-1.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                  />
+                ) : (
+                  <span className="flex-1 text-foreground">{s.text}</span>
+                )}
+                <div className="flex items-center gap-0.5 shrink-0">
+                  <button onClick={() => handleAccept(s.id, editingId === s.id ? editText : undefined)} title="Accept" className="p-1 rounded text-muted-foreground hover:text-success"><Check className="h-3.5 w-3.5" /></button>
+                  {editingId !== s.id && (
+                    <button onClick={() => { setEditingId(s.id); setEditText(s.text) }} title="Edit" className="p-1 rounded text-muted-foreground hover:text-primary"><Pencil className="h-3.5 w-3.5" /></button>
+                  )}
+                  <button onClick={() => handleDismiss(s.id)} title="Dismiss" className="p-1 rounded text-muted-foreground hover:text-red-400"><X className="h-3.5 w-3.5" /></button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* Instructions */}
