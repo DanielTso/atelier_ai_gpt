@@ -235,6 +235,23 @@ export default function Home() {
           triggerSummarization(currentChatId, messageCount)
         }
 
+        // Best-effort: throttled auto-memory suggestion pass (project chats only)
+        if (currentProjectId && messageCount > 0 && messageCount % 6 === 0) {
+          getChatMessages(currentChatId, 12)
+            .then(dbMessages =>
+              fetch('/api/memory/suggest', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  projectId: currentProjectId,
+                  chatId: currentChatId,
+                  messages: dbMessages.map(m => ({ role: m.role, content: m.content })),
+                }),
+              })
+            )
+            .catch(() => {}) // suggestion pass is best-effort
+        }
+
         // Auto-generate title when still "New Chat" (retries up to 10 messages)
         if (messageCount >= 2 && messageCount <= 10) {
           const chat = [...chatsRef.current, ...standaloneChatsRef.current]
