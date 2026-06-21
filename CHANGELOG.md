@@ -50,7 +50,7 @@ Third phase of the hardening pass. Plan at `docs/plans/2026-06-21-hardening.md`.
 
 ### Notes
 
-- Verification: lint 0 errors / 27 warnings, build clean, **276 tests pass**. **Migration `0009` applied to live Supabase** (2026-06-21, via Supabase SQL; index verified `(project_id, status, created_at DESC)`).
+- Verification: lint 0 errors / 27 warnings, build clean, **276 tests pass**. **Migration `0009` applied to live Supabase** (2026-06-21; index verified `(project_id, status, created_at DESC)`, `__drizzle_migrations` ledger in sync).
 
 ## [4.12.0] - 2026-06-21 — Hardening Phase 2: Robustness & correctness
 
