@@ -70,6 +70,17 @@ export const uploadUrlRequestSchema = z.object({
   replaceDocumentId: z.number().int().positive().optional(),
 })
 
+// D2.2 — edit an artifact's source (markdown string or sheets array) → new version.
+export const artifactEditRequestSchema = z.object({
+  title: z.string().min(1).max(200).optional(),
+  content: z.union([z.string(), z.array(z.any())]),
+})
+
+// D2.2 — regenerate an artifact via Claude from a natural-language instruction.
+export const artifactRegenerateRequestSchema = z.object({
+  instruction: z.string().min(1).max(2000),
+})
+
 export const processDocumentRequestSchema = z.object({
   documentId: z.number().int().positive(),
   // Replace flow: the presence of `filename` marks this as a replace. The new

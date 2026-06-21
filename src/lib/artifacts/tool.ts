@@ -1,16 +1,12 @@
 import { tool } from 'ai'
 import { z } from 'zod'
-import { randomUUID } from 'node:crypto'
 import { renderArtifact } from './render'
+import { artifactStoragePath } from './path'
 import { uploadBuffer, createSignedDownloadUrl, removeObjects } from '@/lib/storage'
 import { createArtifact } from '@/app/actions'
 import type { ArtifactType } from './types'
 
 const sheetSpec = z.object({ name: z.string(), rows: z.array(z.array(z.union([z.string(), z.number()]))) })
-
-function slug(s: string): string {
-  return (s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'artifact').slice(0, 60)
-}
 
 export function createGenerateArtifactTool(ctx: { chatId: number; projectId: number | null }) {
   return tool({
@@ -31,7 +27,7 @@ export function createGenerateArtifactTool(ctx: { chatId: number; projectId: num
         const contentStr = typeof content === 'string' ? content : JSON.stringify(content)
         // Upload FIRST to a uuid-keyed path, then persist the row with the real
         // path — so a failure never leaves an orphan row with a broken storage path.
-        const path = `artifacts/${ctx.projectId ?? 'standalone'}/${randomUUID()}/${slug(title)}.${ext}`
+        const path = artifactStoragePath(ctx.projectId, title, ext)
         await uploadBuffer(path, buffer, contentType)
         let row: Awaited<ReturnType<typeof createArtifact>>[number] | undefined
         try {

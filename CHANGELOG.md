@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.16.0] - 2026-06-21 — Artifacts: edit, regenerate, versions (D2.2)
+
+Second slice of Phase D2. No migration (uses the `artifact_versions` table from D2.1).
+
+### Added
+
+- **Edit** — edit an artifact's source in the workspace panel (Markdown, or JSON for sheets) and **Save version** → re-renders the file and appends a new version. `POST /api/artifacts/:id/edit`.
+- **Regenerate** — an instruction box (“Ask Claude to revise…”) sends the current source + your instruction to Claude (`claude-sonnet-4-6`), which returns revised content; it's re-rendered into a new version. `POST /api/artifacts/:id/regenerate`.
+- **Version history** — a Versions tab lists every version with per-version download and one-click **restore** (re-points the artifact to that version). Actions `addArtifactVersion` (transactional) + `restoreArtifactVersion`.
+- Workspace panel reworked with Preview / Edit / Versions tabs; the artifact card shows `· v2` when versioned. Shared `artifactStoragePath` helper (DRY with the generate tool).
+
+### Notes
+
+- Verification: lint 0 errors / 27 warnings, typecheck clean, build clean, **290 tests pass** (new: version actions, edit route, edit/regenerate/restore component flows).
+- Phase D2 complete (D2.1 + D2.2). Deferred: WYSIWYG binary editing, version pruning, per-message pinning.
+
 ## [4.15.0] - 2026-06-21 — Artifacts workspace (D2.1)
 
 First slice of Phase D2. Spec `docs/specs/2026-06-21-d2-artifacts-workspace-design.md`, plan `docs/plans/2026-06-21-d2-artifacts-workspace.md`.

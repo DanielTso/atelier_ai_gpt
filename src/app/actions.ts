@@ -656,6 +656,46 @@ export async function getArtifactVersions(artifactId: number) {
   })))
 }
 
+/**
+ * Append a new artifact version (edit/regenerate) atomically: insert the version
+ * row and point the artifact at it (denormalized current fields + bumped version).
+ * The new binary is rendered/uploaded by the caller; `storagePath` is its path.
+ */
+export async function addArtifactVersion(artifactId: number, data: {
+  type: string; title: string; format: string | null; content: string | null; storagePath: string
+}) {
+  return await db.transaction(async (tx) => {
+    const [latest] = await tx.select({ v: artifactVersions.version }).from(artifactVersions)
+      .where(eq(artifactVersions.artifactId, artifactId))
+      .orderBy(desc(artifactVersions.version))
+      .limit(1)
+    const nextVersion = (latest?.v ?? 0) + 1
+    await tx.insert(artifactVersions).values({
+      artifactId, version: nextVersion, type: data.type, title: data.title,
+      format: data.format, content: data.content, storagePath: data.storagePath,
+    })
+    await tx.update(artifacts).set({
+      type: data.type, title: data.title, format: data.format, content: data.content,
+      storagePath: data.storagePath, currentVersion: nextVersion,
+    }).where(eq(artifacts.id, artifactId))
+    return { version: nextVersion }
+  })
+}
+
+/** Restore an existing version as current (no new row; just re-point the artifact). */
+export async function restoreArtifactVersion(artifactId: number, version: number) {
+  return await db.transaction(async (tx) => {
+    const [v] = await tx.select().from(artifactVersions)
+      .where(and(eq(artifactVersions.artifactId, artifactId), eq(artifactVersions.version, version)))
+    if (!v) return null
+    await tx.update(artifacts).set({
+      type: v.type, title: v.title, format: v.format, content: v.content,
+      storagePath: v.storagePath, currentVersion: v.version,
+    }).where(eq(artifacts.id, artifactId))
+    return { version: v.version }
+  })
+}
+
 // Row → API shape with a short-lived signed download URL (best-effort).
 async function toArtifactSummary(r: typeof artifacts.$inferSelect) {
   return {
