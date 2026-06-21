@@ -23,24 +23,28 @@ export async function retrieveContext(
     const lastUserText = [...turns].reverse().find(t => t.role === 'user')?.text ?? ''
     if (!lastUserText) return empty
 
-    const query = cfg.rewriteEnabled ? await rewriteQuery(turns) : lastUserText
+    // Skip query-rewrite on the first turn — there's no prior context to resolve,
+    // so it's a pure Flash round-trip of overhead.
+    const query = (cfg.rewriteEnabled && turns.length > 1) ? await rewriteQuery(turns) : lastUserText
     const queryEmbedding = await generateEmbedding(query, 'query')
     const recentIds = new Set(messages.map(msg => String(msg.id)))
 
-    // Messages
-    let semanticContext: string | null = null
-    let msgCands = (await findSimilarMessages(
-      queryEmbedding,
-      { projectId: scope.projectId ?? undefined, chatId: !scope.projectId ? scope.chatId : undefined },
-      cfg.topN, cfg.msgThreshold,
-    )).filter(c => !recentIds.has(String(c.messageId)))
-    if (cfg.mmrEnabled) msgCands = mmr(msgCands as (typeof msgCands[number] & MmrItem)[], cfg.msgTopK * 2, cfg.mmrLambda)
-    const msgFinal = cfg.rerankEnabled ? await rerankCandidates(query, msgCands, cfg.msgTopK) : msgCands.slice(0, cfg.msgTopK)
-    if (msgFinal.length > 0) semanticContext = msgFinal.map(s => s.content).join('\n---\n')
+    // Message and document retrieval are independent (both only need the query
+    // embedding) — run them concurrently so their rerank Flash calls overlap
+    // instead of running back-to-back on the chat critical path.
+    const messagesP = (async (): Promise<string | null> => {
+      let msgCands = (await findSimilarMessages(
+        queryEmbedding,
+        { projectId: scope.projectId ?? undefined, chatId: !scope.projectId ? scope.chatId : undefined },
+        cfg.topN, cfg.msgThreshold,
+      )).filter(c => !recentIds.has(String(c.messageId)))
+      if (cfg.mmrEnabled) msgCands = mmr(msgCands as (typeof msgCands[number] & MmrItem)[], cfg.msgTopK * 2, cfg.mmrLambda)
+      const msgFinal = cfg.rerankEnabled ? await rerankCandidates(query, msgCands, cfg.msgTopK) : msgCands.slice(0, cfg.msgTopK)
+      return msgFinal.length > 0 ? msgFinal.map(s => s.content).join('\n---\n') : null
+    })()
 
-    // Documents (project-scoped)
-    let documentContext: string | null = null
-    if (scope.projectId) {
+    const documentsP = (async (): Promise<string | null> => {
+      if (!scope.projectId) return null
       try {
         let docCands = await findSimilarDocumentChunks(queryEmbedding, scope.projectId, cfg.topN, cfg.docThreshold)
         if (cfg.mmrEnabled) {
@@ -50,13 +54,13 @@ export async function retrieveContext(
           )
         }
         const docFinal = cfg.rerankEnabled ? await rerankCandidates(query, docCands, cfg.docTopK) : docCands.slice(0, cfg.docTopK)
-        if (docFinal.length > 0) {
-          documentContext = docFinal.map(c => `[From: ${c.filename}]\n${c.content}`).join('\n---\n')
-        }
+        return docFinal.length > 0 ? docFinal.map(c => `[From: ${c.filename}]\n${c.content}`).join('\n---\n') : null
       } catch {
-        // Document retrieval is best-effort
+        return null // Document retrieval is best-effort
       }
-    }
+    })()
+
+    const [semanticContext, documentContext] = await Promise.all([messagesP, documentsP])
     return { semanticContext, documentContext }
   } catch {
     return empty

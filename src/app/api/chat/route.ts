@@ -62,23 +62,25 @@ export async function POST(req: Request) {
     if (chatId) {
       const chat = await getChatWithContext(chatId);
 
+      // The project-context read and the retrieval pipeline are independent once we
+      // have the chat — run them concurrently to shave a round-trip off time-to-
+      // first-token. Retrieval is best-effort (nulls if providers unavailable).
+      const [ctx, retrieved] = await Promise.all([
+        chat?.projectId ? getProjectContext(chat.projectId) : Promise.resolve(null),
+        retrieveContext(messages as unknown as UIMessage[], {
+          chatId,
+          projectId: chat?.projectId ?? null,
+        }),
+      ]);
+
       // 1. System prompt (always included, never trimmed). Project Memory +
       //    Instructions are prepended so they steer every chat in the project.
-      let preamble = '';
-      if (chat?.projectId) {
-        const ctx = await getProjectContext(chat.projectId);
-        if (ctx) preamble = buildProjectPreamble(ctx.memory, ctx.instructions);
-      }
+      const preamble = ctx ? buildProjectPreamble(ctx.memory, ctx.instructions) : '';
       const base = chat?.systemPrompt ?? '';
       const combined = [preamble, base].filter(s => s.trim().length > 0).join('\n\n');
       systemPrompt = combined.length > 0 ? combined : undefined;
 
-      // 2. Retrieval pipeline (rewrite -> vector top-N -> MMR -> rerank -> top-k).
-      // Best-effort: returns nulls if embeddings/providers are unavailable.
-      const retrieved = await retrieveContext(messages as unknown as UIMessage[], {
-        chatId,
-        projectId: chat?.projectId ?? null,
-      });
+      // 2. Retrieval results.
       semanticContext = retrieved.semanticContext;
       documentContext = retrieved.documentContext;
 

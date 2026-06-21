@@ -29,6 +29,12 @@ describe('retrieveContext', () => {
 
   it('runs rewrite -> retrieve -> rerank and builds document context', async () => {
     setup()
+    // Multi-turn: rewrite only runs when there's prior context to resolve.
+    const multiTurn = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'tell me about the project' }] },
+      { id: 'a1', role: 'assistant', parts: [{ type: 'text', text: 'sure' }] },
+      { id: 'u2', role: 'user', parts: [{ type: 'text', text: 'foundation spec?' }] },
+    ]
     m.rewriteQuery.mockResolvedValue('standalone foundation query')
     m.generateEmbedding.mockResolvedValue([1, 0, 0])
     m.findSimilarMessages.mockResolvedValue([])
@@ -37,11 +43,23 @@ describe('retrieveContext', () => {
     ])
     m.rerankCandidates.mockImplementation((_q: unknown, c: unknown) => Promise.resolve(c))
     const { retrieveContext } = await import('@/lib/retrieval')
-    const out = await retrieveContext(msgs as never, { chatId: 1, projectId: 7 })
+    const out = await retrieveContext(multiTurn as never, { chatId: 1, projectId: 7 })
     expect(m.rewriteQuery).toHaveBeenCalled()
     expect(m.generateEmbedding).toHaveBeenCalledWith('standalone foundation query', 'query')
     expect(out.documentContext).toContain('spec.pdf')
     expect(out.documentContext).toContain('4000psi')
+  })
+
+  it('skips rewrite on the first turn (no prior context to resolve)', async () => {
+    setup()
+    m.rewriteQuery.mockResolvedValue('should not be used')
+    m.generateEmbedding.mockResolvedValue([1, 0, 0])
+    m.findSimilarMessages.mockResolvedValue([])
+    m.findSimilarDocumentChunks.mockResolvedValue([])
+    const { retrieveContext } = await import('@/lib/retrieval')
+    await retrieveContext(msgs as never, { chatId: 1, projectId: 7 })
+    expect(m.rewriteQuery).not.toHaveBeenCalled()
+    expect(m.generateEmbedding).toHaveBeenCalledWith('foundation spec?', 'query')
   })
 
   it('still returns (no throw) when embedding generation fails', async () => {

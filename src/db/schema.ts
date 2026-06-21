@@ -179,5 +179,6 @@ export const memorySuggestions = pgTable('memory_suggestions', {
   status: text('status').notNull().default('pending'),
   createdAt: createdAt(),
 }, (table) => [
-  index('idx_memory_suggestions_project_status').on(table.projectId, table.status),
+  // Covers the hot query: filter (project_id, status) + ORDER BY created_at DESC.
+  index('idx_memory_suggestions_project_status').on(table.projectId, table.status, table.createdAt.desc()),
 ]);

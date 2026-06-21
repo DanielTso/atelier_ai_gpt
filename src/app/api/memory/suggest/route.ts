@@ -47,9 +47,11 @@ export async function POST(req: Request) {
     const pendingCount = await countPendingSuggestions(projectId)
     if (pendingCount >= PENDING_CAP) return ok({ created: 0, capped: true })
 
-    const ctx = await getProjectContext(projectId)
-    const pending = await getPendingSuggestions(projectId)
-    const dismissed = await getRecentlyDismissed(projectId)
+    const [ctx, pending, dismissed] = await Promise.all([
+      getProjectContext(projectId),
+      getPendingSuggestions(projectId),
+      getRecentlyDismissed(projectId),
+    ])
 
     const conversationText = messages
       .slice(-12)

@@ -1,0 +1,2 @@
+DROP INDEX "idx_memory_suggestions_project_status";--> statement-breakpoint
+CREATE INDEX "idx_memory_suggestions_project_status" ON "memory_suggestions" USING btree ("project_id","status","created_at" DESC NULLS LAST);

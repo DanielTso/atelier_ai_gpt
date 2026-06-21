@@ -64,6 +64,13 @@
       "when": 1781996557977,
       "tag": "0008_busy_miss_america",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1782058077421,
+      "tag": "0009_true_giant_man",
+      "breakpoints": true
     }
   ]
 }
