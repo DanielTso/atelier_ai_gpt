@@ -1074,7 +1074,18 @@ export default function Home() {
             {(() => {
               const activeArtifact = artifacts.find(a => a.id === activeArtifactId) ?? null
               return activeArtifact ? (
-                <ArtifactWorkspace artifact={activeArtifact} onClose={() => setActiveArtifactId(null)} />
+                <ArtifactWorkspace
+                  artifact={activeArtifact}
+                  onClose={() => setActiveArtifactId(null)}
+                  onChanged={() => {
+                    if (activeChatId) {
+                      fetch(`/api/artifacts?chatId=${activeChatId}`)
+                        .then(r => r.ok ? r.json() : null)
+                        .then(d => { if (d?.artifacts) setArtifacts(d.artifacts) })
+                        .catch(() => {})
+                    }
+                  }}
+                />
               ) : null
             })()}
           </div>

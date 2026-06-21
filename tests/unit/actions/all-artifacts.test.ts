@@ -49,4 +49,34 @@ describe('getAllArtifacts', () => {
     expect(versions[0]).toMatchObject({ version: 1, type: 'pptx', title: 'Deck', format: 'markdown', content: '# Slide One' })
     expect(versions[0].downloadUrl).toBe('signed:artifacts/deck.pptx')
   })
+
+  it('addArtifactVersion appends v2 and bumps the current pointer', async () => {
+    const { createProject, createChat, createArtifact, addArtifactVersion, getChatArtifacts, getArtifactVersions } = await import('@/app/actions')
+    const [p] = await createProject('P')
+    const [c] = await createChat(p.id, 'C')
+    const [row] = await createArtifact({ chatId: c.id, projectId: p.id, type: 'docx', title: 'Doc', storagePath: 'a/1.docx', format: 'markdown', content: '# v1' })
+    const res = await addArtifactVersion(row.id, { type: 'docx', title: 'Doc', format: 'markdown', content: '# v2', storagePath: 'a/2.docx' })
+    expect(res.version).toBe(2)
+
+    const [summary] = await getChatArtifacts(c.id)
+    expect(summary.version).toBe(2)
+    expect(summary.content).toBe('# v2')
+    expect(summary.downloadUrl).toBe('signed:a/2.docx')
+    expect((await getArtifactVersions(row.id)).map(v => v.version)).toEqual([2, 1])
+  })
+
+  it('restoreArtifactVersion re-points current to an older version', async () => {
+    const { createProject, createChat, createArtifact, addArtifactVersion, restoreArtifactVersion, getChatArtifacts } = await import('@/app/actions')
+    const [p] = await createProject('P')
+    const [c] = await createChat(p.id, 'C')
+    const [row] = await createArtifact({ chatId: c.id, projectId: p.id, type: 'docx', title: 'Doc', storagePath: 'a/1.docx', format: 'markdown', content: '# v1' })
+    await addArtifactVersion(row.id, { type: 'docx', title: 'Doc', format: 'markdown', content: '# v2', storagePath: 'a/2.docx' })
+    const res = await restoreArtifactVersion(row.id, 1)
+    expect(res?.version).toBe(1)
+
+    const [summary] = await getChatArtifacts(c.id)
+    expect(summary.version).toBe(1)
+    expect(summary.content).toBe('# v1')
+    expect(summary.downloadUrl).toBe('signed:a/1.docx')
+  })
 })
