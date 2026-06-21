@@ -225,7 +225,7 @@ Config: `playwright.config.ts`. Tests in `e2e/`. Chromium only. Auto-starts dev 
 
 ## Deployment
 
-Production: **Vercel** at [atelier-ai-app.vercel.app](https://atelier-ai-app.vercel.app) (also [atelier-ai-studio.vercel.app](https://atelier-ai-studio.vercel.app)). Note: the bare `atelier-ai.vercel.app` is a **different, unrelated project** — do not use it. GitHub: [DanielTso/atelier_ai_gpt](https://github.com/DanielTso/atelier_ai_gpt). Production deploys automatically on push to `master`; `vercel --prod` also works. Set `DATABASE_URL` (Supabase pooled, :6543) and `DIRECT_URL` (Supabase direct, :5432) in the Vercel dashboard. Apply schema changes separately: `DIRECT_URL=... npx drizzle-kit migrate`.
+Production: **Vercel** at [atelier-ai-app.vercel.app](https://atelier-ai-app.vercel.app) (also [atelier-ai-studio.vercel.app](https://atelier-ai-studio.vercel.app)). The Vercel **project is named `atelier-ai`** (under `danieltsos-projects`; prod alias `atelier-ai-app.vercel.app`) — the repo is linked to it (`.vercel/`, gitignored). Note: the bare `atelier-ai.vercel.app` **URL** is a different, unrelated project — don't use that URL. GitHub: [DanielTso/atelier_ai_gpt](https://github.com/DanielTso/atelier_ai_gpt). Production deploys automatically on push to `master`; `vercel --prod` / `vercel redeploy atelier-ai-app.vercel.app` also work. **Vercel CLI is installed and authenticated** (as `danieltso`). Env-var changes don't auto-deploy — redeploy to pick them up. Do NOT run `vercel env pull` / `vercel dev` (they clobber `.env.local`). Set `DATABASE_URL` (Supabase pooled, :6543) and `DIRECT_URL` (Supabase direct, :5432) in the Vercel dashboard. Apply schema changes separately: `DIRECT_URL=... npx drizzle-kit migrate`.
 
 ## CI (GitHub Actions)
 

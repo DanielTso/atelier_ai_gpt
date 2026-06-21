@@ -27,18 +27,21 @@ Atelier Studio is a **single-user** app (all projects/chats/documents are global
 | `APP_ACCESS_PASSWORD` | to enable the gate | The shared password. Setting it turns the gate ON. |
 | `AUTH_SECRET` | recommended | HMAC key that signs the cookie. If omitted, falls back to the password (still works, but set a separate random value in production). |
 
-## How it was set up (2026-06-21)
+## Status — ACTIVE in production (2026-06-21)
 
-- **Local dev** (`.env.local`, gitignored): both vars were appended. The password is a placeholder `change-me-atelier` — **change it to your own**. `AUTH_SECRET` was generated with `openssl rand -hex 32`.
-- **Production (Vercel): you must add these yourself** — there is no Vercel CLI in this environment, and the password is your choice. Steps below.
+The gate is **live** on `https://atelier-ai-app.vercel.app`.
 
-## Activate on production (Vercel)
+- **Vercel** (project `atelier-ai`, prod alias `atelier-ai-app.vercel.app`): `APP_ACCESS_PASSWORD` (owner's password) + `AUTH_SECRET` (generated `openssl rand -hex 32`) are set on **Production + Preview**; production was redeployed. Verified: `/` → 307→`/login`, `/api/models` → 401 unauthenticated, correct password → 200 + httpOnly cookie.
+- **Local dev** (`.env.local`, gitignored): both vars set, password matches production.
+- Set up via the Vercel CLI (`vercel env add` + `vercel redeploy`); the CLI is now installed and the repo is linked to `danieltsos-projects/atelier-ai`.
 
-1. Vercel → your project → **Settings → Environment Variables**.
+## Re-activate / set on another environment (Vercel)
+
+1. Vercel → project `atelier-ai` → **Settings → Environment Variables**.
 2. Add (Production, and Preview if you want it gated too):
    - `APP_ACCESS_PASSWORD` = a strong password you choose
    - `AUTH_SECRET` = a long random string, e.g. `openssl rand -hex 32`
-3. **Redeploy** (Deployments → ⋯ → Redeploy, or push any commit). The gate is now live.
+3. **Redeploy** (Deployments → ⋯ → Redeploy, or `vercel redeploy atelier-ai-app.vercel.app`).
 
 To verify: open the production URL in a private window → you should be redirected to `/login`; entering the password lets you in.
 

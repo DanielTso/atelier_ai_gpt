@@ -13,7 +13,7 @@ Operational/docs follow-up to the Phase 1 access gate (no code change — the ga
 
 ### Ops
 
-- Local `.env.local` seeded with the two gate vars (gitignored; password is a placeholder to change). **Production activation is a manual Vercel step** (set the two env vars + redeploy — see `docs/AUTH.md`); it can't be done from the repo (no Vercel CLI, password is the owner's choice).
+- **Access gate ACTIVATED in production** — installed the Vercel CLI, linked the repo to `danieltsos-projects/atelier-ai` (prod alias `atelier-ai-app.vercel.app`), set `APP_ACCESS_PASSWORD` + generated `AUTH_SECRET` on Production + Preview, and redeployed. Verified live: `/` → 307→`/login`, `/api/models` → 401 unauthenticated, correct password → 200 + httpOnly cookie. Local `.env.local` seeded to match (gitignored).
 
 ## [4.14.0] - 2026-06-21 — Hardening Phase 4: Code health
 
