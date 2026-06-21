@@ -167,3 +167,17 @@ export const chatTopics = pgTable('chat_topics', {
   index('idx_chat_topics_chat_id').on(table.chatId),
   uniqueIndex('idx_chat_topics_chat_id_topic').on(table.chatId, table.topic),
 ]);
+
+// Auto-memory: throttled Gemini pass proposes durable project facts as pending
+// suggestions; accepting one appends to projects.memory. chatId is SET NULL on
+// chat delete so project-level suggestions survive when their chat is removed.
+export const memorySuggestions = pgTable('memory_suggestions', {
+  id: idPk(),
+  projectId: integer('project_id').references(() => projects.id, { onDelete: 'cascade' }).notNull(),
+  chatId: integer('chat_id').references(() => chats.id, { onDelete: 'set null' }),
+  text: text('text').notNull(),
+  status: text('status').notNull().default('pending'),
+  createdAt: createdAt(),
+}, (table) => [
+  index('idx_memory_suggestions_project_status').on(table.projectId, table.status),
+]);

@@ -31,3 +31,10 @@ export interface ArtifactSummary {
   downloadUrl: string | null
   createdAt: Date | null
 }
+
+/** A pending auto-memory suggestion as the rail consumes it. */
+export interface MemorySuggestion {
+  id: number
+  text: string
+  createdAt: string | Date | null
+}

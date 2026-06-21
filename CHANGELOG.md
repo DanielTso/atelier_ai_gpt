@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.10.0] - 2026-06-20 — Auto-memory (suggest, you approve)
+
+Spec at `docs/specs/2026-06-19-auto-memory-design.md`, plan at `docs/plans/2026-06-19-auto-memory.md`. Durable job facts now accrue into a project's Memory with near-zero effort, behind a human approval gate.
+
+### Added
+
+- **Auto-memory suggestions** — after exchanges in a **project** chat, a throttled (every 6 messages) best-effort housekeeping pass on Gemini `gemini-3.5-flash` (never Claude tokens) extracts candidate durable facts (people/roles, companies, locations, key dates, decisions) and stores them as **pending** suggestions. They surface as a **"Suggested memories (N)"** strip in the project rail's Memory section with **Accept / Edit / Dismiss**. Accepting appends to `projects.memory` (already injected into every project chat via `buildProjectPreamble`); nothing enters Memory without a click.
+- **Route** `POST /api/memory/suggest` — mirrors `/api/classify` (generateText → parse → fallback). Key-guarded (returns `{ created: 0 }` with no Gemini key), **cap-gated** (no model call once ~10 suggestions are pending → `{ created: 0, capped: true }`), and dedups proposed facts against current Memory + pending + recently-dismissed (so a dismissed fact isn't re-proposed). Never surfaces as a user error.
+- **Schema** — `memory_suggestions` table (migration `0008`): `id, project_id (cascade), chat_id (set null, nullable), text, status (pending|accepted|dismissed), created_at`, indexed on `(project_id, status)`. `chat_id` is SET NULL on chat delete so project-level suggestions survive.
+- **Actions** — `createMemorySuggestions`, `getPendingSuggestions`, `countPendingSuggestions`, `getRecentlyDismissed`, `acceptSuggestion(id, overrideText?)` (append to Memory + mark accepted; honors an edited override), `dismissSuggestion`. **Trigger** — throttled best-effort `fetch` in `page.tsx`'s `useChat` `onFinish` (reads recent messages via `getChatMessages`, project chats only).
+
+### Notes
+
+- Verification: lint 0 errors / 27 warnings, build clean, **263 tests pass** (new: 6 actions, 6 route, 3 rail-strip). **Migration `0008` pending live apply** (user-gated).
+- **Defaults:** 6-message cadence, ~10 pending cap.
+- Design refinement vs. spec: the spec floated a "prop-tick" to live-refresh the rail; the rail only renders in the project landing view (not while a chat is open), so its mount-time fetch suffices — no tick wiring needed.
+
 ## [4.9.0] - 2026-06-19 — Document re-versioning (replace in place + retained history)
 
 Spec at `docs/specs/2026-06-19-document-reversioning-design.md`. Construction plans/specs get revised constantly; this lets a document be **updated in place** instead of delete + re-upload.
