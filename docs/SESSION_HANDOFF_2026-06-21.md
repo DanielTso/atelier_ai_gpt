@@ -13,10 +13,10 @@ _Resume doc. Read the newest dated handoff first; the undated `docs/SESSION_HAND
 - **v4.13.0 Performance:** RAG branches parallelized + first-turn rewrite skip; `Promise.all` in memory-suggest + chat routes; bounded `getAllArtifacts`; memoized `MessageBody`; `memory_suggestions` index (migration `0009`); flaky exceljs test stabilized.
 - **v4.14.0 Code-health:** removed dead embeddings actions + `getChatWithSummary` alias; shared `src/lib/messageParts.ts` (`extractText`/`messageText`); `toArtifactSummary`; deduped `Project`/`Chat` interfaces; `typecheck` script + CI step; repo hygiene (committed brand md, gitignored scratch).
 
-## ▶️ Remaining USER actions (gated / can't be done from here)
-1. **Activate the access gate (optional but recommended):** set `APP_ACCESS_PASSWORD` (+ optional `AUTH_SECRET`) in `.env.local` and Vercel. Until set, the app stays open exactly as before. (Alternative: Vercel dashboard Password Protection.)
+## ▶️ Follow-ups — all completed 2026-06-21
+1. ~~Activate the access gate~~ ✅ **Done** — Vercel CLI installed, `APP_ACCESS_PASSWORD` + `AUTH_SECRET` set on Production + Preview, redeployed, login verified (password also in local `.env.local`). Gate live on `atelier-ai-app.vercel.app`.
 2. ~~Apply migration `0009`~~ ✅ **Done** (2026-06-21) — applied to live Supabase + the drizzle `__drizzle_migrations` ledger row inserted (hash + `created_at` 1782058077421) so it's fully in sync. The index is verified `(project_id, status, created_at DESC)` and a future `drizzle-kit migrate` will correctly skip it. (Applied via Supabase SQL because the `drizzle-kit migrate` CLI was safety-blocked.)
-3. **Browser-verify the CSP** on the deployed site (chat, document/PDF preview iframe, AI image render) — CSP couldn't be browser-tested locally; loosen `next.config.ts` `headers()` if anything is blocked.
+3. ~~Browser-verify the CSP~~ ✅ **Done** (2026-06-21) — verified on the live site via Playwright: app shell, login, document-card thumbnails, and the 137-page PDF `<iframe>` preview all render with **0 CSP console errors**. Signed-URL TTL confirmed 300s. No CSP loosening needed.
 
 ## Deferred (explicitly out of scope this pass)
 - Full per-user auth (Clerk + ownerId scoping) — its own project.
@@ -26,4 +26,5 @@ _Resume doc. Read the newest dated handoff first; the undated `docs/SESSION_HAND
 ## Operational facts (unchanged)
 - No PRs (solo) — `--no-ff` merge to `master`, tag `vX.Y.Z`, `gh release create`. Live migrations / prod cutovers user-gated.
 - Gate: `npm run lint` / `npm run typecheck` / `npm run build` / `npm test`. Don't run `vercel env pull`/`vercel dev`.
-- Supabase project ref `evhgyudnjyryayazupgh`; migrations `0000`–`0009` (0009 pending live apply); RLS 13/13.
+- Supabase project ref `evhgyudnjyryayazupgh`; migrations `0000`–`0009` all applied (ledger in sync); RLS 13/13.
+- Vercel CLI installed + authed (`danieltso`); repo linked to project `atelier-ai` (prod `atelier-ai-app.vercel.app`). Access gate **live** (password set in Vercel + local `.env.local`).
