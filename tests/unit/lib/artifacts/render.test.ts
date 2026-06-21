@@ -30,8 +30,15 @@ describe('renderArtifact', () => {
     expect(out.buffer.subarray(0, 5).toString()).toBe('%PDF-')
   })
 
+  it('renders pptx from markdown (ZIP magic)', async () => {
+    const out = await renderArtifact('pptx', 'Deck', '# Slide One\n\n- point a\n- point b\n\n# Slide Two\n\nBody.')
+    expect(out.ext).toBe('pptx')
+    expect(out.contentType).toBe('application/vnd.openxmlformats-officedocument.presentationml.presentation')
+    expect(out.buffer.subarray(0, 4).equals(PK)).toBe(true)
+  })
+
   it('throws on an unknown type', async () => {
     // @ts-expect-error invalid type
-    await expect(renderArtifact('pptx', 't', 'x')).rejects.toThrow()
+    await expect(renderArtifact('txt', 't', 'x')).rejects.toThrow()
   })
 })

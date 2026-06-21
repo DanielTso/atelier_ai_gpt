@@ -1,7 +1,7 @@
 'use server'
 
 import { db } from '@/db'
-import { projects, chats, messages, settings, messageEmbeddings, personaUsage, chatTopics, documents, documentChunks, documentRevisions, messageAttachments, artifacts, memorySuggestions } from '@/db/schema'
+import { projects, chats, messages, settings, messageEmbeddings, personaUsage, chatTopics, documents, documentChunks, documentRevisions, messageAttachments, artifacts, artifactVersions, memorySuggestions } from '@/db/schema'
 import { eq, desc, isNull, isNotNull, and, lte, asc, count, inArray, sql } from 'drizzle-orm'
 import { isStorageConfigured, uploadBuffer, createSignedDownloadUrl, removeObjects } from '@/lib/storage'
 
@@ -618,12 +618,25 @@ export async function getApiKeyStatus(): Promise<{ gemini: boolean; anthropic: b
 // ── Artifact Actions ──
 
 export async function createArtifact(data: {
-  chatId: number; projectId: number | null; type: string; title: string; storagePath: string; status?: string; errorMessage?: string
+  chatId: number; projectId: number | null; type: string; title: string; storagePath: string
+  status?: string; errorMessage?: string; format?: string | null; content?: string | null
 }) {
-  return await db.insert(artifacts).values({
-    chatId: data.chatId, projectId: data.projectId ?? null, type: data.type, title: data.title,
-    storagePath: data.storagePath, status: data.status ?? 'ready', errorMessage: data.errorMessage ?? null,
-  }).returning()
+  // Insert the artifact + seed version 1 atomically (source content kept for
+  // preview/edit/regenerate). Returns [row] so existing `[row] = await …` holds.
+  return await db.transaction(async (tx) => {
+    const [row] = await tx.insert(artifacts).values({
+      chatId: data.chatId, projectId: data.projectId ?? null, type: data.type, title: data.title,
+      storagePath: data.storagePath, status: data.status ?? 'ready', errorMessage: data.errorMessage ?? null,
+      format: data.format ?? null, content: data.content ?? null, currentVersion: 1,
+    }).returning()
+    if (row) {
+      await tx.insert(artifactVersions).values({
+        artifactId: row.id, version: 1, type: data.type, title: data.title,
+        format: data.format ?? null, content: data.content ?? null, storagePath: data.storagePath,
+      })
+    }
+    return row ? [row] : []
+  })
 }
 
 export async function getArtifactById(id: number) {
@@ -631,10 +644,23 @@ export async function getArtifactById(id: number) {
   return a ?? null
 }
 
+/** Versions for an artifact, newest first, each with a signed download URL. */
+export async function getArtifactVersions(artifactId: number) {
+  const rows = await db.select().from(artifactVersions)
+    .where(eq(artifactVersions.artifactId, artifactId))
+    .orderBy(desc(artifactVersions.version))
+  return await Promise.all(rows.map(async (v) => ({
+    id: v.id, version: v.version, type: v.type, title: v.title, format: v.format, content: v.content,
+    createdAt: v.createdAt,
+    downloadUrl: v.storagePath ? await createSignedDownloadUrl(v.storagePath).catch(() => null) : null,
+  })))
+}
+
 // Row → API shape with a short-lived signed download URL (best-effort).
 async function toArtifactSummary(r: typeof artifacts.$inferSelect) {
   return {
     id: r.id, chatId: r.chatId, type: r.type, title: r.title, status: r.status, createdAt: r.createdAt,
+    format: r.format, content: r.content, version: r.currentVersion,
     downloadUrl: r.storagePath ? await createSignedDownloadUrl(r.storagePath).catch(() => null) : null,
   }
 }
