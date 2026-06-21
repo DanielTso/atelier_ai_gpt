@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.14.1] - 2026-06-21 — Access gate: activation + docs
+
+Operational/docs follow-up to the Phase 1 access gate (no code change — the gate shipped in v4.11.0).
+
+### Added
+
+- **`docs/AUTH.md`** — full guide to the access gate: how it works, how it was set up, how to activate on Vercel, rotate/disable, and when to upgrade to per-user auth (Clerk). Decision recorded: stay on the single-password gate while the app is single-user; defer Clerk + `ownerId` data-scoping to its own project.
+- **CLAUDE.md env section** now documents `APP_ACCESS_PASSWORD` + `AUTH_SECRET`.
+
+### Ops
+
+- Local `.env.local` seeded with the two gate vars (gitignored; password is a placeholder to change). **Production activation is a manual Vercel step** (set the two env vars + redeploy — see `docs/AUTH.md`); it can't be done from the repo (no Vercel CLI, password is the owner's choice).
+
 ## [4.14.0] - 2026-06-21 — Hardening Phase 4: Code health
 
 Final phase of the hardening pass. Plan at `docs/plans/2026-06-21-hardening.md`.

@@ -45,7 +45,14 @@ NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co   # browser (signed u
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key_here             # browser (signed upload)
 SUPABASE_STORAGE_BUCKET=atelier-files                   # default; create as a PRIVATE bucket
 THUMBNAIL_WIDTH=600                                     # optional; default 600px WebP thumbnail
+
+# Access gate (Phase 1 hardening) — single-password gate over the whole app.
+# The gate is OFF unless APP_ACCESS_PASSWORD is set. See docs/AUTH.md.
+APP_ACCESS_PASSWORD=your_access_password_here           # set to enable the gate
+AUTH_SECRET=run_openssl_rand_hex_32                     # HMAC key for the auth cookie (recommended)
 ```
+
+**Access gate:** single shared password over the whole app via `src/middleware.ts` (+ `/login`, `/api/auth`, `src/lib/auth.ts`). OFF unless `APP_ACCESS_PASSWORD` is set; signed httpOnly cookie = `HMAC-SHA256(AUTH_SECRET, …)`. Single-user app (no per-user data separation) — full per-user auth (Clerk + `ownerId` scoping) is a deferred, separate project. Full operating guide in [docs/AUTH.md](docs/AUTH.md).
 
 **Storage access model:** bucket is **private**. `SUPABASE_SERVICE_ROLE_KEY` (server-only, never sent to client) creates signed upload tokens and mints signed download URLs. The browser uses `NEXT_PUBLIC_SUPABASE_ANON_KEY` only to `uploadToSignedUrl` — it never has broad storage access.
 
