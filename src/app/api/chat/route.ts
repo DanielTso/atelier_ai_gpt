@@ -51,7 +51,7 @@ export async function POST(req: Request) {
     const { model: selectedModel, tools: providerTools, providerOptions } = await createProvider(modelName, effort);
 
     // Build context with hybrid approach: system prompt + semantic context + summary + recent messages
-    let contextMessages = messages as UIMessage[];
+    let contextMessages = messages as unknown as UIMessage[];
     let systemPrompt: string | undefined;
     let semanticContext: string | null = null;
     let documentContext: string | null = null;
@@ -75,7 +75,7 @@ export async function POST(req: Request) {
 
       // 2. Retrieval pipeline (rewrite -> vector top-N -> MMR -> rerank -> top-k).
       // Best-effort: returns nulls if embeddings/providers are unavailable.
-      const retrieved = await retrieveContext(messages as UIMessage[], {
+      const retrieved = await retrieveContext(messages as unknown as UIMessage[], {
         chatId,
         projectId: chat?.projectId ?? null,
       });

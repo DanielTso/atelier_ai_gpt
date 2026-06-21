@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDocumentById, updateDocumentStatus, saveDocumentChunks, updateChunkEmbedding, createDocumentRevision, deleteDocumentChunks, applyDocumentReplacement } from '@/app/actions'
+import { getDocumentById, updateDocumentStatus, saveDocumentChunks, updateChunkEmbedding, createDocumentRevision, commitDocumentReplacement } from '@/app/actions'
 import { generateEmbedding, ensureEmbeddingModel } from '@/lib/embeddings'
 import { chunkText } from '@/lib/chunking'
 import { MAX_TEXT_LENGTH, getExtension, isImageExtension, extractTextFromBuffer } from '@/lib/fileExtraction'
@@ -95,19 +95,39 @@ export async function POST(request: NextRequest) {
       thumbnailPath = undefined
     }
 
-    // Extraction succeeded. On replace, snapshot the superseded revision (its file
-    // stays in Storage for the audit trail) and clear its chunks before re-chunking.
+    const textChunks = chunkText(textContent)
+
     if (isReplace) {
+      // Replace: embed FIRST (no destructive writes yet), then snapshot the old
+      // revision and atomically swap (delete old chunks + insert new + update row).
+      // If embedding/commit fails the prior revision stays fully intact.
+      const embRes = await Promise.allSettled(textChunks.map(c => generateEmbedding(c.content, 'document')))
+      const chunkRows = textChunks.map((c, i) => {
+        const r = embRes[i]
+        return { chunkIndex: c.index, content: c.content, embedding: r && r.status === 'fulfilled' ? r.value : null }
+      })
+      const embedded = embRes.filter(r => r.status === 'fulfilled').length
+      if (textChunks.length - embedded > 0) {
+        console.warn(`[documents/process] ${textChunks.length - embedded}/${textChunks.length} chunks failed to embed`)
+      }
+      const status: 'ready' | 'error' = embedded === 0 && textChunks.length > 0 ? 'error' : 'ready'
+
       await createDocumentRevision({
         documentId: doc.id, projectId: doc.projectId, revision: doc.revision,
         filename: doc.filename, mimeType: doc.mimeType, fileSize: doc.fileSize,
         storagePath: doc.storagePath, thumbnailPath: doc.thumbnailPath,
         charCount: doc.charCount, chunkCount: doc.chunkCount, extractionMethod: doc.extractionMethod,
       })
-      await deleteDocumentChunks(doc.id)
+      await commitDocumentReplacement(doc.id, doc.projectId, chunkRows, {
+        filename: effFilename, mimeType: effMimeType, fileSize: effFileSize, storagePath: sourcePath,
+        thumbnailPath, charCount: textContent.length, chunkCount: chunkRows.length, extractionMethod,
+        revision: nextRevision, status,
+        errorMessage: status === 'error' ? 'New revision saved but embeddings failed.' : null,
+      })
+      return NextResponse.json({ documentId: doc.id, status, revision: nextRevision, chunkCount: chunkRows.length, charCount: textContent.length })
     }
 
-    const textChunks = chunkText(textContent)
+    // New upload: save chunks then embed in place.
     const saved = await saveDocumentChunks(textChunks.map(c => ({
       documentId: doc.id, projectId: doc.projectId, chunkIndex: c.index, content: c.content,
     })))
@@ -120,20 +140,9 @@ export async function POST(request: NextRequest) {
       console.warn(`[documents/process] ${results.length - embedded}/${saved.length} chunks failed to embed`)
     }
     const status = embedded === 0 && saved.length > 0 ? 'error' : 'ready'
-    if (isReplace) {
-      // Swap the active revision in place: new file metadata + bump revision.
-      await applyDocumentReplacement(doc.id, {
-        filename: effFilename, mimeType: effMimeType, fileSize: effFileSize, storagePath: sourcePath,
-        thumbnailPath, charCount: textContent.length, chunkCount: saved.length, extractionMethod, revision: nextRevision,
-      })
-      if (status === 'error') {
-        await updateDocumentStatus(doc.id, 'error', { errorMessage: 'New revision saved but embeddings failed.' })
-      }
-    } else {
-      await updateDocumentStatus(doc.id, status, { chunkCount: saved.length, charCount: textContent.length, thumbnailPath, extractionMethod })
-    }
+    await updateDocumentStatus(doc.id, status, { chunkCount: saved.length, charCount: textContent.length, thumbnailPath, extractionMethod })
 
-    return NextResponse.json({ documentId: doc.id, status, revision: isReplace ? nextRevision : doc.revision, chunkCount: saved.length, charCount: textContent.length })
+    return NextResponse.json({ documentId: doc.id, status, revision: doc.revision, chunkCount: saved.length, charCount: textContent.length })
   } catch (error) {
     return apiError(error, 'Failed to process document', 500, true)
   }

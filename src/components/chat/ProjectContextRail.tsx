@@ -20,10 +20,12 @@ interface ProjectContextRailProps {
 
 function useDebouncedSave(projectId: number, onSaveContext: ProjectContextRailProps['onSaveContext']) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  return useCallback((fields: { memory?: string; instructions?: string }) => {
+  const save = useCallback((fields: { memory?: string; instructions?: string }) => {
     if (timer.current) clearTimeout(timer.current)
     timer.current = setTimeout(() => onSaveContext(projectId, fields), 600)
   }, [projectId, onSaveContext])
+  const cancel = useCallback(() => { if (timer.current) clearTimeout(timer.current) }, [])
+  return { save, cancel }
 }
 
 export function ProjectContextRail({ project, onSaveContext, onAddFiles }: ProjectContextRailProps) {
@@ -32,8 +34,8 @@ export function ProjectContextRail({ project, onSaveContext, onAddFiles }: Proje
   const [documents, setDocuments] = useState<DocumentSummary[]>([])
   const [previewDoc, setPreviewDoc] = useState<DocumentSummary | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const saveMemory = useDebouncedSave(project.id, onSaveContext)
-  const saveInstructions = useDebouncedSave(project.id, onSaveContext)
+  const { save: saveMemory, cancel: cancelMemorySave } = useDebouncedSave(project.id, onSaveContext)
+  const { save: saveInstructions } = useDebouncedSave(project.id, onSaveContext)
 
   // Note: the parent remounts this component via `key={project.id}`, so local
   // Memory/Instructions state initializes fresh per project — no reset effect needed.
@@ -61,7 +63,12 @@ export function ProjectContextRail({ project, onSaveContext, onAddFiles }: Proje
   const handleAccept = async (id: number, text?: string) => {
     try {
       const res = await acceptSuggestion(id, text)
-      if (res) setMemory(res.memory)
+      if (res) {
+        // Cancel any pending debounced textarea save so it can't replay stale
+        // content over the server-appended value we just received.
+        cancelMemorySave()
+        setMemory(res.memory)
+      }
       setSuggestions(prev => prev.filter(s => s.id !== id))
       setEditingId(null)
       toast.success('Added to memory')

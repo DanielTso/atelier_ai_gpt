@@ -13,8 +13,17 @@ export const MODEL_IDS = [
 
 const modelEnum = z.enum(MODEL_IDS)
 
+// Loose-but-real shape for AI SDK UI messages: require a string role, allow the
+// usual optional content/parts, and passthrough the rest (id, etc.). Replaces the
+// former `z.array(z.any())` so the LLM routes at least validate message structure.
+export const uiMessageSchema = z.object({
+  role: z.string(),
+  content: z.string().optional(),
+  parts: z.array(z.any()).optional(),
+}).passthrough()
+
 export const chatRequestSchema = z.object({
-  messages: z.array(z.any()).min(1),
+  messages: z.array(uiMessageSchema).min(1),
   model: modelEnum.optional(),
   chatId: z.number().nullable().optional(),
   effort: z.enum(['low', 'medium', 'high', 'max']).optional(),
@@ -28,11 +37,7 @@ export const summarizeRequestSchema = z.object({
 
 export const generateTitleRequestSchema = z.object({
   chatId: z.number(),
-  messages: z.array(z.object({
-    role: z.string(),
-    content: z.string().optional(),
-    parts: z.array(z.any()).optional(),
-  })).min(1),
+  messages: z.array(uiMessageSchema).min(1),
   model: modelEnum.optional(),
 })
 
@@ -45,18 +50,14 @@ export const embedRequestSchema = z.object({
 
 export const classifyRequestSchema = z.object({
   chatId: z.number(),
-  messages: z.array(z.any()).min(1),
+  messages: z.array(uiMessageSchema).min(1),
   model: modelEnum.optional(),
 })
 
 export const memorySuggestRequestSchema = z.object({
   projectId: z.number().int().positive(),
   chatId: z.number().int().positive().optional(),
-  messages: z.array(z.object({
-    role: z.string(),
-    content: z.string().optional(),
-    parts: z.array(z.any()).optional(),
-  })).min(1),
+  messages: z.array(uiMessageSchema).min(1),
 })
 
 export const uploadUrlRequestSchema = z.object({

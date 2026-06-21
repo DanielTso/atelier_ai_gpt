@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.12.0] - 2026-06-21 — Hardening Phase 2: Robustness & correctness
+
+Second phase of the hardening pass. Plan at `docs/plans/2026-06-21-hardening.md`.
+
+### Fixed
+
+- **`projects.memory` lost-update race** — `acceptSuggestion` is now a single transaction that appends in SQL (`memory || chr(10) || …`), so two concurrent accepts (or an accept racing the rail's debounced textarea save) can't clobber each other or leave the project + suggestion inconsistent. The rail also cancels its pending debounce on accept.
+- **Document-replace data loss** — `/api/documents/process` now embeds the new revision **first**, then atomically swaps (delete old chunks + insert new + update row) via `commitDocumentReplacement`. A mid-flight embed/commit failure leaves the prior revision fully intact (was: old chunks deleted before new committed, leaving a "ready" doc with zero chunks).
+- **`classify` wrote unvalidated LLM output** — parsed topics are now Zod-shape-checked before insert (prevents garbage/`undefined` rows from malformed model responses).
+- **Auto-memory trigger** — replaced the `count % 6` gate with a monotonic per-chat delta (`count - lastSuggested >= 6`), robust to message-count jumps and overlapping `onFinish` (no missed boundaries / double-fires).
+- **Artifact orphan blob** — `generate_artifact` now cleans up the uploaded object if the DB insert returns no row.
+- **Unhandled rejection** — `triggerSummarization` call is now `.catch`-guarded.
+
+### Added
+
+- **Error boundaries** — `src/app/error.tsx` (with `reset()`), `global-error.tsx`, and `not-found.tsx` so a render error no longer blanks the single-page app.
+- **`uiMessageSchema`** — shared message-shape validation replacing `z.array(z.any())` in the chat/classify/title/memory-suggest routes.
+
+### Notes
+
+- Verification: lint 0 errors / 27 warnings, build clean, **275 tests pass** (new: atomic-accept, replace-commit).
+
 ## [4.11.0] - 2026-06-21 — Hardening Phase 1: Security
 
 First phase of a four-phase hardening pass (security → robustness → performance → code-health) from a full codebase audit. Plan at `docs/plans/2026-06-21-hardening.md`.

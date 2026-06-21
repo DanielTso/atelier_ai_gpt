@@ -49,6 +49,17 @@ describe('memory suggestion actions', () => {
     expect(await getPendingSuggestions(p.id)).toHaveLength(0)
   })
 
+  it('acceptSuggestion appends atomically onto pre-existing memory', async () => {
+    const { createProject, updateProjectContext, createMemorySuggestions, getPendingSuggestions, acceptSuggestion, getProjectContext } = await import('@/app/actions')
+    const [p] = await createProject('Drover')
+    await updateProjectContext(p.id, { memory: 'Existing line' })
+    await createMemorySuggestions(p.id, null, ['New fact'])
+    const [s] = await getPendingSuggestions(p.id)
+    const r = await acceptSuggestion(s.id)
+    expect(r?.memory).toBe('Existing line\nNew fact')
+    expect((await getProjectContext(p.id))?.memory).toBe('Existing line\nNew fact')
+  })
+
   it('acceptSuggestion honors an override text', async () => {
     const { createProject, createMemorySuggestions, getPendingSuggestions, acceptSuggestion } = await import('@/app/actions')
     const [p] = await createProject('Drover')

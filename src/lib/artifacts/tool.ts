@@ -30,9 +30,12 @@ export function createGenerateArtifactTool(ctx: { chatId: number; projectId: num
         // path — so a failure never leaves an orphan row with a broken storage path.
         const path = `artifacts/${ctx.projectId ?? 'standalone'}/${randomUUID()}/${slug(title)}.${ext}`
         await uploadBuffer(path, buffer, contentType)
-        let row
+        let row: Awaited<ReturnType<typeof createArtifact>>[number] | undefined
         try {
           ;[row] = await createArtifact({ chatId: ctx.chatId, projectId: ctx.projectId, type, title, storagePath: path })
+          // An empty insert result would otherwise throw on row.id AFTER upload,
+          // leaving an orphan object — treat it as a failure and clean up.
+          if (!row) throw new Error('artifact insert returned no row')
         } catch (e) {
           await removeObjects([path]).catch(() => {}) // don't leave an orphan object if the insert fails
           throw e

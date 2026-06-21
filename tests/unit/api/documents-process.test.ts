@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const m = {
   getDocumentById: vi.fn(), updateDocumentStatus: vi.fn(), saveDocumentChunks: vi.fn(), updateChunkEmbedding: vi.fn(),
+  createDocumentRevision: vi.fn(), commitDocumentReplacement: vi.fn(),
   ensureEmbeddingModel: vi.fn(), generateEmbedding: vi.fn(), chunkText: vi.fn(),
   downloadToBuffer: vi.fn(), uploadBuffer: vi.fn(),
   generatePdfThumbnail: vi.fn(), generateImageThumbnail: vi.fn(),
@@ -13,10 +14,11 @@ async function importRoute() {
   vi.doMock('@/app/actions', () => ({
     getDocumentById: m.getDocumentById, updateDocumentStatus: m.updateDocumentStatus,
     saveDocumentChunks: m.saveDocumentChunks, updateChunkEmbedding: m.updateChunkEmbedding,
+    createDocumentRevision: m.createDocumentRevision, commitDocumentReplacement: m.commitDocumentReplacement,
   }))
   vi.doMock('@/lib/embeddings', () => ({ ensureEmbeddingModel: m.ensureEmbeddingModel, generateEmbedding: m.generateEmbedding }))
   vi.doMock('@/lib/chunking', () => ({ chunkText: m.chunkText }))
-  vi.doMock('@/lib/storage', () => ({ downloadToBuffer: m.downloadToBuffer, uploadBuffer: m.uploadBuffer }))
+  vi.doMock('@/lib/storage', () => ({ downloadToBuffer: m.downloadToBuffer, uploadBuffer: m.uploadBuffer, sanitizeStorageName: (s: string) => s.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/^\.+$/, '_') }))
   vi.doMock('@/lib/thumbnails', () => ({ generatePdfThumbnail: m.generatePdfThumbnail, generateImageThumbnail: m.generateImageThumbnail }))
   vi.doMock('@/lib/visionExtraction', () => ({ extractViaVision: m.extractViaVision, extractViaVisionImage: m.extractViaVisionImage }))
   vi.doMock('@/lib/fileExtraction', async (orig) => ({ ...(await (orig as () => Promise<Record<string, unknown>>)()), extractTextFromBuffer: m.extractTextFromBuffer }))
@@ -118,6 +120,45 @@ describe('POST /api/documents/process', () => {
     const POST = await importRoute()
     await POST(req(14) as never)
     expect(m.updateDocumentStatus).toHaveBeenCalledWith(14, 'ready', expect.objectContaining({ extractionMethod: 'vision' }))
+  })
+
+  it('replace path: embeds first, then atomically commits (no pre-delete of old chunks)', async () => {
+    m.getDocumentById.mockResolvedValue({ id: 20, projectId: 1, revision: 1, filename: 'old.pdf', mimeType: 'application/pdf', fileSize: 5, storagePath: 'documents/1/20/old.pdf', thumbnailPath: null, charCount: 10, chunkCount: 1, extractionMethod: 'text' })
+    m.extractTextFromBuffer.mockResolvedValue('A'.repeat(300))
+    m.createDocumentRevision.mockResolvedValue([{ id: 1 }])
+    m.commitDocumentReplacement.mockResolvedValue(undefined)
+    const POST = await importRoute()
+    const res = await POST(new Request('http://localhost/api/documents/process', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ documentId: 20, filename: 'new.pdf', mimeType: 'application/pdf', fileSize: 9 }),
+    }) as never)
+    const data = await res.json()
+    expect(res.status).toBe(200)
+    expect(data.status).toBe('ready')
+    expect(data.revision).toBe(2)
+    // snapshot of the old revision is taken, and the swap is the transactional commit
+    expect(m.createDocumentRevision).toHaveBeenCalled()
+    expect(m.commitDocumentReplacement).toHaveBeenCalledWith(20, 1, expect.any(Array), expect.objectContaining({
+      revision: 2, status: 'ready', storagePath: 'documents/1/20/rev2/new.pdf',
+    }))
+    // new-upload helpers are NOT used on the replace path
+    expect(m.saveDocumentChunks).not.toHaveBeenCalled()
+  })
+
+  it('replace path: all embeddings fail → committed with status error (old revision not lost mid-flight)', async () => {
+    m.getDocumentById.mockResolvedValue({ id: 21, projectId: 1, revision: 3, filename: 'old.pdf', mimeType: 'application/pdf', fileSize: 5, storagePath: 'p', thumbnailPath: null, charCount: 10, chunkCount: 1, extractionMethod: 'text' })
+    m.extractTextFromBuffer.mockResolvedValue('A'.repeat(300))
+    m.generateEmbedding.mockRejectedValue(new Error('embed down'))
+    m.createDocumentRevision.mockResolvedValue([{ id: 1 }])
+    m.commitDocumentReplacement.mockResolvedValue(undefined)
+    const POST = await importRoute()
+    const res = await POST(new Request('http://localhost/api/documents/process', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ documentId: 21, filename: 'new.pdf', mimeType: 'application/pdf', fileSize: 9 }),
+    }) as never)
+    const data = await res.json()
+    expect(data.status).toBe('error')
+    expect(m.commitDocumentReplacement).toHaveBeenCalledWith(21, 1, expect.any(Array), expect.objectContaining({ status: 'error' }))
   })
 
   it('extractor throwing (corrupt file) → error status + 500, not stuck processing', async () => {
