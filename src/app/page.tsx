@@ -97,6 +97,8 @@ export default function Home() {
   // Dialog states
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null)
+  const [deleteProjectDialogOpen, setDeleteProjectDialogOpen] = useState(false)
+  const [deleteProjectTargetId, setDeleteProjectTargetId] = useState<number | null>(null)
   const [renameDialogOpen, setRenameDialogOpen] = useState(false)
   const [renameTarget, setRenameTarget] = useState<{ id: number; title: string } | null>(null)
   const [systemPromptDialogOpen, setSystemPromptDialogOpen] = useState(false)
@@ -760,12 +762,24 @@ export default function Home() {
     }
   }, [messages, activeChatId])
 
-  const handleDeleteProject = useCallback(async (id: number) => {
-    await deleteProject(id)
-    setProjects(prev => prev.filter(p => p.id !== id))
-    if (activeProjectId === id) setActiveProjectId(null)
-    toast.success("Project deleted")
-  }, [activeProjectId])
+  const handleRequestDeleteProject = useCallback((id: number) => {
+    setDeleteProjectTargetId(id)
+    setDeleteProjectDialogOpen(true)
+  }, [])
+
+  const handleConfirmDeleteProject = useCallback(async () => {
+    if (deleteProjectTargetId == null) return
+    try {
+      await deleteProject(deleteProjectTargetId)
+      setProjects(prev => prev.filter(p => p.id !== deleteProjectTargetId))
+      if (activeProjectId === deleteProjectTargetId) setActiveProjectId(null)
+      setDeleteProjectTargetId(null)
+      toast.success("Project deleted")
+    } catch (e) {
+      console.error("Delete project failed:", e)
+      toast.error("Failed to delete project")
+    }
+  }, [deleteProjectTargetId, activeProjectId])
 
   const handleRenameProject = useCallback(async (id: number, name: string) => {
     try {
@@ -935,7 +949,7 @@ export default function Home() {
   const sidebarActions = useMemo<SidebarActions>(() => ({
     createProject: handleCreateProject,
     renameProject: handleRenameProject,
-    deleteProject: handleDeleteProject,
+    deleteProject: handleRequestDeleteProject,
     selectProject: (id: number) => { setActiveView('home'); handleSelectProject(id); },
     openProjectDocuments: handleOpenProjectDocuments,
     openProjectSettings: handleOpenProjectSettings,
@@ -954,7 +968,7 @@ export default function Home() {
     openSettings: () => setSettingsDialogOpen(true),
     selectView: (view: AppView) => { setActiveView(view); setActiveChatId(null); },
     activeView,
-  }), [handleCreateProject, handleRenameProject, handleDeleteProject, handleSelectProject, handleOpenProjectDocuments, handleOpenProjectSettings, handleCreateChat, handleCreateStandaloneChat, handleCreateChatInProject, setActiveChatId, handleSelectStandaloneChat, handleMoveChat, handleRequestRename, handleArchiveChat, handleRestoreChat, handleRequestDelete, theme, activeView])
+  }), [handleCreateProject, handleRenameProject, handleRequestDeleteProject, handleSelectProject, handleOpenProjectDocuments, handleOpenProjectSettings, handleCreateChat, handleCreateStandaloneChat, handleCreateChatInProject, setActiveChatId, handleSelectStandaloneChat, handleMoveChat, handleRequestRename, handleArchiveChat, handleRestoreChat, handleRequestDelete, theme, activeView])
 
   // Get the current chat title from either chats or standaloneChats
   const currentChatTitle = activeChatId
@@ -994,7 +1008,7 @@ export default function Home() {
           <Menu className="h-5 w-5" />
         </button>
         {activeView === 'projects' ? (
-          <ProjectsView projects={projects} onSelectProject={(id) => { setActiveView('home'); handleSelectProject(id); }} />
+          <ProjectsView projects={projects} onSelectProject={(id) => { setActiveView('home'); handleSelectProject(id); }} onDeleteProject={handleRequestDeleteProject} />
         ) : activeView === 'artifacts' ? (
           <ArtifactsView />
         ) : activeChatId ? (
@@ -1098,6 +1112,7 @@ export default function Home() {
             onCreateChat={handleCreateChat}
             onAddFiles={() => handleOpenProjectDocuments(activeProjectId)}
             onSaveContext={handleSaveProjectContext}
+            onDeleteProject={handleRequestDeleteProject}
           />
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center w-full max-w-(--thread-max-width) mx-auto px-4">
@@ -1166,6 +1181,15 @@ export default function Home() {
         title="Delete Chat"
         description="Are you sure you want to delete this chat? This action cannot be undone."
         onConfirm={handleConfirmDelete}
+      />
+
+      {/* Delete Project Confirmation Dialog */}
+      <DeleteConfirmDialog
+        open={deleteProjectDialogOpen}
+        onOpenChange={setDeleteProjectDialogOpen}
+        title="Delete Project"
+        description={`Delete "${projects.find(p => p.id === deleteProjectTargetId)?.name ?? "this project"}"? This permanently removes the project and all of its chats, messages, and documents. This cannot be undone.`}
+        onConfirm={handleConfirmDeleteProject}
       />
 
       {/* Rename Dialog */}

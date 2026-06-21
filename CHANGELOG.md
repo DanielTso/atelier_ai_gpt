@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.16.1] - 2026-06-21 — Fix: project deletion from the UI
+
+### Fixed
+
+- **Projects could not be deleted from the UI.** The only delete control lived in `ProjectItem` (sidebar), which the current layout no longer mounts — so the Projects grid and project landing page had no delete affordance at all. Added a delete control to both surfaces, routed through a confirmation dialog.
+
+### Added
+
+- **Delete button on each Projects-grid card** (`ProjectsView`) — visible trash icon; clicking it requests deletion without opening the project.
+- **Delete button in the project landing-page header** (`ProjectLandingPage`).
+- Both route through a new **project delete-confirmation dialog** (reuses `DeleteConfirmDialog`) that names the project and warns the action cascade-deletes all of its chats, messages, and documents. Previously the (unreachable) handler deleted immediately with no confirmation.
+
+### Notes
+
+- Verification: lint 0 errors / 27 warnings, typecheck clean, build clean, **291 tests pass** (new: `ProjectsView` delete test).
+- Housekeeping: removed an empty duplicate "Drover" project row created accidentally (the app allows two same-named projects — left as-is, no uniqueness constraint added).
+
 ## [4.16.0] - 2026-06-21 — Artifacts: edit, regenerate, versions (D2.2)
 
 Second slice of Phase D2. No migration (uses the `artifact_versions` table from D2.1).

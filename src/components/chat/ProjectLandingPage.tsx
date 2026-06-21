@@ -1,7 +1,7 @@
 'use client'
 
 import { memo } from "react"
-import { Folder, Plus, MessageSquare } from "lucide-react"
+import { Folder, Plus, MessageSquare, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ProjectContextRail } from "@/components/chat/ProjectContextRail"
 
@@ -20,6 +20,7 @@ interface ProjectLandingPageProps {
   onCreateChat: () => void
   onAddFiles: () => void
   onSaveContext: (id: number, fields: { memory?: string; instructions?: string }) => void
+  onDeleteProject: (id: number) => void
 }
 
 function formatShortDate(date: Date | null): string {
@@ -36,6 +37,7 @@ export const ProjectLandingPage = memo(function ProjectLandingPage({
   onCreateChat,
   onAddFiles,
   onSaveContext,
+  onDeleteProject,
 }: ProjectLandingPageProps) {
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -45,6 +47,14 @@ export const ProjectLandingPage = memo(function ProjectLandingPage({
           <Folder className="h-5 w-5 text-primary" />
         </div>
         <h1 className="text-xl font-semibold text-foreground">{project.name}</h1>
+        <button
+          onClick={() => onDeleteProject(project.id)}
+          aria-label={`Delete project ${project.name}`}
+          title="Delete project"
+          className="ml-auto p-2 rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
       </div>
 
       {/* Chats column + context rail */}
