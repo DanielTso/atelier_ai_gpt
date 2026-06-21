@@ -1,15 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createUploadingDocument, updateDocumentStoragePath, getDocumentById, updateDocumentStatus } from '@/app/actions'
-import { isStorageConfigured, createSignedUploadUrl, storageBucketName } from '@/lib/storage'
+import { isStorageConfigured, createSignedUploadUrl, storageBucketName, sanitizeStorageName as sanitize } from '@/lib/storage'
 import { MAX_FILE_SIZE, isSupported, isImageExtension, getExtension } from '@/lib/fileExtraction'
 import { uploadUrlRequestSchema } from '@/lib/validation'
 import { apiError } from '@/lib/errors'
-
-function sanitize(name: string): string {
-  // Replace path/special chars, and collapse an all-dots name (".", "..") to "_"
-  // so it can't normalize to a parent prefix in the storage path.
-  return name.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/^\.+$/, '_')
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -37,7 +31,8 @@ export async function POST(request: NextRequest) {
       if (!existing) return NextResponse.json({ error: 'Document not found' }, { status: 404 })
       const newPath = `documents/${existing.projectId}/${existing.id}/rev${existing.revision + 1}/${sanitize(filename)}`
       await updateDocumentStatus(existing.id, 'uploading')
-      const { token } = await createSignedUploadUrl(newPath)
+      // upsert: replacing a revision may be retried at the same rev path.
+      const { token } = await createSignedUploadUrl(newPath, { upsert: true })
       return NextResponse.json({ documentId: existing.id, path: newPath, token, bucket: storageBucketName })
     }
 

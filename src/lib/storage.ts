@@ -20,8 +20,16 @@ function bucket() {
 
 export const storageBucketName = BUCKET
 
-export async function createSignedUploadUrl(path: string): Promise<{ path: string; token: string }> {
-  const { data, error } = await bucket().createSignedUploadUrl(path, { upsert: true })
+// Sanitize a user-supplied filename for use as a single storage path segment:
+// strip path/special chars and collapse an all-dots name (".", "..") so it can
+// never normalize to a parent prefix. Shared by upload-url + process (which
+// derives the same path server-side rather than trusting the client).
+export function sanitizeStorageName(name: string): string {
+  return name.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/^\.+$/, '_')
+}
+
+export async function createSignedUploadUrl(path: string, opts: { upsert?: boolean } = {}): Promise<{ path: string; token: string }> {
+  const { data, error } = await bucket().createSignedUploadUrl(path, { upsert: opts.upsert ?? false })
   if (error || !data) throw error ?? new Error('Failed to create signed upload URL')
   return { path: data.path, token: data.token }
 }
@@ -37,7 +45,7 @@ export async function downloadToBuffer(path: string): Promise<Buffer> {
   return Buffer.from(await data.arrayBuffer())
 }
 
-export async function createSignedDownloadUrl(path: string, ttlSeconds = 3600): Promise<string> {
+export async function createSignedDownloadUrl(path: string, ttlSeconds = 300): Promise<string> {
   const { data, error } = await bucket().createSignedUrl(path, ttlSeconds)
   if (error || !data) throw error ?? new Error('Failed to create signed URL')
   return data.signedUrl

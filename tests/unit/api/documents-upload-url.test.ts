@@ -11,6 +11,7 @@ async function importRoute() {
     isStorageConfigured: mockIsConfigured,
     createSignedUploadUrl: mockCreateSignedUploadUrl,
     storageBucketName: 'atelier-files',
+    sanitizeStorageName: (s: string) => s.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/^\.+$/, '_'),
   }))
   vi.doMock('@/app/actions', () => ({
     createUploadingDocument: mockCreateUploading,

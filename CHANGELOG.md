@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.11.0] - 2026-06-21 — Hardening Phase 1: Security
+
+First phase of a four-phase hardening pass (security → robustness → performance → code-health) from a full codebase audit. Plan at `docs/plans/2026-06-21-hardening.md`.
+
+### Added
+
+- **Lightweight access gate** — optional single-password gate over the whole app. `src/middleware.ts` requires a signed httpOnly cookie; `/login` + `POST/DELETE /api/auth` issue/clear it; `src/lib/auth.ts` does HMAC-SHA256 (Web Crypto, runtime-agnostic) + constant-time compare. **Off by default** — set `APP_ACCESS_PASSWORD` (and optional `AUTH_SECRET`) in env to activate. Closes the anonymous-access exposure on the public deployment.
+
+### Security
+
+- **Model allow-list** — `chat`/`classify`/`summarize`/`generate-title` now validate `model` against a `z.enum(MODEL_IDS)` (was a free `z.string()`), blocking selection of an arbitrary/expensive model (cost amplification).
+- **Document-process path trust** — `/api/documents/process` no longer accepts a client `storagePath`; the replace revision path is **derived server-side** (shared `sanitizeStorageName`), so a caller can't process an arbitrary object in the private bucket. New uploads use `upsert:false`.
+- **Error-detail leakage** — `apiError` no longer returns raw exception detail in production (logged server-side only); `models`/`artifacts`/`documents` routes unified onto `apiError` with try/catch.
+- **Security headers** — `next.config.ts` now sends CSP, `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy`, and HSTS (CSP scoped to the Supabase origin for images/PDF iframe).
+- **Signed-URL TTL** shortened 3600s → 300s; **spreadsheet-injection** guard in `toXlsx` (cells starting with `= + - @` are escaped).
+
+### Notes
+
+- Verification: lint 0 errors / 27 warnings, build clean, full suite green (1 known load-timeout flake in the exceljs render test, passes isolated). New: 9 auth tests.
+- **User action to activate the gate:** set `APP_ACCESS_PASSWORD` + `AUTH_SECRET` in `.env.local` + Vercel. **Browser-verify the CSP** after deploy (chat, document/PDF preview, AI images).
+
 ## [4.10.0] - 2026-06-20 — Auto-memory (suggest, you approve)
 
 Spec at `docs/specs/2026-06-19-auto-memory-design.md`, plan at `docs/plans/2026-06-19-auto-memory.md`. Durable job facts now accrue into a project's Memory with near-zero effort, behind a human approval gate.
