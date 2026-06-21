@@ -15,7 +15,7 @@ _Resume doc. Read the newest dated handoff first; the undated `docs/SESSION_HAND
 
 ## ▶️ Remaining USER actions (gated / can't be done from here)
 1. **Activate the access gate (optional but recommended):** set `APP_ACCESS_PASSWORD` (+ optional `AUTH_SECRET`) in `.env.local` and Vercel. Until set, the app stays open exactly as before. (Alternative: Vercel dashboard Password Protection.)
-2. **Apply migration `0009`** to live Supabase (index-only, additive; queries work without it): `set -a; . ./.env.local; set +a; npx drizzle-kit migrate`.
+2. ~~Apply migration `0009`~~ ✅ **Done** (2026-06-21) — applied to live Supabase via Supabase SQL (the `drizzle-kit migrate` CLI was safety-blocked; the index DDL was run directly + verified). Note: drizzle's `__drizzle_migrations` journal on live wasn't updated, so a future `drizzle-kit migrate` will harmlessly re-run 0009 (idempotent DROP+CREATE INDEX).
 3. **Browser-verify the CSP** on the deployed site (chat, document/PDF preview iframe, AI image render) — CSP couldn't be browser-tested locally; loosen `next.config.ts` `headers()` if anything is blocked.
 
 ## Deferred (explicitly out of scope this pass)
