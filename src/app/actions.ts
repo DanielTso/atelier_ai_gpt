@@ -495,6 +495,50 @@ export async function applyDocumentReplacement(documentId: number, fields: {
     .returning()
 }
 
+/**
+ * Atomically commit a document replacement: delete the old chunks, insert the new
+ * (already-embedded) chunks, and swap the document's metadata + revision — all in
+ * one transaction. Embeddings are computed BEFORE calling this, so a failure can
+ * never leave the document with old metadata and zero chunks (the prior revision
+ * stays intact until this commit succeeds).
+ */
+export async function commitDocumentReplacement(
+  documentId: number,
+  projectId: number,
+  chunks: { chunkIndex: number; content: string; embedding: number[] | null }[],
+  meta: {
+    filename: string
+    mimeType: string
+    fileSize: number
+    storagePath: string
+    thumbnailPath?: string | null
+    charCount: number
+    chunkCount: number
+    extractionMethod: 'text' | 'vision'
+    revision: number
+    status: 'ready' | 'error'
+    errorMessage?: string | null
+  },
+) {
+  return await db.transaction(async (tx) => {
+    await tx.delete(documentChunks).where(eq(documentChunks.documentId, documentId))
+    if (chunks.length > 0) {
+      await tx.insert(documentChunks).values(chunks.map(c => ({
+        documentId, projectId, chunkIndex: c.chunkIndex, content: c.content, embedding: c.embedding,
+      })))
+    }
+    await tx.update(documents)
+      .set({
+        filename: meta.filename, mimeType: meta.mimeType, fileSize: meta.fileSize,
+        storagePath: meta.storagePath, thumbnailPath: meta.thumbnailPath ?? null,
+        charCount: meta.charCount, chunkCount: meta.chunkCount, extractionMethod: meta.extractionMethod,
+        revision: meta.revision, status: meta.status, errorMessage: meta.errorMessage ?? null,
+        updatedAt: new Date(),
+      })
+      .where(eq(documents.id, documentId))
+  })
+}
+
 export async function saveDocumentChunks(chunks: {
   documentId: number
   projectId: number
@@ -658,15 +702,22 @@ export async function getRecentlyDismissed(projectId: number, limit = 50) {
 }
 
 export async function acceptSuggestion(id: number, overrideText?: string) {
-  const [row] = await db.select().from(memorySuggestions).where(eq(memorySuggestions.id, id))
-  if (!row) return null
-  const text = (overrideText ?? row.text).trim()
-  const [proj] = await db.select({ memory: projects.memory }).from(projects).where(eq(projects.id, row.projectId))
-  const existing = proj?.memory?.trim() ?? ''
-  const memory = existing ? `${existing}\n${text}` : text
-  await db.update(projects).set({ memory }).where(eq(projects.id, row.projectId))
-  await db.update(memorySuggestions).set({ status: 'accepted' }).where(eq(memorySuggestions.id, id))
-  return { memory }
+  // Transactional + SQL-side append so two concurrent accepts (or an accept racing
+  // a memory edit) can't lost-update projects.memory, and the project + suggestion
+  // never end up inconsistent on a partial failure.
+  return await db.transaction(async (tx) => {
+    const [row] = await tx.select().from(memorySuggestions).where(eq(memorySuggestions.id, id))
+    if (!row) return null
+    const text = (overrideText ?? row.text).trim()
+    const [updated] = await tx.update(projects)
+      .set({
+        memory: sql`case when ${projects.memory} is null or ${projects.memory} = '' then ${text} else ${projects.memory} || chr(10) || ${text} end`,
+      })
+      .where(eq(projects.id, row.projectId))
+      .returning({ memory: projects.memory })
+    await tx.update(memorySuggestions).set({ status: 'accepted' }).where(eq(memorySuggestions.id, id))
+    return { memory: updated?.memory ?? text }
+  })
 }
 
 export async function dismissSuggestion(id: number) {

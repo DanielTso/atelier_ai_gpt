@@ -1,9 +1,14 @@
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { generateText } from 'ai';
+import { z } from 'zod';
 import { getGeminiApiKey } from '@/lib/settings';
 import { saveChatTopics, getChatTopics } from '@/app/actions';
 import { apiError } from '@/lib/errors';
 import { classifyRequestSchema } from '@/lib/validation';
+
+// The model is instructed to return this shape; validate it before persisting so
+// malformed output (prose, wrong types) can't write garbage rows to chat_topics.
+const topicsSchema = z.array(z.object({ topic: z.string().min(1), confidence: z.number() }));
 
 const CLASSIFICATION_PROMPT = `Classify the following conversation into one or more topics. Return ONLY a JSON array of objects with "topic" and "confidence" (0-100) fields.
 
@@ -68,12 +73,14 @@ export async function POST(req: Request) {
       maxOutputTokens: 200,
     });
 
-    // Parse the LLM's JSON response
+    // Parse + validate the LLM's JSON response (shape-checked before any DB write).
     let topics: { topic: string; confidence: number }[] = [];
     try {
       const jsonMatch = result.text.match(/\[[\s\S]*\]/);
       if (jsonMatch) {
-        topics = JSON.parse(jsonMatch[0]);
+        const parsed = topicsSchema.safeParse(JSON.parse(jsonMatch[0]));
+        if (parsed.success) topics = parsed.data;
+        else console.error('[Classify] LLM output failed shape validation:', result.text);
       }
     } catch {
       console.error('[Classify] Failed to parse LLM response:', result.text);

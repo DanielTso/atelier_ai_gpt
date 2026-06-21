@@ -135,6 +135,12 @@ export default function Home() {
   const SUMMARIZATION_THRESHOLD = 30 // Trigger summarization when message count exceeds this
   const MESSAGES_TO_KEEP = 10 // Keep this many recent messages after summarization
 
+  // Auto-memory: per-chat message count at the last suggestion pass. Gating on a
+  // monotonic delta (count - last >= 6) instead of `count % 6` avoids both missed
+  // boundaries (count jumps) and double-fires (overlapping onFinish).
+  const lastSuggestedAtRef = useRef<Map<number, number>>(new Map())
+  const MEMORY_SUGGEST_EVERY = 6
+
   const triggerSummarization = useCallback(async (chatId: number, messageCount: number) => {
     if (messageCount <= SUMMARIZATION_THRESHOLD) return
 
@@ -232,11 +238,14 @@ export default function Home() {
         // Check if summarization is needed
         const messageCount = await getMessageCount(currentChatId)
         if (messageCount > SUMMARIZATION_THRESHOLD) {
-          triggerSummarization(currentChatId, messageCount)
+          triggerSummarization(currentChatId, messageCount).catch(() => {})
         }
 
-        // Best-effort: throttled auto-memory suggestion pass (project chats only)
-        if (currentProjectId && messageCount > 0 && messageCount % 6 === 0) {
+        // Best-effort: throttled auto-memory suggestion pass (project chats only).
+        // Monotonic gate — fire once per ~6 new messages, robust to count jumps.
+        const lastSuggested = lastSuggestedAtRef.current.get(currentChatId) ?? 0
+        if (currentProjectId && messageCount - lastSuggested >= MEMORY_SUGGEST_EVERY) {
+          lastSuggestedAtRef.current.set(currentChatId, messageCount)
           getChatMessages(currentChatId, 12)
             .then(dbMessages =>
               fetch('/api/memory/suggest', {
