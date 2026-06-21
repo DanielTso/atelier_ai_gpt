@@ -665,8 +665,10 @@ export async function updateArtifactStoragePath(id: number, storagePath: string)
   return await db.update(artifacts).set({ storagePath }).where(eq(artifacts.id, id)).returning()
 }
 
-export async function getAllArtifacts() {
-  const rows = await db.select().from(artifacts).orderBy(desc(artifacts.createdAt))
+// Bounded: select only a recent page and sign URLs for those rows. Without a cap
+// this grew unbounded with usage and fired one Storage request per artifact.
+export async function getAllArtifacts(limit = 60) {
+  const rows = await db.select().from(artifacts).orderBy(desc(artifacts.createdAt)).limit(limit)
   return await Promise.all(rows.map(async (r) => ({
     id: r.id, chatId: r.chatId, type: r.type, title: r.title, status: r.status, createdAt: r.createdAt,
     downloadUrl: r.storagePath ? await createSignedDownloadUrl(r.storagePath).catch(() => null) : null,

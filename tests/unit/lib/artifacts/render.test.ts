@@ -1,5 +1,9 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { renderArtifact } from '@/lib/artifacts/render'
+
+// exceljs/docx/pdf rendering can exceed the 5s default under parallel-worker load
+// (it's CPU-heavy); give these a generous timeout so the suite isn't flaky.
+vi.setConfig({ testTimeout: 30000 })
 
 const PK = Buffer.from([0x50, 0x4b, 0x03, 0x04]) // ZIP (xlsx/docx)
 

@@ -150,6 +150,60 @@ const messageVariants = {
   exit: { opacity: 0, y: -10 },
 }
 
+// The message bubble (images + markdown + sources) is the expensive part — a full
+// ReactMarkdown parse per message. Memoized so that during streaming only the
+// active row re-parses; prior messages (stable `m` reference, isStreaming=false)
+// skip re-render entirely instead of re-parsing on every token.
+const MessageBody = memo(function MessageBody({
+  m, isStreaming, onImageClick,
+}: { m: ChatMessage; isStreaming: boolean; onImageClick: (url: string) => void }) {
+  const images = getMessageImages(m)
+  const isGenerated = m.role === 'assistant'
+  const files = m.role === 'user' ? getMessageFiles(m) : null
+  return (
+    <div className={cn(
+      "p-4 rounded-2xl border transition-all hover:border-white/20 relative",
+      m.role === 'user'
+        ? "bg-primary/20 border-primary/10 rounded-tr-none"
+        : "bg-white/5 border-white/10 rounded-tl-none"
+    )}>
+      {images.length > 0 && (
+        <div className="flex flex-wrap gap-3 mb-2">
+          {images.map((img, idx) => (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => onImageClick(img.url)}
+              className={cn(
+                "block rounded-lg overflow-hidden border border-white/10 hover:border-white/20 transition-colors cursor-zoom-in",
+                isGenerated && "shadow-lg"
+              )}
+            >
+              <img
+                src={img.url}
+                alt={isGenerated ? "Generated image" : "Attached image"}
+                className={cn("object-contain", isGenerated ? "max-w-lg max-h-128" : "max-w-75 max-h-75")}
+              />
+            </button>
+          ))}
+        </div>
+      )}
+      {files && <MessageFileChips files={files} />}
+      <div className={cn(
+        "prose prose-sm dark:prose-invert max-w-none break-words overflow-hidden",
+        isStreaming && "streaming-cursor"
+      )}>
+        <SmoothStreamingWrapper isStreaming={isStreaming}>
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
+            {getMessageText(m)}
+          </ReactMarkdown>
+        </SmoothStreamingWrapper>
+      </div>
+      {m.role === 'assistant' && <SourcesList sources={getMessageSources(m)} />}
+    </div>
+  )
+})
+
 export const MessagesList = memo(function MessagesList({
   messages,
   isLoading,
@@ -240,61 +294,7 @@ export const MessagesList = memo(function MessagesList({
                 "flex flex-col gap-1 max-w-[80%] min-w-0",
                 m.role === 'user' ? "items-end" : "items-start"
               )}>
-                <div className={cn(
-                  "p-4 rounded-2xl border transition-all hover:border-white/20 relative",
-                  m.role === 'user'
-                    ? "bg-primary/20 border-primary/10 rounded-tr-none"
-                    : "bg-white/5 border-white/10 rounded-tl-none"
-                )}>
-                  {(() => {
-                    const images = getMessageImages(m)
-                    const isGenerated = m.role === 'assistant'
-                    return images.length > 0 ? (
-                      <div className="flex flex-wrap gap-3 mb-2">
-                        {images.map((img, idx) => (
-                          <button
-                            key={idx}
-                            type="button"
-                            onClick={() => onImageClick?.(img.url)}
-                            className={cn(
-                              "block rounded-lg overflow-hidden border border-white/10 hover:border-white/20 transition-colors cursor-zoom-in",
-                              isGenerated && "shadow-lg"
-                            )}
-                          >
-                            <img
-                              src={img.url}
-                              alt={isGenerated ? "Generated image" : "Attached image"}
-                              className={cn(
-                                "object-contain",
-                                isGenerated
-                                  ? "max-w-lg max-h-128"
-                                  : "max-w-75 max-h-75"
-                              )}
-                            />
-                          </button>
-                        ))}
-                      </div>
-                    ) : null
-                  })()}
-                  {m.role === 'user' && (() => {
-                    const files = getMessageFiles(m)
-                    return files ? <MessageFileChips files={files} /> : null
-                  })()}
-                  <div className={cn(
-                    "prose prose-sm dark:prose-invert max-w-none break-words overflow-hidden",
-                    isStreamingMessage && "streaming-cursor"
-                  )}>
-                    <SmoothStreamingWrapper isStreaming={isStreamingMessage}>
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        components={MARKDOWN_COMPONENTS}
-                      >
-                        {getMessageText(m)}
-                      </ReactMarkdown>
-                    </SmoothStreamingWrapper>
-                  </div>
-                  {m.role === 'assistant' && <SourcesList sources={getMessageSources(m)} />}
-                </div>
+                <MessageBody m={m} isStreaming={isStreamingMessage} onImageClick={onImageClick} />
 
                 {/* Timestamp and Actions Row */}
                 <div className={cn(

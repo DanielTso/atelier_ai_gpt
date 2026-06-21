@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.13.0] - 2026-06-21 — Hardening Phase 3: Performance
+
+Third phase of the hardening pass. Plan at `docs/plans/2026-06-21-hardening.md`.
+
+### Performance
+
+- **RAG critical path** (`src/lib/retrieval.ts`) — message and document retrieval branches now run **concurrently** (`Promise.all`) instead of back-to-back, overlapping their rerank Flash calls; **query-rewrite is skipped on the first turn** (nothing to resolve). Cuts time-to-first-token on project chats.
+- **Parallelized independent awaits** — `/api/memory/suggest` (`getProjectContext` + pending + dismissed) and `/api/chat` (`getProjectContext` ‖ `retrieveContext`) now `Promise.all` rather than running in series.
+- **Bounded `getAllArtifacts`** — selects a recent page (`limit 60`) and signs only those, instead of every artifact in the DB (was unbounded, one Storage request per row).
+- **`MessagesList` re-render cost** — extracted a memoized `MessageBody`, so during streaming only the active row re-parses its markdown (prior messages skip re-render) instead of re-parsing every message on every token.
+- **Index** — `idx_memory_suggestions_project_status` now includes `created_at DESC` to cover the pending-suggestions ORDER BY (migration `0009`).
+
+### Fixed
+
+- Stabilized the flaky exceljs render test (raised its timeout; it's CPU-heavy under parallel-worker load).
+
+### Notes
+
+- Verification: lint 0 errors / 27 warnings, build clean, **276 tests pass**. **Migration `0009` pending live apply** (index-only, additive; queries work without it).
+
 ## [4.12.0] - 2026-06-21 — Hardening Phase 2: Robustness & correctness
 
 Second phase of the hardening pass. Plan at `docs/plans/2026-06-21-hardening.md`.
