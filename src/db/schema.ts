@@ -124,9 +124,31 @@ export const artifacts = pgTable('artifacts', {
   storagePath: text('storage_path').notNull(),
   status: text('status').notNull().default('ready'),
   errorMessage: text('error_message'),
+  // D2: source that produced the binary, so it can be previewed/edited/regenerated.
+  // `format` is 'markdown' | 'sheets'; `content` is the markdown string or JSON sheets.
+  format: text('format'),
+  content: text('content'),
+  currentVersion: integer('current_version').notNull().default(1),
   createdAt: createdAt(),
 }, (table) => [
   index('idx_artifacts_chat_id').on(table.chatId),
+]);
+
+// D2: one row per artifact version (create / edit / regenerate). The active one is
+// `artifacts.current_version`. Prior versions retained (files kept in Storage),
+// mirroring document revisions.
+export const artifactVersions = pgTable('artifact_versions', {
+  id: idPk(),
+  artifactId: integer('artifact_id').references(() => artifacts.id, { onDelete: 'cascade' }).notNull(),
+  version: integer('version').notNull(),
+  type: text('type').notNull(),
+  title: text('title').notNull(),
+  format: text('format'),
+  content: text('content'),
+  storagePath: text('storage_path').notNull(),
+  createdAt: createdAt(),
+}, (table) => [
+  index('idx_artifact_versions_artifact_id').on(table.artifactId),
 ]);
 
 export const personaUsage = pgTable('persona_usage', {

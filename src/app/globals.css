@@ -51,6 +51,7 @@
   --sidebar-width: 18rem;     /* 288px — matches the prior w-72 sidebar */
   --rail-width: 20rem;        /* 320px — project context rail (Slice 2) */
   --thread-max-width: 48rem;  /* 768px — centered conversation/composer column */
+  --artifact-panel-width: 28rem; /* 448px — artifact workspace panel (D2) */
 
   /* Layered surfaces — for elevation hierarchy */
   --surface-raised: var(--brand-pure-surface);

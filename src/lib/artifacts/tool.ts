@@ -14,25 +14,28 @@ function slug(s: string): string {
 
 export function createGenerateArtifactTool(ctx: { chatId: number; projectId: number | null }) {
   return tool({
-    description: 'Generate a downloadable file artifact (Excel .xlsx, Word .docx, or PDF) for the user. ' +
-      'Use for reports, schedules, takeoffs, and write-ups the user can download. For xlsx, pass format "sheets" ' +
-      'with content as an array of {name, rows}. For docx/pdf, pass format "markdown" with content as a Markdown string.',
+    description: 'Generate a downloadable file artifact (Excel .xlsx, Word .docx, PDF, or PowerPoint .pptx) for the user. ' +
+      'Use for reports, schedules, takeoffs, write-ups, and slide decks the user can download. For xlsx, pass format "sheets" ' +
+      'with content as an array of {name, rows}. For docx/pdf/pptx, pass format "markdown" with content as a Markdown string ' +
+      '(for pptx, each top-level "# Heading" starts a new slide).',
     inputSchema: z.object({
-      type: z.enum(['xlsx', 'docx', 'pdf']),
+      type: z.enum(['xlsx', 'docx', 'pdf', 'pptx']),
       title: z.string().min(1).max(200),
       format: z.enum(['markdown', 'sheets']),
       content: z.union([z.string(), z.array(sheetSpec)]),
     }),
-    execute: async ({ type, title, content }) => {
+    execute: async ({ type, title, format, content }) => {
       try {
         const { buffer, contentType, ext } = await renderArtifact(type as ArtifactType, title, content)
+        // Persist the source so the artifact can be previewed/edited/regenerated.
+        const contentStr = typeof content === 'string' ? content : JSON.stringify(content)
         // Upload FIRST to a uuid-keyed path, then persist the row with the real
         // path — so a failure never leaves an orphan row with a broken storage path.
         const path = `artifacts/${ctx.projectId ?? 'standalone'}/${randomUUID()}/${slug(title)}.${ext}`
         await uploadBuffer(path, buffer, contentType)
         let row: Awaited<ReturnType<typeof createArtifact>>[number] | undefined
         try {
-          ;[row] = await createArtifact({ chatId: ctx.chatId, projectId: ctx.projectId, type, title, storagePath: path })
+          ;[row] = await createArtifact({ chatId: ctx.chatId, projectId: ctx.projectId, type, title, storagePath: path, format, content: contentStr })
           // An empty insert result would otherwise throw on row.id AFTER upload,
           // leaving an orphan object — treat it as a failure and clean up.
           if (!row) throw new Error('artifact insert returned no row')

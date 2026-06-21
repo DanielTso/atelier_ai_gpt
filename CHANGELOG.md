@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.15.0] - 2026-06-21 — Artifacts workspace (D2.1)
+
+First slice of Phase D2. Spec `docs/specs/2026-06-21-d2-artifacts-workspace-design.md`, plan `docs/plans/2026-06-21-d2-artifacts-workspace.md`.
+
+### Added
+
+- **Artifact workspace panel** — clicking a generated artifact opens a right-side panel (`ArtifactWorkspace`) with an **inline preview** + download, instead of just a download card. Preview renders from the artifact's **source**: Markdown → HTML, sheets → table, PDF → exact signed-URL iframe (`ArtifactPreview`); non-PDF previews are labeled "approximate" (the binary download is exact).
+- **PPTX export** — Claude can now generate PowerPoint decks (`toPptx.ts`, `pptxgenjs`; `# Heading` starts a new slide). `generate_artifact` accepts `type: 'pptx'`.
+- **Source + versioning storage** — artifacts now persist their source `content` + `format`, and each create seeds an `artifact_versions` row (migration `0010`; `artifacts.current_version` + `artifact_versions` table). Foundation for D2.2 edit/regenerate. New action `getArtifactVersions`; `ArtifactSummary` gains `format`/`content`/`version`.
+
+### Notes
+
+- Verification: lint 0 errors / 27 warnings, typecheck clean, build clean, **282 tests pass** (new: pptx render, content/version persistence, preview + workspace components).
+- **Migration `0010`** applied to live Supabase (additive: 2 columns + 1 table). Layout token `--artifact-panel-width` added.
+- D2.2 (edit/regenerate/version history UI) is next.
+
 ## [4.14.1] - 2026-06-21 — Access gate: activation + docs
 
 Operational/docs follow-up to the Phase 1 access gate (no code change — the gate shipped in v4.11.0).

@@ -27,6 +27,7 @@ interface MessagesListProps {
   selectedModel: string
   onDeleteMessage?: (id: string) => void
   artifacts?: ArtifactSummary[]
+  onOpenArtifact?: (id: number) => void
 }
 
 // Helper to extract text content from message parts, stripping file prefix for display
@@ -211,6 +212,7 @@ export const MessagesList = memo(function MessagesList({
   selectedModel,
   onDeleteMessage,
   artifacts,
+  onOpenArtifact,
 }: MessagesListProps) {
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
   const onImageClick = useCallback((url: string) => setLightboxUrl(url), [])
@@ -331,7 +333,7 @@ export const MessagesList = memo(function MessagesList({
 
         {/* Artifact Cards */}
         {artifacts && artifacts.length > 0 && (
-          <div className="px-4 pb-2">{artifacts.map(a => <ArtifactCard key={a.id} artifact={a} />)}</div>
+          <div className="px-4 pb-2">{artifacts.map(a => <ArtifactCard key={a.id} artifact={a} onOpen={onOpenArtifact} />)}</div>
         )}
 
         {/* Typing Indicator */}

@@ -15,6 +15,7 @@ import { HomeGreeting } from "@/components/chat/HomeGreeting"
 import { QuickActions } from "@/components/chat/QuickActions"
 import { ProjectsView } from "@/components/chat/ProjectsView"
 import { ArtifactsView } from "@/components/chat/ArtifactsView"
+import { ArtifactWorkspace } from "@/components/chat/ArtifactWorkspace"
 import { ChatHeader } from "@/components/chat/ChatHeader"
 import { ChatInputArea } from "@/components/chat/ChatInputArea"
 import { MessagesList, type ChatMessage } from "@/components/chat/MessagesList"
@@ -75,6 +76,7 @@ export default function Home() {
 
   // Artifact state
   const [artifacts, setArtifacts] = useState<ArtifactSummary[]>([])
+  const [activeArtifactId, setActiveArtifactId] = useState<number | null>(null)
 
   // Refs for values used in closures (must be after state declaration)
   const activeChatIdRef = useRef(activeChatId)
@@ -996,7 +998,8 @@ export default function Home() {
         ) : activeView === 'artifacts' ? (
           <ArtifactsView />
         ) : activeChatId ? (
-          <>
+          <div className="flex-1 flex min-h-0 overflow-hidden">
+            <div className="flex-1 flex flex-col min-w-0">
             <ChatHeader
               chatId={activeChatId}
               chatTitle={currentChatTitle}
@@ -1027,6 +1030,7 @@ export default function Home() {
                 activeChatId={activeChatId}
                 selectedModel={selectedModel}
                 artifacts={artifacts}
+                onOpenArtifact={setActiveArtifactId}
               />
             </div>
 
@@ -1066,7 +1070,14 @@ export default function Home() {
               attachedImages={attachedImages}
               onImagesChange={setAttachedImages}
             />
-          </>
+            </div>
+            {(() => {
+              const activeArtifact = artifacts.find(a => a.id === activeArtifactId) ?? null
+              return activeArtifact ? (
+                <ArtifactWorkspace artifact={activeArtifact} onClose={() => setActiveArtifactId(null)} />
+              ) : null
+            })()}
+          </div>
         ) : activeProjectId && projects.find(p => p.id === activeProjectId) ? (
           <ProjectLandingPage
             project={projects.find(p => p.id === activeProjectId)!}

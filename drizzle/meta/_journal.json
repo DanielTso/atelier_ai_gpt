@@ -71,6 +71,13 @@
       "when": 1782058077421,
       "tag": "0009_true_giant_man",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1782064335055,
+      "tag": "0010_bouncy_peter_parker",
+      "breakpoints": true
     }
   ]
 }
