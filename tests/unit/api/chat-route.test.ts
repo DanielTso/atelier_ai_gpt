@@ -106,14 +106,12 @@ describe('POST /api/chat', () => {
     expect(mockAnthropicFn).toHaveBeenCalledWith('claude-opus-4-8')
   })
 
-  it('returns 500 for unknown model provider', async () => {
+  it('rejects a non-allow-listed model with 400 (cost-amplification guard)', async () => {
     const response = await postChat({
       messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] }],
       model: 'llama3',
     })
-    expect(response.status).toBe(500)
-    const data = await response.json()
-    expect(data.error).toContain('Unknown model provider')
+    expect(response.status).toBe(400)
   })
 
   it('injects summary context when chat has summary', async () => {

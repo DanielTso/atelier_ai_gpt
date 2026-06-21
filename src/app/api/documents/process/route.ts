@@ -4,7 +4,7 @@ import { generateEmbedding, ensureEmbeddingModel } from '@/lib/embeddings'
 import { chunkText } from '@/lib/chunking'
 import { MAX_TEXT_LENGTH, getExtension, isImageExtension, extractTextFromBuffer } from '@/lib/fileExtraction'
 import { extractViaVision, extractViaVisionImage } from '@/lib/visionExtraction'
-import { downloadToBuffer, uploadBuffer } from '@/lib/storage'
+import { downloadToBuffer, uploadBuffer, sanitizeStorageName } from '@/lib/storage'
 import { generatePdfThumbnail, generateImageThumbnail } from '@/lib/thumbnails'
 import { processDocumentRequestSchema } from '@/lib/validation'
 import { apiError } from '@/lib/errors'
@@ -19,14 +19,17 @@ export async function POST(request: NextRequest) {
     const doc = await getDocumentById(parsed.data.documentId)
     if (!doc || !doc.storagePath) return NextResponse.json({ error: 'Document not found' }, { status: 404 })
 
-    // Replace flow: process the new revision file + metadata (sent by the client);
-    // the document's current file/metadata stay until we successfully apply.
-    const isReplace = !!parsed.data.storagePath
-    const sourcePath = parsed.data.storagePath ?? doc.storagePath
+    // Replace flow: marked by the client sending the new file's metadata. The new
+    // revision's storage path is DERIVED here (same construction as upload-url),
+    // never taken from the request — so a caller can't process an arbitrary object.
+    const isReplace = !!parsed.data.filename
     const effFilename = parsed.data.filename ?? doc.filename
     const effMimeType = parsed.data.mimeType ?? doc.mimeType
     const effFileSize = parsed.data.fileSize ?? doc.fileSize
     const nextRevision = doc.revision + 1
+    const sourcePath = isReplace
+      ? `documents/${doc.projectId}/${doc.id}/rev${nextRevision}/${sanitizeStorageName(effFilename)}`
+      : doc.storagePath
 
     const { available } = await ensureEmbeddingModel()
     if (!available) {

@@ -1,8 +1,21 @@
 import { z } from 'zod'
 
+// Allow-list of model IDs the app will route to. Prevents an unauthenticated /
+// crafted request from selecting an arbitrary (e.g. far more expensive) model.
+// User-selectable models (see /api/models) + the internal housekeeping model.
+export const MODEL_IDS = [
+  'claude-opus-4-8',
+  'claude-sonnet-4-6',
+  'claude-haiku-4-5',
+  'gemini-3.1-flash-image',
+  'gemini-3.5-flash',
+] as const
+
+const modelEnum = z.enum(MODEL_IDS)
+
 export const chatRequestSchema = z.object({
   messages: z.array(z.any()).min(1),
-  model: z.string().optional(),
+  model: modelEnum.optional(),
   chatId: z.number().nullable().optional(),
   effort: z.enum(['low', 'medium', 'high', 'max']).optional(),
 })
@@ -10,7 +23,7 @@ export const chatRequestSchema = z.object({
 export const summarizeRequestSchema = z.object({
   chatId: z.number(),
   cutoffMessageId: z.number(),
-  model: z.string().optional(),
+  model: modelEnum.optional(),
 })
 
 export const generateTitleRequestSchema = z.object({
@@ -20,7 +33,7 @@ export const generateTitleRequestSchema = z.object({
     content: z.string().optional(),
     parts: z.array(z.any()).optional(),
   })).min(1),
-  model: z.string().optional(),
+  model: modelEnum.optional(),
 })
 
 export const embedRequestSchema = z.object({
@@ -33,7 +46,7 @@ export const embedRequestSchema = z.object({
 export const classifyRequestSchema = z.object({
   chatId: z.number(),
   messages: z.array(z.any()).min(1),
-  model: z.string().optional(),
+  model: modelEnum.optional(),
 })
 
 export const memorySuggestRequestSchema = z.object({
@@ -58,9 +71,10 @@ export const uploadUrlRequestSchema = z.object({
 
 export const processDocumentRequestSchema = z.object({
   documentId: z.number().int().positive(),
-  // Replace flow: process this new revision file (and its metadata) instead of
-  // the document's current file. All four are sent together by the client.
-  storagePath: z.string().min(1).optional(),
+  // Replace flow: the presence of `filename` marks this as a replace. The new
+  // revision's storage path is DERIVED server-side from the document row (never
+  // trusted from the client), so a caller can't point processing at an arbitrary
+  // object in the bucket.
   filename: z.string().min(1).max(255).optional(),
   mimeType: z.string().min(1).optional(),
   fileSize: z.number().int().positive().optional(),

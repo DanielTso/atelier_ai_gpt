@@ -50,7 +50,7 @@ export function useDocumentUpload() {
       const procRes = await fetch('/api/documents/process', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ documentId: id, storagePath: path, filename: file.name, mimeType: file.type || 'application/octet-stream', fileSize: file.size }),
+        body: JSON.stringify({ documentId: id, filename: file.name, mimeType: file.type || 'application/octet-stream', fileSize: file.size }),
       })
       if (!procRes.ok) throw new Error((await procRes.json()).error || 'Processing failed')
     } finally {
