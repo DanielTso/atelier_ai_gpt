@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.17.0] - 2026-06-21 — Projects view: search, sort, create, rename, kebab menu
+
+Brings the Projects view up to a dashboard-grade layout (closer to the Claude.ai projects reference).
+
+### Added
+
+- **Search** — filter projects by name or description (memory) via a search box.
+- **Sort** — "Newest" (by creation date) or "Name (A–Z)" via a header dropdown.
+- **New project** button in the header (and in the empty state).
+- **Richer cards** — each card shows the project **description** (from `memory`, or "No description") and a **Created <date>** footer.
+- **Per-card ⋮ kebab menu** (always visible) with **Rename** and **Delete** — replaces the bare trash icon and matches the affordance users instinctively look for.
+- `RenameDialog` generalized with optional `title`/`placeholder` props (reused for project rename).
+
+### Notes
+
+- Verification: lint 0 errors / 27 warnings, typecheck clean, build clean, **295 tests pass** (ProjectsView tests expanded to 6: select, search, new, kebab delete, kebab rename, empty state).
+- Deferred (follow-up): the cards show **Created** date — the reference's **"Updated"** timestamp needs an `updated_at` column on `projects` (a live-DB migration, user-gated).
+
 ## [4.16.1] - 2026-06-21 — Fix: project deletion from the UI
 
 ### Fixed

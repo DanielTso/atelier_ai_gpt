@@ -39,7 +39,7 @@ import type { FileUIPart } from "ai"
 import type { Model, ArtifactSummary } from "@/types"
 
 // Types matching DB schema roughly
-type Project = { id: number; name: string; memory?: string | null; instructions?: string | null }
+type Project = { id: number; name: string; memory?: string | null; instructions?: string | null; createdAt?: Date | null }
 type Chat = { id: number; projectId: number | null; title: string; archived?: boolean | null }
 
 export default function Home() {
@@ -99,6 +99,8 @@ export default function Home() {
   const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null)
   const [deleteProjectDialogOpen, setDeleteProjectDialogOpen] = useState(false)
   const [deleteProjectTargetId, setDeleteProjectTargetId] = useState<number | null>(null)
+  const [renameProjectDialogOpen, setRenameProjectDialogOpen] = useState(false)
+  const [renameProjectTarget, setRenameProjectTarget] = useState<{ id: number; name: string } | null>(null)
   const [renameDialogOpen, setRenameDialogOpen] = useState(false)
   const [renameTarget, setRenameTarget] = useState<{ id: number; title: string } | null>(null)
   const [systemPromptDialogOpen, setSystemPromptDialogOpen] = useState(false)
@@ -792,6 +794,18 @@ export default function Home() {
     }
   }, [])
 
+  const handleRequestRenameProject = useCallback((id: number) => {
+    const project = projects.find(p => p.id === id)
+    if (project) {
+      setRenameProjectTarget({ id: project.id, name: project.name })
+      setRenameProjectDialogOpen(true)
+    }
+  }, [projects])
+
+  const handleConfirmRenameProject = useCallback((name: string) => {
+    if (renameProjectTarget) handleRenameProject(renameProjectTarget.id, name)
+  }, [renameProjectTarget, handleRenameProject])
+
   const handleRequestDelete = useCallback((id: number) => {
     setDeleteTargetId(id)
     setDeleteDialogOpen(true)
@@ -1008,7 +1022,13 @@ export default function Home() {
           <Menu className="h-5 w-5" />
         </button>
         {activeView === 'projects' ? (
-          <ProjectsView projects={projects} onSelectProject={(id) => { setActiveView('home'); handleSelectProject(id); }} onDeleteProject={handleRequestDeleteProject} />
+          <ProjectsView
+            projects={projects}
+            onSelectProject={(id) => { setActiveView('home'); handleSelectProject(id); }}
+            onDeleteProject={handleRequestDeleteProject}
+            onRenameProject={handleRequestRenameProject}
+            onNewProject={handleCreateProject}
+          />
         ) : activeView === 'artifacts' ? (
           <ArtifactsView />
         ) : activeChatId ? (
@@ -1190,6 +1210,16 @@ export default function Home() {
         title="Delete Project"
         description={`Delete "${projects.find(p => p.id === deleteProjectTargetId)?.name ?? "this project"}"? This permanently removes the project and all of its chats, messages, and documents. This cannot be undone.`}
         onConfirm={handleConfirmDeleteProject}
+      />
+
+      {/* Rename Project Dialog */}
+      <RenameDialog
+        open={renameProjectDialogOpen}
+        onOpenChange={setRenameProjectDialogOpen}
+        currentTitle={renameProjectTarget?.name ?? ""}
+        onRename={handleConfirmRenameProject}
+        title="Rename Project"
+        placeholder="Enter project name..."
       />
 
       {/* Rename Dialog */}

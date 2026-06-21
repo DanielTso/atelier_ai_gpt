@@ -9,6 +9,8 @@ interface RenameDialogProps {
   onOpenChange: (open: boolean) => void
   currentTitle: string
   onRename: (newTitle: string) => void
+  title?: string
+  placeholder?: string
 }
 
 export const RenameDialog = memo(function RenameDialog({
@@ -16,6 +18,8 @@ export const RenameDialog = memo(function RenameDialog({
   onOpenChange,
   currentTitle,
   onRename,
+  title = 'Rename Chat',
+  placeholder = 'Enter chat title...',
 }: RenameDialogProps) {
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -50,7 +54,7 @@ export const RenameDialog = memo(function RenameDialog({
                 <Pencil className="h-4 w-4 text-primary" />
               </div>
               <Dialog.Title className="text-lg font-semibold">
-                Rename Chat
+                {title}
               </Dialog.Title>
             </div>
             <Dialog.Close asChild>
@@ -67,7 +71,7 @@ export const RenameDialog = memo(function RenameDialog({
               key={currentTitle}
               defaultValue={currentTitle}
               className="w-full px-3 py-2 bg-black/20 border border-white/10 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all"
-              placeholder="Enter chat title..."
+              placeholder={placeholder}
             />
 
             <div className="flex justify-end gap-3 mt-4">
