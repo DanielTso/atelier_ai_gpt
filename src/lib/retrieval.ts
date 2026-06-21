@@ -4,13 +4,7 @@ import { rewriteQuery, type Turn } from './queryRewrite'
 import { rerankCandidates } from './rerank'
 import { mmr, type MmrItem } from './mmr'
 import { getRagConfig } from './ragConfig'
-
-function textOf(m: UIMessage): string {
-  return (m.parts ?? [])
-    .filter((p: { type: string }): p is { type: 'text'; text: string } => p.type === 'text')
-    .map((p: { text: string }) => p.text)
-    .join('')
-}
+import { extractText } from './messageParts'
 
 export async function retrieveContext(
   messages: UIMessage[],
@@ -19,7 +13,7 @@ export async function retrieveContext(
   const empty = { semanticContext: null as string | null, documentContext: null as string | null }
   try {
     const cfg = getRagConfig()
-    const turns: Turn[] = messages.map(msg => ({ role: msg.role, text: textOf(msg) })).filter(t => t.text)
+    const turns: Turn[] = messages.map(msg => ({ role: msg.role, text: extractText(msg.parts) })).filter(t => t.text)
     const lastUserText = [...turns].reverse().find(t => t.role === 'user')?.text ?? ''
     if (!lastUserText) return empty
 

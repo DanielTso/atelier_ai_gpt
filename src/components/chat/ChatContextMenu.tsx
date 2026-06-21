@@ -4,11 +4,7 @@ import { memo } from 'react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { MoreHorizontal, FolderInput, Pencil, Archive, Trash2, MessageCircle, ArchiveRestore } from 'lucide-react'
 import { cn } from '@/lib/utils'
-
-interface Project {
-  id: number
-  name: string
-}
+import type { Project } from '@/components/chat/sidebar/types'
 
 interface ChatContextMenuProps {
   chatId: number

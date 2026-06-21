@@ -1,5 +1,5 @@
 import { generateText } from 'ai';
-import { getMessagesForSummarization, updateChatSummary, getChatWithSummary } from '@/app/actions';
+import { getMessagesForSummarization, updateChatSummary, getChatWithContext } from '@/app/actions';
 import { createProvider } from '@/lib/providers';
 import { apiError } from '@/lib/errors';
 import { summarizeRequestSchema } from '@/lib/validation';
@@ -23,7 +23,7 @@ export async function POST(req: Request) {
     const { chatId, cutoffMessageId } = body.data;
 
     // Get chat to check for existing summary
-    const chat = await getChatWithSummary(chatId);
+    const chat = await getChatWithContext(chatId);
     if (!chat) {
       return new Response(JSON.stringify({ error: 'Chat not found' }), {
         status: 404,

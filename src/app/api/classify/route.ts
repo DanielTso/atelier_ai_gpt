@@ -5,6 +5,7 @@ import { getGeminiApiKey } from '@/lib/settings';
 import { saveChatTopics, getChatTopics } from '@/app/actions';
 import { apiError } from '@/lib/errors';
 import { classifyRequestSchema } from '@/lib/validation';
+import { messageText } from '@/lib/messageParts';
 
 // The model is instructed to return this shape; validate it before persisting so
 // malformed output (prose, wrong types) can't write garbage rows to chat_topics.
@@ -47,12 +48,7 @@ export async function POST(req: Request) {
     // Build conversation text for classification
     const conversationText = messages
       .slice(0, 10) // Only use first 10 messages for efficiency
-      .map((m: { role: string; content?: string; parts?: { type: string; text?: string }[] }) => {
-        const text = m.parts
-          ? m.parts.filter(p => p.type === 'text').map(p => p.text).join('')
-          : m.content || '';
-        return `${m.role}: ${text}`;
-      })
+      .map((m) => `${m.role}: ${messageText(m)}`)
       .join('\n');
 
     // Use Gemini for classification

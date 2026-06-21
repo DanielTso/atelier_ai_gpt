@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.14.0] - 2026-06-21 — Hardening Phase 4: Code health
+
+Final phase of the hardening pass. Plan at `docs/plans/2026-06-21-hardening.md`.
+
+### Changed
+
+- **Removed dead code** — deleted the unreferenced `getAllEmbeddings`, `getEmbeddingsForChat`, `getEmbeddingsForProject` actions and the `getChatWithSummary` alias (summarize route now calls `getChatWithContext` directly).
+- **Shared `messageParts` helper** — `extractText`/`messageText` (`src/lib/messageParts.ts`) replace six duplicated part-extraction snippets across `page.tsx`, the classify/memory-suggest routes, and `retrieval.ts`.
+- **`toArtifactSummary`** — one row→summary mapper shared by `getChatArtifacts` + `getAllArtifacts`.
+- **De-duplicated `Project`/`Chat` interfaces** — `ChatContextMenu` and `CommandPalette` now import the canonical types from `sidebar/types.ts`.
+- **`typecheck` script** — `npm run typecheck` (`tsc --noEmit`) added and wired into CI before the build step.
+- **Repo hygiene** — committed the brand reference (`ATELIER_BRAND_SKILL_V2.md`, cited by CLAUDE.md); gitignored local scratch (`atelier_brand_board.html`, `scripts/smoke-*.mjs`, `docs/plans/*.pdf`).
+
+### Notes
+
+- Verification: lint 0 errors / 27 warnings, typecheck clean, build clean, **276 tests pass**. No behavior change — pure cleanup.
+
 ## [4.13.0] - 2026-06-21 — Hardening Phase 3: Performance
 
 Third phase of the hardening pass. Plan at `docs/plans/2026-06-21-hardening.md`.
