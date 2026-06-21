@@ -187,11 +187,6 @@ export async function getChatWithContext(chatId: number) {
   return result
 }
 
-// Alias for backward compatibility
-export async function getChatWithSummary(chatId: number) {
-  return getChatWithContext(chatId)
-}
-
 export async function updateChatSystemPrompt(chatId: number, systemPrompt: string | null) {
   return await db.update(chats)
     .set({ systemPrompt })
@@ -292,19 +287,6 @@ export async function saveMessageEmbedding(
   }).returning()
 }
 
-export async function getEmbeddingsForChat(chatId: number) {
-  return await db.select().from(messageEmbeddings)
-    .where(eq(messageEmbeddings.chatId, chatId))
-}
-
-export async function getEmbeddingsForProject(projectId: number) {
-  return await db.select().from(messageEmbeddings)
-    .where(eq(messageEmbeddings.projectId, projectId))
-}
-
-export async function getAllEmbeddings() {
-  return await db.select().from(messageEmbeddings)
-}
 
 export async function getEmbeddingCount(scope?: { chatId?: number; projectId?: number }) {
   if (scope?.projectId) {
@@ -649,12 +631,17 @@ export async function getArtifactById(id: number) {
   return a ?? null
 }
 
-export async function getChatArtifacts(chatId: number) {
-  const rows = await db.select().from(artifacts).where(eq(artifacts.chatId, chatId)).orderBy(asc(artifacts.createdAt))
-  return await Promise.all(rows.map(async (r) => ({
+// Row → API shape with a short-lived signed download URL (best-effort).
+async function toArtifactSummary(r: typeof artifacts.$inferSelect) {
+  return {
     id: r.id, chatId: r.chatId, type: r.type, title: r.title, status: r.status, createdAt: r.createdAt,
     downloadUrl: r.storagePath ? await createSignedDownloadUrl(r.storagePath).catch(() => null) : null,
-  })))
+  }
+}
+
+export async function getChatArtifacts(chatId: number) {
+  const rows = await db.select().from(artifacts).where(eq(artifacts.chatId, chatId)).orderBy(asc(artifacts.createdAt))
+  return await Promise.all(rows.map(toArtifactSummary))
 }
 
 export async function deleteArtifact(id: number) {
@@ -669,10 +656,7 @@ export async function updateArtifactStoragePath(id: number, storagePath: string)
 // this grew unbounded with usage and fired one Storage request per artifact.
 export async function getAllArtifacts(limit = 60) {
   const rows = await db.select().from(artifacts).orderBy(desc(artifacts.createdAt)).limit(limit)
-  return await Promise.all(rows.map(async (r) => ({
-    id: r.id, chatId: r.chatId, type: r.type, title: r.title, status: r.status, createdAt: r.createdAt,
-    downloadUrl: r.storagePath ? await createSignedDownloadUrl(r.storagePath).catch(() => null) : null,
-  })))
+  return await Promise.all(rows.map(toArtifactSummary))
 }
 
 // ── Memory Suggestion Actions (auto-memory) ──

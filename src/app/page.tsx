@@ -7,6 +7,7 @@ import { DefaultChatTransport } from "ai"
 import { useEffect, useState, useRef, useCallback, useMemo } from "react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+import { extractText } from "@/lib/messageParts"
 import { getProjects, createProject, getAllProjectChats, createChat, getChatMessages, saveMessage, deleteProject, updateProjectName, updateProjectContext, updateChatTitle, getStandaloneChats, createStandaloneChat, deleteChat, moveChatToProject, archiveChat, restoreChat, getArchivedChats, getMessageCount, getChatWithContext, updateChatSystemPrompt, getProjectDefaults, recordPersonaUsage, incrementUsageMessageCount, getProjectChatPreviews, saveMessageAttachments, getChatAttachments, getSetting, setSetting } from "./actions"
 import { Sidebar } from "@/components/chat/sidebar"
 import type { SidebarActions, AppView } from "@/components/chat/sidebar"
@@ -186,10 +187,7 @@ export default function Home() {
       const currentProjectId = activeProjectIdRef.current
 
       // Extract text content from message parts
-      const textContent = message.parts
-        .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
-        .map(part => part.text)
-        .join('')
+      const textContent = extractText(message.parts)
 
       if (currentChatId && (textContent.trim() || message.parts.some(p => p.type === 'file'))) {
         const result = await saveMessage(currentChatId, 'assistant', textContent || '(image)')
@@ -317,11 +315,7 @@ export default function Home() {
   const userMessageTexts = useMemo(() =>
     messages
       .filter(m => m.role === 'user')
-      .map(m => m.parts
-        ?.filter((p): p is { type: 'text'; text: string } => p.type === 'text')
-        .map(p => p.text)
-        .join('') || ''
-      ),
+      .map(m => extractText(m.parts)),
     [messages]
   )
 
@@ -725,10 +719,7 @@ export default function Home() {
     if (lastMessage.role === 'user' && lastMessage.id !== lastSavedMessageIdRef.current) {
       lastSavedMessageIdRef.current = lastMessage.id
       // Extract text content from message parts
-      const textContent = lastMessage.parts
-        .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
-        .map(part => part.text)
-        .join('')
+      const textContent = extractText(lastMessage.parts)
       // Save user message to database and trigger embedding
       saveMessage(activeChatId, 'user', textContent)
         .then((result) => {

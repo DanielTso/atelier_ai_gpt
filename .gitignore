@@ -52,3 +52,8 @@ sqlite.db
 # Phase C spike artifacts / dropped plan PDFs (confidential)
 /spike-page1.png
 /*.pdf
+
+# local reference scratch + throwaway dev scripts (kept out of the repo)
+/atelier_brand_board.html
+/scripts/smoke-*.mjs
+docs/plans/*.pdf

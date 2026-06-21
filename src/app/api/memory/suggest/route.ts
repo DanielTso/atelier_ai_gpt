@@ -10,6 +10,7 @@ import {
 } from '@/app/actions'
 import { apiError } from '@/lib/errors'
 import { memorySuggestRequestSchema } from '@/lib/validation'
+import { messageText } from '@/lib/messageParts'
 
 const PENDING_CAP = 10
 
@@ -55,12 +56,7 @@ export async function POST(req: Request) {
 
     const conversationText = messages
       .slice(-12)
-      .map((m) => {
-        const text = m.parts
-          ? m.parts.filter((p: { type: string }) => p.type === 'text').map((p: { text?: string }) => p.text).join('')
-          : m.content || ''
-        return `${m.role}: ${text}`
-      })
+      .map((m) => `${m.role}: ${messageText(m)}`)
       .join('\n')
 
     const prompt =

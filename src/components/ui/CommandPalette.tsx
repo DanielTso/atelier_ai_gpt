@@ -5,17 +5,7 @@ import { useState, memo } from "react"
 import { MessageSquare, Sun, Moon, Plus, Folder, Cpu, Search } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { Model } from "@/types"
-
-interface Project {
-  id: number
-  name: string
-}
-
-interface Chat {
-  id: number
-  projectId: number | null
-  title: string
-}
+import type { Project, Chat } from "@/components/chat/sidebar/types"
 
 interface CommandPaletteProps {
   open: boolean
