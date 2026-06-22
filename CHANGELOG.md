@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.20.0] - 2026-06-21 — Professionally formatted artifacts
+
+Generated artifacts (xlsx/docx/pdf/pptx) are now brand-styled instead of plain text. Spec `docs/specs/2026-06-21-artifact-formatting-design.md`, plan `docs/plans/2026-06-21-artifact-formatting.md`.
+
+### Added
+
+- **`src/lib/artifacts/style.ts`** — Atelier brand palette (navy/steel-blue/ink/…) + per-library color/font helpers, one source of truth for document styling.
+- **`src/lib/artifacts/markdown.ts`** — shared `parseMarkdown()` → neutral AST (headings, paragraphs, inline bold/italic/code, ordered/unordered lists, GFM tables, code) via the `marked` lexer. New dep `marked` (pure-JS).
+
+### Changed
+
+- **Excel** — navy frozen header row (white bold), banded body rows, muted borders, auto column widths, numeric right-align; formula-injection guard retained.
+- **Word** — Markdown **tables → styled Word tables** (navy header, banded rows), real heading styles (navy/steel-blue/ink), inline bold/italic/mono, bulleted + numbered lists, default Calibri/ink run style, footer page numbers.
+- **PDF** — branded headings, wrapped paragraphs, bullet lists, simple branded tables (header band + alternating rows), multi-page flow, code blocks.
+- **PowerPoint** — slides split on `#` H1, navy title strip with white title, branded body (bullets/sub-headings/paragraphs/tables/code).
+- **`generate_artifact` tool description** now guides the model to emit structured content (headings, tables, bold, lists) so the styling has structure to work with.
+
+### Notes
+
+- No schema/migration/storage/version-flow changes; `ArtifactPreview` untouched. Verification: typecheck clean, lint 0 errors, build clean, **315 tests pass** (6 new artifact test files). Known minor gaps (deferred): PDF/PPTX render ordered lists as bullets; PDF doesn't wrap very long unbroken tokens or code lines.
+
 ## [4.19.1] - 2026-06-21 — Fix: artifact titles truncated (looked like duplicates)
 
 ### Fixed
