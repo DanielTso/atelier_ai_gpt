@@ -36,7 +36,7 @@ export async function toPptx(markdown: string): Promise<Buffer> {
     const lines: { text: string; options: Record<string, unknown> }[] = []
     for (const b of slide.body) {
       if (b.type === 'list') {
-        for (const item of b.items) lines.push({ text: plain(item), options: { bullet: true, color: BRAND.ink, fontSize: 16, fontFace: FONT.office } })
+        for (const item of b.items) lines.push({ text: plain(item), options: { bullet: b.ordered ? { type: 'number' } : true, color: BRAND.ink, fontSize: 16, fontFace: FONT.office } as Record<string, unknown> })
       } else if (b.type === 'heading') {
         lines.push({ text: plain(b.inlines), options: { bold: true, color: BRAND.steelBlue, fontSize: 18, fontFace: FONT.office, paraSpaceBefore: 6 } })
       } else if (b.type === 'paragraph') {

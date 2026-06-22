@@ -15,4 +15,15 @@ describe('toPdf', () => {
     const buf = await toPdf(md)
     expect(buf.subarray(0, 4).toString('latin1')).toBe('%PDF')
   })
+
+  it('does not throw on smart quotes, dashes, and emoji', async () => {
+    const md = '# “Smart” quotes — en–dash, ellipsis…, emoji 🚀\n\nBody with ‘curly’ text.'
+    const buf = await toPdf(md)
+    expect(buf.subarray(0, 4).toString('latin1')).toBe('%PDF')
+  })
+
+  it('renders an ordered list without throwing', async () => {
+    const buf = await toPdf('1. first\n2. second\n3. third')
+    expect(buf.subarray(0, 4).toString('latin1')).toBe('%PDF')
+  })
 })

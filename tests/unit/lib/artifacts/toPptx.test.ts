@@ -14,4 +14,9 @@ describe('toPptx', () => {
     const buf = await toPptx('just a paragraph')
     expect(buf.subarray(0, 2).toString('latin1')).toBe('PK')
   })
+
+  it('renders an ordered list without throwing', async () => {
+    const buf = await toPptx('# Steps\n\n1. one\n2. two')
+    expect(buf.subarray(0, 2).toString('latin1')).toBe('PK')
+  })
 })

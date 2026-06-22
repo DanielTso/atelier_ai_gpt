@@ -7,8 +7,22 @@ const PAGE = { w: 612, h: 792 } // US Letter (points)
 const MARGIN = 54
 const MAX_W = PAGE.w - MARGIN * 2
 
+// pdf-lib StandardFonts are WinAnsi-encoded and throw on non-Latin-1 input.
+// Map common smart punctuation to ASCII, then replace any remaining
+// character above the Latin-1 range so drawText never throws.
+function winAnsi(s: string): string {
+  return s
+    .replace(/[''‚′]/g, "'")
+    .replace(/[""„″]/g, '"')
+    .replace(/[–—]/g, '-')
+    .replace(/…/g, '...')
+    .replace(/[•‣◦]/g, '-')
+    .replace(/ /g, ' ')
+    .replace(/[^ -ÿ]/g, '?')
+}
+
 function wrap(text: string, font: PDFFont, size: number, maxW: number): string[] {
-  const words = text.split(/\s+/)
+  const words = winAnsi(text).split(/\s+/)
   const lines: string[] = []
   let line = ''
   for (const w of words) {
@@ -33,7 +47,7 @@ export async function toPdf(markdown: string): Promise<Buffer> {
     if (y - need < MARGIN) { page = doc.addPage([PAGE.w, PAGE.h]); y = PAGE.h - MARGIN }
   }
   const text = (s: string, x: number, size: number, f: PDFFont, color: [number, number, number]) => {
-    page.drawText(s, { x, y, size, font: f, color: rgb(color[0], color[1], color[2]) })
+    page.drawText(winAnsi(s), { x, y, size, font: f, color: rgb(color[0], color[1], color[2]) })
   }
   const plain = (inlines: Inline[]) => inlines.map(i => i.text).join('')
 
@@ -46,14 +60,15 @@ export async function toPdf(markdown: string): Promise<Buffer> {
       }
       y -= 4
     } else if (b.type === 'list') {
-      for (const item of b.items) {
+      b.items.forEach((item, idx) => {
+        const marker = b.ordered ? `${idx + 1}.` : '-'
         const wrapped = wrap(plain(item), font, SIZE.body, MAX_W - 16)
         wrapped.forEach((line, li) => {
           ensure(SIZE.body + 4); y -= SIZE.body + 4
-          text(li === 0 ? '•' : ' ', MARGIN, SIZE.body, font, pdfRgb(BRAND.slateText))
+          text(li === 0 ? marker : ' ', MARGIN, SIZE.body, font, pdfRgb(BRAND.slateText))
           text(line, MARGIN + 16, SIZE.body, font, pdfRgb(BRAND.ink))
         })
-      }
+      })
       y -= 4
     } else if (b.type === 'table') {
       const cols = b.header.length || 1
