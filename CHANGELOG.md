@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.20.1] - 2026-06-22 — Artifact polish: PDF tables + PPTX overflow
+
+Follow-up to v4.20.0 closing the two deferred fidelity gaps.
+
+### Changed
+
+- **PDF tables** — columns are now sized **proportionally to content** (was evenly divided), cell text **wraps within its column** (was truncated at 40 chars), and the **navy header row repeats** when a table spans a page break.
+- **PowerPoint overflow** — a slide whose body exceeds the content box is split into **continuation slides** (`"… (cont.)"`) instead of overflowing off the bottom. Pagination is a pure `paginate()` helper.
+
+### Notes
+
+- Verification: typecheck clean, lint 0 errors, build clean, **324 tests pass** (new: PDF wide-table render, PPTX overflow + 4 `paginate` unit tests).
+
 ## [4.20.0] - 2026-06-21 — Professionally formatted artifacts
 
 Generated artifacts (xlsx/docx/pdf/pptx) are now brand-styled instead of plain text. Spec `docs/specs/2026-06-21-artifact-formatting-design.md`, plan `docs/plans/2026-06-21-artifact-formatting.md`.

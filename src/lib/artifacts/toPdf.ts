@@ -71,18 +71,42 @@ export async function toPdf(markdown: string): Promise<Buffer> {
       })
       y -= 4
     } else if (b.type === 'table') {
-      const cols = b.header.length || 1
-      const colW = MAX_W / cols
+      const colCount = b.header.length || 1
+      // Column widths proportional to the longest content per column, normalized to MAX_W.
+      const charW = new Array<number>(colCount).fill(1)
+      for (const r of [b.header, ...b.rows]) {
+        r.forEach((cell, ci) => { charW[ci] = Math.max(charW[ci] ?? 1, plain(cell).length) })
+      }
+      const totalChars = charW.reduce((a, c) => a + c, 0) || 1
+      const colW = charW.map(w => (w / totalChars) * MAX_W)
+      const PAD = 4
+      const lineH = SIZE.body + 2
+
       const drawRow = (cells: Inline[][], isHeader: boolean, band: boolean) => {
-        ensure(SIZE.body + 8); y -= SIZE.body + 8
+        const f = isHeader ? bold : font
+        const cellLines = cells.map((cell, ci) => wrap(plain(cell), f, SIZE.body, (colW[ci] ?? MAX_W) - 2 * PAD))
+        const maxLines = Math.max(1, ...cellLines.map(l => l.length))
+        const rowH = maxLines * lineH + PAD
+        // Page break: start a fresh page and repeat the header band before a body row.
+        if (y - rowH < MARGIN) {
+          page = doc.addPage([PAGE.w, PAGE.h]); y = PAGE.h - MARGIN
+          if (!isHeader) drawRow(b.header, true, false)
+        }
+        const rowTop = y
+        const rowBottom = y - rowH
         const navyColor = pdfRgb(BRAND.navy)
         const softMistColor = pdfRgb(BRAND.softMist)
-        if (isHeader) page.drawRectangle({ x: MARGIN, y: y - 2, width: MAX_W, height: SIZE.body + 8, color: rgb(navyColor[0], navyColor[1], navyColor[2]) })
-        else if (band) page.drawRectangle({ x: MARGIN, y: y - 2, width: MAX_W, height: SIZE.body + 8, color: rgb(softMistColor[0], softMistColor[1], softMistColor[2]) })
-        cells.forEach((cell, ci) => {
-          const s = plain(cell).slice(0, 40)
-          text(s, MARGIN + ci * colW + 4, SIZE.body, isHeader ? bold : font, isHeader ? pdfRgb(BRAND.white) : pdfRgb(BRAND.ink))
+        if (isHeader) page.drawRectangle({ x: MARGIN, y: rowBottom, width: MAX_W, height: rowH, color: rgb(navyColor[0], navyColor[1], navyColor[2]) })
+        else if (band) page.drawRectangle({ x: MARGIN, y: rowBottom, width: MAX_W, height: rowH, color: rgb(softMistColor[0], softMistColor[1], softMistColor[2]) })
+        const color = isHeader ? pdfRgb(BRAND.white) : pdfRgb(BRAND.ink)
+        let x = MARGIN
+        cellLines.forEach((lines, ci) => {
+          lines.forEach((ln, li) => {
+            page.drawText(winAnsi(ln), { x: x + PAD, y: rowTop - PAD - SIZE.body - li * lineH, size: SIZE.body, font: f, color: rgb(color[0], color[1], color[2]) })
+          })
+          x += colW[ci] ?? 0
         })
+        y = rowBottom
       }
       drawRow(b.header, true, false)
       b.rows.forEach((r, ri) => drawRow(r, false, ri % 2 === 1))

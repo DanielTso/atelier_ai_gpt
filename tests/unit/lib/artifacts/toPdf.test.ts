@@ -26,4 +26,14 @@ describe('toPdf', () => {
     const buf = await toPdf('1. first\n2. second\n3. third')
     expect(buf.subarray(0, 4).toString('latin1')).toBe('%PDF')
   })
+
+  it('renders a wide table with long cells and many rows (wrap + page-break header repeat)', async () => {
+    const header = '| Item | Description | Owner |'
+    const sep = '| --- | --- | --- |'
+    const rows = Array.from({ length: 60 }, (_, i) =>
+      `| ITEM-${i} | A fairly long cell description that should wrap within its column rather than being truncated at forty characters | Responsible Party ${i} |`)
+    const buf = await toPdf([header, sep, ...rows].join('\n'))
+    expect(buf.subarray(0, 4).toString('latin1')).toBe('%PDF')
+    expect(buf.length).toBeGreaterThan(1000)
+  })
 })
