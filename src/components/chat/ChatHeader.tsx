@@ -1,18 +1,22 @@
 "use client"
 
 import { memo, useState, useRef, useEffect } from "react"
-import { MessageSquare, Edit2, Check, X } from "lucide-react"
+import { MessageSquare, Edit2, Check, X, Folder, ChevronRight, Zap } from "lucide-react"
 
 interface ChatHeaderProps {
   chatId: number | null
   chatTitle: string | undefined
   onTitleChange?: (id: number, title: string) => void
+  projectName?: string | null
+  onProjectClick?: () => void
 }
 
 export const ChatHeader = memo(function ChatHeader({
   chatId,
   chatTitle,
   onTitleChange,
+  projectName,
+  onProjectClick,
 }: ChatHeaderProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [editedTitle, setEditedTitle] = useState(chatTitle || "")
@@ -54,7 +58,26 @@ export const ChatHeader = memo(function ChatHeader({
   return (
     <header className="h-16 border-b border-white/10 flex items-center justify-between px-6 bg-white/5">
       <div className="flex items-center gap-2 flex-1 min-w-0">
-        <MessageSquare className="h-5 w-5 text-primary shrink-0" />
+        {/* Breadcrumb root: project (clickable) or quick-chat marker */}
+        {chatId && (
+          projectName ? (
+            <button
+              onClick={onProjectClick}
+              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors shrink-0 min-w-0 max-w-[40%]"
+              title={`Go to project ${projectName}`}
+            >
+              <Folder className="h-4 w-4 shrink-0" />
+              <span className="truncate">{projectName}</span>
+            </button>
+          ) : (
+            <span className="flex items-center gap-1.5 text-sm text-muted-foreground shrink-0" title="Quick chat (not in a project)">
+              <Zap className="h-4 w-4 shrink-0" />
+              <span>Quick chat</span>
+            </span>
+          )
+        )}
+        {chatId && <ChevronRight className="h-4 w-4 text-muted-foreground/50 shrink-0" />}
+        {!chatId && <MessageSquare className="h-5 w-5 text-primary shrink-0" />}
         {isEditing && chatId ? (
           <div className="flex items-center gap-2 flex-1">
             <input

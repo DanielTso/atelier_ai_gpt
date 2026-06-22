@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.19.0] - 2026-06-21 — Chat header breadcrumb (project context)
+
+### Added
+
+- **Chat header breadcrumb** showing whether the open chat lives in a project. Project chats show a clickable **📁 \<project\> › \<title\>** crumb (clicking the project navigates to its landing page); standalone chats show **⚡ Quick chat › \<title\>**.
+
+### Notes
+
+- Verification: lint 0 errors / 27 warnings, typecheck clean, build clean, **297 tests pass** (new: `ChatHeader` breadcrumb tests).
+
 ## [4.18.0] - 2026-06-21 — Projects: real "Updated" timestamp
 
 Follow-up to 4.17.0 — replaces the cards' "Created" date with a true last-activity "Updated" timestamp.

@@ -984,10 +984,14 @@ export default function Home() {
     activeView,
   }), [handleCreateProject, handleRenameProject, handleRequestDeleteProject, handleSelectProject, handleOpenProjectDocuments, handleOpenProjectSettings, handleCreateChat, handleCreateStandaloneChat, handleCreateChatInProject, setActiveChatId, handleSelectStandaloneChat, handleMoveChat, handleRequestRename, handleArchiveChat, handleRestoreChat, handleRequestDelete, theme, activeView])
 
-  // Get the current chat title from either chats or standaloneChats
-  const currentChatTitle = activeChatId
-    ? chats.find(c => c.id === activeChatId)?.title || standaloneChats.find(c => c.id === activeChatId)?.title
+  // Get the current chat (and its project) from either chats or standaloneChats
+  const currentChat = activeChatId
+    ? chats.find(c => c.id === activeChatId) ?? standaloneChats.find(c => c.id === activeChatId)
     : undefined
+  const currentChatTitle = currentChat?.title
+  const currentChatProjectName = currentChat?.projectId
+    ? projects.find(p => p.id === currentChat.projectId)?.name ?? null
+    : null
 
   return (
     <div className={cn(
@@ -1038,6 +1042,8 @@ export default function Home() {
               chatId={activeChatId}
               chatTitle={currentChatTitle}
               onTitleChange={handleUpdateChatTitle}
+              projectName={currentChatProjectName}
+              onProjectClick={currentChat?.projectId ? () => { setActiveView('home'); handleSelectProject(currentChat.projectId!); setActiveChatId(null); } : undefined}
             />
 
             {/* Error Banner */}
