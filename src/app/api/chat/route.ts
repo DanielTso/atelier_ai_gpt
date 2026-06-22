@@ -11,6 +11,15 @@ import { isStorageConfigured } from '@/lib/storage';
 // Configuration for hybrid context management
 const RECENT_MESSAGES_LIMIT = 20; // Keep last N messages in full detail
 
+// Reinforces chat-first behavior when the generate_artifact tool is available, so the
+// model writes answers (emails, summaries, drafts) directly in the conversation and only
+// produces a downloadable file when the user explicitly asks for one.
+const ARTIFACT_GUIDANCE =
+  'You are a helpful assistant in a chat conversation. Respond directly in chat using Markdown for almost everything the user asks. ' +
+  'You also have a generate_artifact tool that creates a downloadable file (Word/Excel/PDF/PowerPoint). ' +
+  'Only use generate_artifact when the user EXPLICITLY asks for a downloadable or exported file (e.g. "make a spreadsheet", "export to Word", "create a PDF", "build a slide deck"). ' +
+  'If the user asks you to write, draft, or compose an email, message, summary, report, plan, list, or table to read in the conversation, write it directly in your reply — do NOT create a file. When in doubt, answer in chat.';
+
 function buildContextPrefix(
   documentContext: string | null,
   semanticContext: string | null,
@@ -93,10 +102,12 @@ export async function POST(req: Request) {
         contextMessages = [...contextPrefix, ...recentMessages];
       }
 
-      // 4. Merge generate_artifact tool for Claude when Storage is configured
+      // 4. Merge generate_artifact tool for Claude when Storage is configured.
+      //    Prepend chat-first guidance so the tool is reserved for explicit file requests.
       if (modelName.startsWith('claude') && isStorageConfigured()) {
         const projectId = chat?.projectId ?? null;
         tools = { ...(providerTools ?? {}), generate_artifact: createGenerateArtifactTool({ chatId, projectId }) };
+        systemPrompt = systemPrompt ? `${ARTIFACT_GUIDANCE}\n\n${systemPrompt}` : ARTIFACT_GUIDANCE;
       }
     }
 

@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.20.2] - 2026-06-22 — Chat-first: stop over-generating downloadable files
+
+### Fixed
+
+- **The model was generating downloadable Word/Excel/PDF files for ordinary requests** (e.g. "write an email"), instead of answering in the chat. Because those turns were tool-only (no chat text), nothing visible was saved, so users assumed it failed and re-sent — producing duplicate messages and repeated documents.
+- **Now behaves like a normal chat assistant:** answers directly in the conversation (Markdown), and only calls `generate_artifact` when the user **explicitly** asks for a downloadable/exported file ("make a spreadsheet", "export to Word", "create a PDF", "build a deck"). Tightened the tool description and added an `ARTIFACT_GUIDANCE` system rule (prepended when the tool is active for Claude).
+
+### Notes
+
+- Verified by replaying the failing request: "write an email…" now streams a text reply (0 tool calls); "make me an .xlsx schedule" still generates the file. typecheck clean, lint 0 errors, build clean, 324 tests pass.
+
 ## [4.20.1] - 2026-06-22 — Artifact polish: PDF tables + PPTX overflow
 
 Follow-up to v4.20.0 closing the two deferred fidelity gaps.
