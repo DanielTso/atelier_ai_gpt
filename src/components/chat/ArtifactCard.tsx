@@ -11,13 +11,13 @@ export const ArtifactCard = memo(function ArtifactCard({ artifact, onOpen }: { a
   return (
     <div
       onClick={onOpen ? () => onOpen(artifact.id) : undefined}
-      className={cn('flex items-center gap-3 rounded-xl border border-border/40 bg-card/50 p-3 my-2 max-w-sm', onOpen && 'cursor-pointer hover:border-border hover:bg-card transition-colors')}
+      className={cn('flex items-start gap-3 rounded-xl border border-border/40 bg-card/50 p-3 my-2 max-w-sm', onOpen && 'cursor-pointer hover:border-border hover:bg-card transition-colors')}
     >
       <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10 shrink-0">
         <Icon className="h-4.5 w-4.5 text-primary" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm text-foreground truncate">{artifact.title}</p>
+        <p className="text-sm text-foreground break-words">{artifact.title}</p>
         <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{artifact.type}{artifact.version && artifact.version > 1 ? ` · v${artifact.version}` : ''}</p>
       </div>
       {artifact.downloadUrl && (

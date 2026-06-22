@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.19.1] - 2026-06-21 — Fix: artifact titles truncated (looked like duplicates)
+
+### Fixed
+
+- **Artifact cards truncated their titles** (`truncate`), so artifacts whose names differed only in a suffix (e.g. "… (60% Plans)" vs "… (60% Plans) – Revised") looked like duplicates. Titles now **wrap** (`break-words`) so the full name — and the `· v<n>` revision marker — is always visible. Card layout switched to `items-start` so the icon/Download button align cleanly with multi-line titles. Affects both the Artifacts view and the in-chat artifact cards (`ArtifactCard`).
+
+### Notes
+
+- No true duplicate rows existed — the artifacts are distinct; only the display was clipped.
+
 ## [4.19.0] - 2026-06-21 — Chat header breadcrumb (project context)
 
 ### Added
