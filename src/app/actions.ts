@@ -49,15 +49,38 @@ export async function deleteProject(id: number) {
   await db.delete(projects).where(eq(projects.id, id))
 }
 
+// Bump a project's updated_at to "now". Best-effort: a touch failure must never
+// break the mutation that triggered it.
+async function touchProject(projectId: number) {
+  try {
+    await db.update(projects).set({ updatedAt: new Date() }).where(eq(projects.id, projectId))
+  } catch (e) {
+    console.error('[touchProject] failed:', e)
+  }
+}
+
+// Bump the project that owns a chat (no-op for standalone chats — project_id is null).
+async function touchProjectForChat(chatId: number) {
+  try {
+    await db.execute(
+      sql`UPDATE projects SET updated_at = now() WHERE id = (SELECT project_id FROM chats WHERE id = ${chatId})`,
+    )
+  } catch (e) {
+    console.error('[touchProjectForChat] failed:', e)
+  }
+}
+
 export async function updateProjectName(id: number, name: string) {
-  return await db.update(projects).set({ name }).where(eq(projects.id, id)).returning()
+  return await db.update(projects).set({ name, updatedAt: new Date() }).where(eq(projects.id, id)).returning()
 }
 
 export async function updateProjectContext(
   id: number,
   fields: { memory?: string | null; instructions?: string | null },
 ) {
-  const set: { memory?: string | null; instructions?: string | null } = {}
+  const set: { memory?: string | null; instructions?: string | null; updatedAt: Date } = {
+    updatedAt: new Date(),
+  }
   if ('memory' in fields) set.memory = fields.memory ?? null
   if ('instructions' in fields) set.instructions = fields.instructions ?? null
   return await db.update(projects).set(set).where(eq(projects.id, id)).returning()
@@ -125,7 +148,9 @@ export async function getStandaloneChats() {
 }
 
 export async function createChat(projectId: number, title: string) {
-  return await db.insert(chats).values({ projectId, title }).returning()
+  const rows = await db.insert(chats).values({ projectId, title }).returning()
+  await touchProject(projectId)
+  return rows
 }
 
 export async function createStandaloneChat(title: string) {
@@ -142,7 +167,9 @@ export async function updateChatTitle(id: number, title: string) {
 }
 
 export async function saveMessage(chatId: number, role: string, content: string) {
-  return await db.insert(messages).values({ chatId, role, content }).returning()
+  const rows = await db.insert(messages).values({ chatId, role, content }).returning()
+  await touchProjectForChat(chatId)
+  return rows
 }
 
 export async function deleteMessage(id: number) {
@@ -388,7 +415,7 @@ export async function createUploadingDocument(data: {
   mimeType: string
   fileSize: number
 }) {
-  return await db.insert(documents).values({
+  const rows = await db.insert(documents).values({
     projectId: data.projectId,
     filename: data.filename,
     mimeType: data.mimeType,
@@ -396,6 +423,8 @@ export async function createUploadingDocument(data: {
     charCount: 0,
     status: 'uploading',
   }).returning()
+  await touchProject(data.projectId)
+  return rows
 }
 
 export async function updateDocumentStoragePath(id: number, storagePath: string) {

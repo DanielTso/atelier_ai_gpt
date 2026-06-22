@@ -14,8 +14,8 @@ beforeAll(() => {
 afterEach(cleanup)
 
 const PROJECTS = [
-  { id: 3, name: 'Drover_HUB', memory: 'Man camp logistics', createdAt: new Date('2026-05-13') },
-  { id: 4, name: 'CapRock_HUB', memory: 'Google data center', createdAt: new Date('2026-04-27') },
+  { id: 3, name: 'Drover_HUB', memory: 'Man camp logistics', createdAt: new Date('2026-05-13'), updatedAt: new Date('2026-05-20') },
+  { id: 4, name: 'CapRock_HUB', memory: 'Google data center', createdAt: new Date('2026-04-27'), updatedAt: new Date('2026-04-30') },
 ]
 
 function renderView(overrides: Partial<React.ComponentProps<typeof ProjectsView>> = {}) {

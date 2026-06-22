@@ -12,6 +12,7 @@ export const projects = pgTable('projects', {
   memory: text('memory'),
   instructions: text('instructions'),
   createdAt: createdAt(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
 
 export const chats = pgTable('chats', {

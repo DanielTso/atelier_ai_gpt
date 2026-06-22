@@ -39,7 +39,7 @@ import type { FileUIPart } from "ai"
 import type { Model, ArtifactSummary } from "@/types"
 
 // Types matching DB schema roughly
-type Project = { id: number; name: string; memory?: string | null; instructions?: string | null; createdAt?: Date | null }
+type Project = { id: number; name: string; memory?: string | null; instructions?: string | null; createdAt?: Date | null; updatedAt?: Date | null }
 type Chat = { id: number; projectId: number | null; title: string; archived?: boolean | null }
 
 export default function Home() {
@@ -786,7 +786,7 @@ export default function Home() {
   const handleRenameProject = useCallback(async (id: number, name: string) => {
     try {
       await updateProjectName(id, name)
-      setProjects(prev => prev.map(p => p.id === id ? { ...p, name } : p))
+      setProjects(prev => prev.map(p => p.id === id ? { ...p, name, updatedAt: new Date() } : p))
       toast.success("Project renamed")
     } catch (e) {
       console.error(e)
@@ -950,7 +950,7 @@ export default function Home() {
 
   const handleSaveProjectContext = useCallback(async (id: number, fields: { memory?: string; instructions?: string }) => {
     await updateProjectContext(id, fields)
-    setProjects(prev => prev.map(p => p.id === id ? { ...p, ...fields } : p))
+    setProjects(prev => prev.map(p => p.id === id ? { ...p, ...fields, updatedAt: new Date() } : p))
   }, [])
 
   useEffect(() => { getSetting('display-name').then(v => { if (v) setDisplayName(v) }).catch(() => {}) }, [])

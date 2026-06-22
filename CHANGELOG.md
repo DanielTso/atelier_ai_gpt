@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.18.0] - 2026-06-21 — Projects: real "Updated" timestamp
+
+Follow-up to 4.17.0 — replaces the cards' "Created" date with a true last-activity "Updated" timestamp.
+
+### Added
+
+- **`projects.updated_at`** column (migration `0011_mysterious_darwin.sql`; applied to live Supabase + drizzle ledger synced). Existing rows backfilled to `GREATEST(created_at, latest chat / message / document activity)`.
+- `touchProject()` / `touchProjectForChat()` helpers bump `updated_at` (best-effort) on: project rename, memory/instructions edit, new chat in project, new message in a project chat, and document upload.
+
+### Changed
+
+- Project cards now show **"Updated &lt;date&gt;"** (was "Created"); the header sort relabelled **"Last updated"** and sorts by `updated_at` (falling back to `created_at`).
+- Optimistic local `updatedAt` bump on rename + context save so the UI reorders immediately.
+
+### Notes
+
+- Verification: lint 0 errors / 27 warnings, typecheck clean, build clean, **295 tests pass** (PGlite applies `0011` in-process).
+- Migration is backward-compatible (nullable column with default) — DB was migrated before the code deploy, so old code tolerated the new column.
+
 ## [4.17.0] - 2026-06-21 — Projects view: search, sort, create, rename, kebab menu
 
 Brings the Projects view up to a dashboard-grade layout (closer to the Claude.ai projects reference).

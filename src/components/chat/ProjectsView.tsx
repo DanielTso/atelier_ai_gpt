@@ -9,6 +9,7 @@ interface ProjectCard {
   name: string
   memory?: string | null
   createdAt?: Date | null
+  updatedAt?: Date | null
 }
 
 interface ProjectsViewProps {
@@ -22,7 +23,7 @@ interface ProjectsViewProps {
 type SortKey = 'recent' | 'name'
 
 const SORT_LABELS: Record<SortKey, string> = {
-  recent: 'Newest',
+  recent: 'Last updated',
   name: 'Name (A–Z)',
 }
 
@@ -56,11 +57,11 @@ export function ProjectsView({
     if (sort === 'name') {
       sorted.sort((a, b) => a.name.localeCompare(b.name))
     } else {
-      sorted.sort((a, b) => {
-        const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0
-        const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0
-        return tb - ta
-      })
+      const ts = (p: ProjectCard) => {
+        const d = p.updatedAt ?? p.createdAt
+        return d ? new Date(d).getTime() : 0
+      }
+      sorted.sort((a, b) => ts(b) - ts(a))
     }
     return sorted
   }, [projects, query, sort])
@@ -138,7 +139,7 @@ export function ProjectsView({
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {visible.map(p => {
-            const created = formatDate(p.createdAt)
+            const updated = formatDate(p.updatedAt ?? p.createdAt)
             return (
               <div
                 key={p.id}
@@ -154,8 +155,8 @@ export function ProjectsView({
                   ) : (
                     <p className="text-sm text-muted-foreground/40 italic flex-1">No description</p>
                   )}
-                  {created && (
-                    <span className="text-xs text-muted-foreground/70 mt-auto">Created {created}</span>
+                  {updated && (
+                    <span className="text-xs text-muted-foreground/70 mt-auto">Updated {updated}</span>
                   )}
                 </button>
 
