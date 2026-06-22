@@ -26,4 +26,10 @@ describe('toDocx', () => {
     const buf = await toDocx('')
     expect(buf.subarray(0, 2).toString('latin1')).toBe('PK')
   })
+
+  it('renders an ordered list without throwing', async () => {
+    const buf = await toDocx('1. first\n2. second\n3. third')
+    expect(buf.subarray(0, 2).toString('latin1')).toBe('PK')
+    expect(buf.length).toBeGreaterThan(0)
+  })
 })
