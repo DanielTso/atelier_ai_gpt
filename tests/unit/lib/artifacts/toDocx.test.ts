@@ -1,0 +1,29 @@
+// tests/unit/lib/artifacts/toDocx.test.ts
+import { describe, it, expect } from 'vitest'
+import { toDocx } from '@/lib/artifacts/toDocx'
+
+describe('toDocx', () => {
+  it('renders headings, bold, lists, and tables without throwing', async () => {
+    const md = [
+      '# Scope of Work',
+      '',
+      'Intro with **bold** text.',
+      '',
+      '## Items',
+      '- first',
+      '- second',
+      '',
+      '| Task | Days |',
+      '| - | - |',
+      '| Mobilize | 3 |',
+    ].join('\n')
+    const buf = await toDocx(md)
+    expect(buf.length).toBeGreaterThan(0)
+    expect(buf.subarray(0, 2).toString('latin1')).toBe('PK')
+  })
+
+  it('produces a valid file for empty input', async () => {
+    const buf = await toDocx('')
+    expect(buf.subarray(0, 2).toString('latin1')).toBe('PK')
+  })
+})
