@@ -1,37 +1,57 @@
-/** Minimal Markdown → pptx: each `# H1` starts a new slide; ##/### + paragraphs
- *  become body text; `- `/`* ` become bullets. Pure-JS (pptxgenjs), serverless-safe. */
+// src/lib/artifacts/toPptx.ts
+import { parseMarkdown, type Block, type Inline } from './markdown'
+import { BRAND, FONT } from './style'
+
+type Slide = { title: string; body: Block[] }
+
+function splitSlides(blocks: Block[]): Slide[] {
+  const slides: Slide[] = []
+  let current: Slide | null = null
+  for (const b of blocks) {
+    if (b.type === 'heading' && b.level === 1) {
+      current = { title: b.inlines.map(i => i.text).join(''), body: [] }
+      slides.push(current)
+    } else {
+      if (!current) { current = { title: '', body: [] }; slides.push(current) }
+      current.body.push(b)
+    }
+  }
+  return slides.length ? slides : [{ title: '', body: [] }]
+}
+
+const plain = (inlines: Inline[]) => inlines.map(i => i.text).join('')
+
 export async function toPptx(markdown: string): Promise<Buffer> {
   const mod = await import('pptxgenjs')
-  const PptxGenJS = mod.default
-  const pptx = new PptxGenJS()
+  const PptxGenJS = mod.default ?? mod
+  const pptx = new (PptxGenJS as new () => InstanceType<typeof import('pptxgenjs')['default']>)()
+  pptx.layout = 'LAYOUT_WIDE'
 
-  type Body = { text: string; bullet: boolean }
-  const slides: { title: string; body: Body[] }[] = []
-  for (const raw of markdown.split('\n')) {
-    const line = raw.trim()
-    if (!line) continue
-    const h1 = /^#\s+(.*)$/.exec(line)
-    if (h1) { slides.push({ title: h1[1] ?? '', body: [] }); continue }
-    if (slides.length === 0) slides.push({ title: '', body: [] })
-    const slide = slides[slides.length - 1]!
-    const h = /^#{2,3}\s+(.*)$/.exec(line)
-    if (h) { slide.body.push({ text: h[1] ?? '', bullet: false }); continue }
-    const b = /^[-*]\s+(.*)$/.exec(line)
-    slide.body.push(b ? { text: b[1] ?? '', bullet: true } : { text: line, bullet: false })
-  }
-  if (slides.length === 0) slides.push({ title: 'Untitled', body: [] })
+  for (const slide of splitSlides(parseMarkdown(markdown))) {
+    const s = pptx.addSlide()
+    s.background = { color: BRAND.white }
+    s.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: '100%', h: 0.9, fill: { color: BRAND.navy } })
+    s.addText(slide.title || 'Slide', { x: 0.4, y: 0.1, w: 12, h: 0.7, fontFace: FONT.office, fontSize: 24, bold: true, color: BRAND.white, valign: 'middle' })
 
-  for (const s of slides) {
-    const slide = pptx.addSlide()
-    slide.addText(s.title || ' ', { x: 0.5, y: 0.3, w: 9, h: 0.8, fontSize: 28, bold: true, color: '1F3447' })
-    if (s.body.length > 0) {
-      slide.addText(
-        s.body.map(b => ({ text: b.text, options: { bullet: b.bullet, fontSize: 16, color: '16202A', breakLine: true } })),
-        { x: 0.7, y: 1.3, w: 8.6, h: 5 },
-      )
+    const lines: { text: string; options: Record<string, unknown> }[] = []
+    for (const b of slide.body) {
+      if (b.type === 'list') {
+        for (const item of b.items) lines.push({ text: plain(item), options: { bullet: true, color: BRAND.ink, fontSize: 16, fontFace: FONT.office } })
+      } else if (b.type === 'heading') {
+        lines.push({ text: plain(b.inlines), options: { bold: true, color: BRAND.steelBlue, fontSize: 18, fontFace: FONT.office, paraSpaceBefore: 6 } })
+      } else if (b.type === 'paragraph') {
+        lines.push({ text: plain(b.inlines), options: { color: BRAND.ink, fontSize: 16, fontFace: FONT.office } })
+      } else if (b.type === 'table') {
+        for (const row of [b.header, ...b.rows]) lines.push({ text: row.map(plain).join('  |  '), options: { color: BRAND.slateText, fontSize: 14, fontFace: FONT.mono } })
+      } else if (b.type === 'code') {
+        lines.push({ text: b.text, options: { color: BRAND.slateText, fontSize: 13, fontFace: FONT.mono } })
+      }
+    }
+    if (lines.length) {
+      s.addText(lines.map(l => ({ text: l.text, options: { ...l.options, breakLine: true } })), { x: 0.5, y: 1.1, w: 12.3, h: 6, valign: 'top' })
     }
   }
 
-  const out = await pptx.write({ outputType: 'nodebuffer' })
-  return Buffer.from(out as ArrayBuffer)
+  const data = await pptx.write({ outputType: 'nodebuffer' })
+  return Buffer.from(data as Buffer)
 }
