@@ -10,10 +10,12 @@ const sheetSpec = z.object({ name: z.string(), rows: z.array(z.array(z.union([z.
 
 export function createGenerateArtifactTool(ctx: { chatId: number; projectId: number | null }) {
   return tool({
-    description: 'Generate a downloadable file artifact (Excel .xlsx, Word .docx, PDF, or PowerPoint .pptx) for the user. ' +
-      'Use for reports, schedules, takeoffs, write-ups, and slide decks the user can download. For xlsx, pass format "sheets" ' +
-      'with content as an array of {name, rows}. For docx/pdf/pptx, pass format "markdown" with content as a Markdown string ' +
-      '(for pptx, each top-level "# Heading" starts a new slide).',
+    description:
+      'Generate a downloadable, professionally formatted file artifact (Excel .xlsx, Word .docx, PDF, or PowerPoint .pptx). ' +
+      'Use for reports, schedules, takeoffs, write-ups, and slide decks. ' +
+      'For xlsx, pass format "sheets" with content as an array of {name, rows}; make the FIRST row a header row of column titles and keep columns consistent. ' +
+      'For docx/pdf/pptx, pass format "markdown" with rich Markdown: use "##"/"###" headings to structure sections, "**bold**" and "*italic*" for emphasis, "-"/"1." lists, and GitHub-flavored "| col | col |" tables for tabular data (these render as real styled Word/PDF tables). ' +
+      'For pptx, each top-level "# Heading" starts a new slide. Prefer tables and headings over walls of plain text — the renderer styles this structure automatically.',
     inputSchema: z.object({
       type: z.enum(['xlsx', 'docx', 'pdf', 'pptx']),
       title: z.string().min(1).max(200),
