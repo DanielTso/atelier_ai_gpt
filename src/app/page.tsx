@@ -171,6 +171,7 @@ export default function Home() {
 
   // Sidebar collapse
   const [sidebarCollapsed, setSidebarCollapsed] = useLocalStorage('sidebar-collapsed', false)
+  const [artifactPanelWidth, setArtifactPanelWidth] = useLocalStorage('artifact-panel-width', 448)
 
   // Appearance settings
   const { fontSize, setFontSize, messageDensity, setMessageDensity } = useAppearanceSettings()
@@ -1156,6 +1157,8 @@ export default function Home() {
               return activeArtifact ? (
                 <ArtifactWorkspace
                   artifact={activeArtifact}
+                  width={artifactPanelWidth}
+                  onWidthChange={setArtifactPanelWidth}
                   onClose={() => setActiveArtifactId(null)}
                   onChanged={() => {
                     if (activeChatId) {

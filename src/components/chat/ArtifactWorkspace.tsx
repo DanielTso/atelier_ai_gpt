@@ -12,12 +12,34 @@ import { ArtifactPreview } from './ArtifactPreview'
 const ICON: Record<string, LucideIcon> = { xlsx: FileSpreadsheet, docx: FileType, pdf: FileText, pptx: Presentation, html: Code }
 type Mode = 'preview' | 'edit' | 'versions'
 
-export function ArtifactWorkspace({ artifact, onClose, onChanged }: {
+export function ArtifactWorkspace({ artifact, onClose, onChanged, width = 448, onWidthChange }: {
   artifact: ArtifactSummary
   onClose: () => void
   onChanged: () => void
+  width?: number
+  onWidthChange?: (w: number) => void
 }) {
   const Icon = ICON[artifact.type] ?? FileText
+
+  // Drag the left edge to resize the panel. Width is clamped and persisted by the parent.
+  const startResize = (e: React.PointerEvent) => {
+    if (!onWidthChange) return
+    e.preventDefault()
+    const startX = e.clientX
+    const startW = width
+    const maxW = Math.round(window.innerWidth * 0.8)
+    const onMove = (ev: PointerEvent) => {
+      onWidthChange(Math.min(Math.max(startW - (ev.clientX - startX), 360), maxW))
+    }
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      document.body.style.userSelect = ''
+    }
+    document.body.style.userSelect = 'none'
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
   const [mode, setMode] = useState<Mode>('preview')
   const [editText, setEditText] = useState(artifact.content ?? '')
   const [instruction, setInstruction] = useState('')
@@ -77,7 +99,13 @@ export function ArtifactWorkspace({ artifact, onClose, onChanged }: {
   )
 
   return (
-    <aside className="flex w-(--artifact-panel-width) shrink-0 flex-col overflow-hidden border-l border-border/40">
+    <aside style={{ width: `${width}px` }} className="relative flex shrink-0 flex-col overflow-hidden border-l border-border/40">
+      {/* Drag handle — resize the panel by dragging its left edge. */}
+      <div
+        onPointerDown={startResize}
+        title="Drag to resize"
+        className="absolute inset-y-0 left-0 z-20 w-1.5 cursor-col-resize bg-transparent transition-colors hover:bg-primary/40"
+      />
       <div className="flex items-start justify-between gap-2 p-4 pb-2">
         <div className="flex min-w-0 items-center gap-2">
           <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />

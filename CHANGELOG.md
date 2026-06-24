@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.24.0] - 2026-06-24 — Resizable artifact panel
+
+### Added
+
+- **The artifact workspace panel is now resizable** — drag its left edge to widen/narrow it (was a fixed 448px). Width is clamped (min 360px, max 80% of the viewport) and **persisted** (`artifact-panel-width` in localStorage), so it survives reloads and reopening artifacts.
+
+### Notes
+
+- Verified live: dragging the handle resized the panel and the width persisted. typecheck clean, lint 0 errors, build clean, 335 tests pass.
+
 ## [4.23.0] - 2026-06-24 — Inline image generation (Nano Banana tool for Claude)
 
 ### Added
