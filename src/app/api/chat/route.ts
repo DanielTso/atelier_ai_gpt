@@ -122,7 +122,7 @@ export async function POST(req: Request) {
       ...(providerOptions && { providerOptions }),
     });
 
-    return result.toUIMessageStreamResponse({ sendSources: true });
+    return result.toUIMessageStreamResponse({ sendSources: true, sendReasoning: true });
 
   } catch (error) {
     // Preserve specific API-key / provider errors for user feedback

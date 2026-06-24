@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.21.0] - 2026-06-24 — Clean thinking + sources UI (Claude.ai-style)
+
+### Added
+
+- **Collapsible "Thought process" block** — the assistant's reasoning now renders as a tidy collapsible section (✳ icon). It auto-expands and shows live "Thinking…" while the model reasons before answering, then collapses once the answer begins (re-openable). Previously reasoning was streamed but never shown. Stream now sends reasoning explicitly (`sendReasoning: true`).
+
+### Changed
+
+- **Sources are now collapsible** — replaced the always-expanded wall of web-search links with a compact "🌐 N sources" toggle (collapsed by default), so a search-heavy reply no longer buries the answer under 30 links.
+
+### Notes
+
+- Verified live: reasoning shows as "Thinking…" while streaming → "Thought process" (collapsed) after; sources collapse to "N sources". typecheck clean, lint 0 errors, build clean, 328 tests pass.
+
 ## [4.20.5] - 2026-06-24 — Enter sends the message
 
 ### Changed

@@ -1,7 +1,7 @@
 "use client"
 
 import { memo, useState, useCallback, useEffect } from "react"
-import { Folder, MessageSquare, ExternalLink, Globe, Paperclip } from "lucide-react"
+import { Folder, MessageSquare, ExternalLink, Globe, Paperclip, Sparkles, ChevronRight } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { motion, AnimatePresence } from "framer-motion"
@@ -102,15 +102,56 @@ function getMessageSources(message: UIMessage): SourceUrl[] {
     }, [] as SourceUrl[])
 }
 
+// Concatenate the assistant's reasoning ("thinking") parts.
+function getMessageReasoning(message: UIMessage): string {
+  return message.parts
+    .map(p => (p.type === 'reasoning' ? (p as { text?: string }).text ?? '' : ''))
+    .join('')
+    .trim()
+}
+
+// Collapsible "Thinking" block — auto-expands while the model is still thinking
+// (streaming, no answer text yet), then collapses to a header you can re-open.
+function ReasoningBlock({ text, live }: { text: string; live: boolean }) {
+  const [open, setOpen] = useState(false)
+  if (!text) return null
+  const expanded = open || live
+  return (
+    <div className="mb-2">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-1.5 text-xs text-muted-foreground/70 hover:text-foreground transition-colors"
+      >
+        <Sparkles className={cn("h-3.5 w-3.5 shrink-0", live && "animate-pulse text-primary")} />
+        <span className="font-medium">{live ? 'Thinking…' : 'Thought process'}</span>
+        <ChevronRight className={cn("h-3 w-3 transition-transform", expanded && "rotate-90")} />
+      </button>
+      {expanded && (
+        <div className="mt-1.5 pl-2 border-l-2 border-border/50 text-xs text-muted-foreground/80 whitespace-pre-wrap break-words max-h-72 overflow-y-auto">
+          {text}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function SourcesList({ sources }: { sources: SourceUrl[] }) {
+  const [open, setOpen] = useState(false)
   if (sources.length === 0) return null
   return (
     <div className="mt-2 pt-2 border-t border-white/5">
-      <div className="flex items-center gap-1.5 mb-1.5">
-        <Globe className="h-3 w-3 text-muted-foreground/60" />
-        <span className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-medium">Sources</span>
-      </div>
-      <div className="flex flex-wrap gap-1.5">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-1.5 text-muted-foreground/60 hover:text-foreground transition-colors"
+      >
+        <Globe className="h-3 w-3" />
+        <span className="text-[11px] font-medium">{sources.length} source{sources.length === 1 ? '' : 's'}</span>
+        <ChevronRight className={cn("h-3 w-3 transition-transform", open && "rotate-90")} />
+      </button>
+      {open && (
+      <div className="flex flex-wrap gap-1.5 mt-1.5">
         {sources.map((src) => {
           let hostname = ''
           try { hostname = new URL(src.url).hostname.replace(/^www\./, '') } catch { hostname = src.url }
@@ -129,6 +170,7 @@ function SourcesList({ sources }: { sources: SourceUrl[] }) {
           )
         })}
       </div>
+      )}
     </div>
   )
 }
@@ -161,6 +203,8 @@ const MessageBody = memo(function MessageBody({
   const images = getMessageImages(m)
   const isGenerated = m.role === 'assistant'
   const files = m.role === 'user' ? getMessageFiles(m) : null
+  const reasoning = isGenerated ? getMessageReasoning(m) : ''
+  const answerText = getMessageText(m)
   return (
     <div className={cn(
       "p-4 rounded-2xl border transition-all hover:border-white/20 relative",
@@ -190,13 +234,14 @@ const MessageBody = memo(function MessageBody({
         </div>
       )}
       {files && <MessageFileChips files={files} />}
+      {isGenerated && <ReasoningBlock text={reasoning} live={isStreaming && answerText.trim().length === 0} />}
       <div className={cn(
         "prose prose-sm dark:prose-invert max-w-none break-words overflow-hidden",
         isStreaming && "streaming-cursor"
       )}>
         <SmoothStreamingWrapper isStreaming={isStreaming}>
           <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
-            {getMessageText(m)}
+            {answerText}
           </ReactMarkdown>
         </SmoothStreamingWrapper>
       </div>
