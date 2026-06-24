@@ -336,9 +336,11 @@ export const MessagesList = memo(function MessagesList({
           <div className="px-4 pb-2">{artifacts.map(a => <ArtifactCard key={a.id} artifact={a} onOpen={onOpenArtifact} />)}</div>
         )}
 
-        {/* Typing Indicator */}
+        {/* Typing Indicator — only while waiting for the reply to start. Once the
+            assistant message begins streaming (last message is the assistant's), the
+            message itself + its cursor show progress, so the dots would be redundant. */}
         <AnimatePresence>
-          {isLoading && (
+          {isLoading && messages[messages.length - 1]?.role !== 'assistant' && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}

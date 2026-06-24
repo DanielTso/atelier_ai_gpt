@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.20.4] - 2026-06-24 — Fix double "AI" bubble during streaming
+
+### Fixed
+
+- During a streaming reply the UI showed **two assistant bubbles** — the actual streaming message (with its cursor) *and* a separate typing-dots indicator. The dots now appear only while waiting for the reply to begin; once the assistant message starts streaming, only the message + cursor show (matches Claude.ai). `MessagesList` typing indicator is gated on the last message not already being the assistant's.
+
+### Notes
+
+- typecheck clean, lint 0 errors, build clean, 328 tests pass.
+
 ## [4.20.3] - 2026-06-24 — Fix raw Markdown (`**`, `##`) leaking into documents
 
 ### Fixed
