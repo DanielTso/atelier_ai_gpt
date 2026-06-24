@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.24.2] - 2026-06-24 — Docs refresh
+
+### Docs
+
+- Refreshed the project docs to current state: `CLAUDE.md` (artifact engine now `xlsx|docx|pdf|pptx|html` with the `style.ts`/`markdown.ts` formatting layer, live-preview `ArtifactWorkspace`, resizable + auto-collapse panel, and the `generate_image` Nano Banana tool), `README.md` (artifact + inline-image capabilities), and a new `docs/SESSION_HANDOFF_2026-06-24.md` (current-state bootstrap through v4.24.1) with the canonical `docs/SESSION_HANDOFF.md` pointing at it. No code change.
+
 ## [4.24.1] - 2026-06-24 — Auto-collapse sidebar for a wide artifact panel
 
 ### Added

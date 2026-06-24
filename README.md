@@ -4,7 +4,7 @@ A unified workspace for chat, construction-document intelligence, projects, and 
 
 ## Vision
 
-Atelier Studio is built for individuals, small teams, and companies who want a single, structured AI workspace they can shape to their own workflow. Chat with Claude, upload construction plans and documents into a RAG-powered knowledge base, extract information from drawings via vision, and generate downloadable artifacts (Excel/Word/PDF) — all from one calm, executive-grade interface.
+Atelier Studio is built for individuals, small teams, and companies who want a single, structured AI workspace they can shape to their own workflow. Chat with Claude, upload construction plans and documents into a RAG-powered knowledge base, extract information from drawings via vision, generate brand-styled artifacts (Excel/Word/PDF/PowerPoint, plus HTML pages with a live preview), and have Claude generate images inline — all from one calm, executive-grade interface.
 
 **The provider split — Claude is the brain, Gemini is the senses:**
 - **Anthropic Claude** is the chat brain (Opus 4.8 default, Sonnet 4.6, Haiku 4.5) with web search.
