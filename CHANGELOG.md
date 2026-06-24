@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.24.1] - 2026-06-24 — Auto-collapse sidebar for a wide artifact panel
+
+### Added
+
+- When you drag the artifact panel wide enough to cramp the chat (chat column < ~520px with the sidebar expanded), the **sidebar auto-collapses** to give the chat more room — and **auto-restores** when you narrow the panel or close the artifact. It only restores what it auto-collapsed, so a sidebar you collapsed yourself stays collapsed.
+
+### Notes
+
+- Reacts to the panel-width drag, not to manual sidebar toggles (no fighting). Verified live: drag wide → sidebar collapsed; drag narrow → sidebar restored. typecheck clean, lint 0 errors, build clean, 335 tests pass.
+
 ## [4.24.0] - 2026-06-24 — Resizable artifact panel
 
 ### Added

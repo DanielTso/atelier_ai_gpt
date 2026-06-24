@@ -172,6 +172,9 @@ export default function Home() {
   // Sidebar collapse
   const [sidebarCollapsed, setSidebarCollapsed] = useLocalStorage('sidebar-collapsed', false)
   const [artifactPanelWidth, setArtifactPanelWidth] = useLocalStorage('artifact-panel-width', 448)
+  const sidebarCollapsedRef = useRef(sidebarCollapsed)
+  sidebarCollapsedRef.current = sidebarCollapsed
+  const autoCollapsedSidebarRef = useRef(false)
 
   // Appearance settings
   const { fontSize, setFontSize, messageDensity, setMessageDensity } = useAppearanceSettings()
@@ -574,6 +577,32 @@ export default function Home() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeChatId])
+
+  // Auto-collapse the sidebar when a wide artifact panel would cramp the chat, and
+  // restore it when the panel narrows or the artifact closes. Keyed only on the panel
+  // width + whether an artifact is open (NOT on sidebarCollapsed) so it reacts to drags
+  // without fighting a manual sidebar toggle. We only auto-restore what we auto-collapsed.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (activeArtifactId == null) {
+      if (autoCollapsedSidebarRef.current) {
+        autoCollapsedSidebarRef.current = false
+        setSidebarCollapsed(false)
+      }
+      return
+    }
+    // "Cramped" = the chat column would be narrower than ~520px with the sidebar expanded.
+    const SIDEBAR_W = 288
+    const cramped = window.innerWidth - SIDEBAR_W - artifactPanelWidth < 520
+    if (cramped && !sidebarCollapsedRef.current) {
+      autoCollapsedSidebarRef.current = true
+      setSidebarCollapsed(true)
+    } else if (!cramped && autoCollapsedSidebarRef.current) {
+      autoCollapsedSidebarRef.current = false
+      setSidebarCollapsed(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [artifactPanelWidth, activeArtifactId])
 
   // Auto-scroll with requestAnimationFrame for smoother scrolling
   useEffect(() => {
