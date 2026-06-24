@@ -88,6 +88,45 @@ export default function Home() {
   const standaloneChatsRef = useRef(standaloneChats)
   standaloneChatsRef.current = standaloneChats
 
+  // Auto-name a still-"New Chat" once it has at least one user+assistant exchange.
+  // Called both after a turn finishes (onFinish) and when such a chat is opened, so a
+  // chat that missed titling during its live turn gets backfilled on next open.
+  const maybeGenerateTitle = useCallback(async (chatId: number) => {
+    const chat = [...chatsRef.current, ...standaloneChatsRef.current].find(c => c.id === chatId)
+    if (!chat || chat.title !== 'New Chat') return
+    try {
+      const dbMessages = await getChatMessages(chatId, 2)
+      const userMsg = dbMessages.find(m => m.role === 'user')
+      const assistantMsg = dbMessages.find(m => m.role === 'assistant')
+      if (!userMsg || !assistantMsg) return // need a full exchange to title from
+      const res = await fetch('/api/generate-title', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chatId,
+          messages: [
+            { role: 'user', content: (userMsg.content || '').slice(0, 500) },
+            { role: 'assistant', content: (assistantMsg.content || '').slice(0, 500) },
+          ],
+          model: selectedModelRef.current,
+        }),
+      })
+      const data = res.ok ? await res.json().catch(() => null) : null
+      // Prefer the model's title; if it comes back empty, fall back to the first few
+      // words of the user's message so the chat never stays stuck on "New Chat".
+      let title: string = (data?.title || '').trim()
+      if (!title) {
+        title = (userMsg.content || '').replace(/\s+/g, ' ').trim().split(' ').slice(0, 6).join(' ').slice(0, 50)
+      }
+      if (!title) return
+      await updateChatTitle(chatId, title)
+      setChats(prev => prev.map(c => (c.id === chatId ? { ...c, title } : c)))
+      setStandaloneChats(prev => prev.map(c => (c.id === chatId ? { ...c, title } : c)))
+    } catch {
+      // Title generation is best-effort; silently ignore failures (retries on next open).
+    }
+  }, [])
+
   // Command palette state
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
 
@@ -265,46 +304,8 @@ export default function Home() {
             .catch(() => {}) // suggestion pass is best-effort
         }
 
-        // Auto-generate title when still "New Chat" (retries up to 10 messages)
-        if (messageCount >= 2 && messageCount <= 10) {
-          const chat = [...chatsRef.current, ...standaloneChatsRef.current]
-            .find(c => c.id === currentChatId)
-          if (chat && chat.title === 'New Chat') {
-            const dbMessages = await getChatMessages(currentChatId, 2)
-            const userMsg = dbMessages.find(m => m.role === 'user')
-            try {
-              // Truncate content for title generation to keep requests small
-              const userSnippet = (userMsg?.content || '').slice(0, 500)
-              const assistantSnippet = textContent.slice(0, 500)
-              const res = await fetch('/api/generate-title', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  chatId: currentChatId,
-                  messages: [
-                    { role: 'user', content: userSnippet },
-                    { role: 'assistant', content: assistantSnippet },
-                  ],
-                  model: selectedModelRef.current,
-                }),
-              })
-              if (res.ok) {
-                const data = await res.json()
-                if (data?.title) {
-                  await updateChatTitle(currentChatId, data.title)
-                  setChats(prev => prev.map(c =>
-                    c.id === currentChatId ? { ...c, title: data.title } : c
-                  ))
-                  setStandaloneChats(prev => prev.map(c =>
-                    c.id === currentChatId ? { ...c, title: data.title } : c
-                  ))
-                }
-              }
-            } catch {
-              // Title generation is best-effort; silently ignore failures
-            }
-          }
-        }
+        // Auto-generate the chat title once there's a full exchange (best-effort).
+        maybeGenerateTitle(currentChatId)
 
         // Best-effort: re-fetch artifacts so a freshly-generated one appears
         fetch(`/api/artifacts?chatId=${currentChatId}`)
@@ -523,6 +524,8 @@ export default function Home() {
   useEffect(() => {
     if (activeChatId) {
       loadMessages(activeChatId)
+      // Backfill the title if this chat is still "New Chat" but already has an exchange.
+      maybeGenerateTitle(activeChatId)
       // Load system prompt for this chat
       getChatWithContext(activeChatId).then(chat => {
         setCurrentSystemPrompt(chat?.systemPrompt ?? null)

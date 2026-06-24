@@ -30,7 +30,9 @@ export async function POST(req: Request) {
         { role: 'system', content: TITLE_PROMPT },
         { role: 'user', content: conversationText },
       ],
-      maxOutputTokens: 50,
+      // Generous budget: the Gemini flash housekeeping model spends output tokens on
+      // internal thinking, so a tight cap (e.g. 50) can leave the visible title empty.
+      maxOutputTokens: 512,
     });
 
     // Clean the title: trim, strip surrounding quotes, truncate

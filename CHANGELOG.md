@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.21.2] - 2026-06-24 — Fix chats stuck on "New Chat"
+
+### Fixed
+
+- **Chats stayed titled "New Chat"** instead of getting an auto-generated title. Two causes: (1) the title model (`gemini-3.5-flash`) was capped at `maxOutputTokens: 50`, and its internal thinking consumed the budget — so it returned an **empty title** that the client then skipped; (2) titling only ran during the live turn, so any chat that missed it never got a second chance.
+- **Fixes:** raised the title generation budget to 512 tokens; extracted a `maybeGenerateTitle` helper that now **also backfills the title when a still-"New Chat" with an exchange is opened**; and added a fallback that derives a title from the first user message if the model still returns nothing. A chat with a real exchange no longer stays "New Chat".
+
+### Notes
+
+- Verified live: opening a stuck "New Chat" retitled it ("2026 Transformer Lead Times"). typecheck clean, lint 0 errors, build clean, 328 tests pass.
+
 ## [4.21.1] - 2026-06-24 — Fix expired artifact download links (InvalidJWT)
 
 ### Fixed
