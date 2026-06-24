@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.22.0] - 2026-06-24 — HTML artifacts with live preview
+
+### Added
+
+- **`html` artifact type with a live side-panel preview** (Claude.ai-style). Claude can now produce a web page / landing page / interactive HTML mockup as an artifact (`type:"html"`, `format:"html"`, content = a complete standalone HTML document). It renders live in the `ArtifactWorkspace` via a sandboxed `<iframe srcDoc>` (Preview / Edit / Versions tabs, Download, and AI regenerate all work). Previously Claude could only return webpages as Markdown code blocks.
+- HTML passes through the renderer unchanged (`text/html`, no conversion); edit/regenerate keep raw HTML (no Markdown coercion). New `<>` icon on HTML artifact cards.
+
+### Notes
+
+- Security: the preview iframe uses `sandbox="allow-scripts"` (no `allow-same-origin`) — the previewed page runs its own JS but can't reach app cookies/session.
+- No DB migration (artifact `type`/`format`/`content` are flexible text columns). Verified live: Claude built an HTML landing page → opened with a working live preview. typecheck clean, lint 0 errors, build clean, 331 tests pass.
+
 ## [4.21.2] - 2026-06-24 — Fix chats stuck on "New Chat"
 
 ### Fixed

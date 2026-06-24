@@ -34,6 +34,17 @@ describe('generate_artifact tool', () => {
     expect(out).toEqual({ artifactId: 9, title: 'Schedule', type: 'xlsx', downloadUrl: 'signed:url' })
   })
 
+  it('supports html artifacts (string content, html path)', async () => {
+    mockRender.mockResolvedValue({ buffer: Buffer.from('<html>'), contentType: 'text/html; charset=utf-8', ext: 'html' })
+    const make = await load()
+    const tool = make({ chatId: 3, projectId: 1 })
+    const out = await tool.execute!({ type: 'html', title: 'Landing', format: 'html', content: '<!doctype html><h1>Hi</h1>' }, {} as never)
+    expect(mockRender).toHaveBeenCalledWith('html', 'Landing', '<!doctype html><h1>Hi</h1>')
+    expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ type: 'html', format: 'html', content: '<!doctype html><h1>Hi</h1>' }))
+    expect(out).toEqual({ artifactId: 9, title: 'Landing', type: 'html', downloadUrl: 'signed:url' })
+    expect(mockUpload.mock.calls[0][0]).toMatch(/^artifacts\/1\/.+\/landing\.html$/)
+  })
+
   it('persists only after a successful upload (real path, no pending sentinel)', async () => {
     const make = await load()
     const tool = make({ chatId: 3, projectId: 1 })

@@ -37,6 +37,14 @@ describe('renderArtifact', () => {
     expect(out.buffer.subarray(0, 4).equals(PK)).toBe(true)
   })
 
+  it('renders html as a pass-through UTF-8 document', async () => {
+    const html = '<!doctype html><html><head><style>body{color:red}</style></head><body><h1>Hi</h1></body></html>'
+    const out = await renderArtifact('html', 'Landing', html)
+    expect(out.ext).toBe('html')
+    expect(out.contentType).toContain('text/html')
+    expect(out.buffer.toString('utf-8')).toBe(html)
+  })
+
   it('throws on an unknown type', async () => {
     // @ts-expect-error invalid type
     await expect(renderArtifact('txt', 't', 'x')).rejects.toThrow()

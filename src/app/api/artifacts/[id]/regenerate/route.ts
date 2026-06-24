@@ -34,8 +34,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const type = artifact.type as ArtifactType
     const title = artifact.title
     const isSheets = artifact.format === 'sheets'
+    const isHtml = artifact.format === 'html'
     const prompt = isSheets
       ? `You are revising a spreadsheet artifact titled "${title}". Current content is a JSON array of {name, rows}:\n\n${artifact.content ?? '[]'}\n\nApply this instruction: ${body.data.instruction}\n\nReturn ONLY the full updated JSON array — no prose, no code fences.`
+      : isHtml
+      ? `You are revising an HTML page artifact titled "${title}". Current content is a complete standalone HTML document:\n\n${artifact.content ?? ''}\n\nApply this instruction: ${body.data.instruction}\n\nReturn ONLY the full updated HTML document (inline CSS/JS, single file) — no prose, no code fences.`
       : `You are revising a document artifact titled "${title}". Current content is Markdown:\n\n${artifact.content ?? ''}\n\nApply this instruction: ${body.data.instruction}\n\nReturn ONLY the full updated Markdown — no commentary, no code fences.`
 
     const anthropic = createAnthropic({ apiKey })

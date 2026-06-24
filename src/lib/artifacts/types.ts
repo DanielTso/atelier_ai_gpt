@@ -1,4 +1,4 @@
-export type ArtifactType = 'xlsx' | 'docx' | 'pdf' | 'pptx'
+export type ArtifactType = 'xlsx' | 'docx' | 'pdf' | 'pptx' | 'html'
 
 export interface SheetSpec {
   name: string

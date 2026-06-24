@@ -58,6 +58,16 @@ describe('POST /api/artifacts/[id]/edit', () => {
     expect(m.addArtifactVersion).toHaveBeenCalledWith(1, expect.objectContaining({ type: 'pdf', format: 'markdown', content: '# new body' }))
   })
 
+  it('edits an html artifact, keeping format html and passing content through', async () => {
+    m.getArtifactById.mockResolvedValue({ id: 1, projectId: 5, type: 'html', title: 'Landing', format: 'html', content: '<h1>old</h1>' })
+    m.renderArtifact.mockResolvedValue({ buffer: Buffer.from('<h1>new</h1>'), contentType: 'text/html; charset=utf-8', ext: 'html' })
+    const POST = await importRoute()
+    const res = await POST(req({ content: '<h1>new</h1>' }), ctx('1'))
+    expect(res.status).toBe(200)
+    expect(m.renderArtifact).toHaveBeenCalledWith('html', 'Landing', '<h1>new</h1>')
+    expect(m.addArtifactVersion).toHaveBeenCalledWith(1, expect.objectContaining({ type: 'html', format: 'html', content: '<h1>new</h1>' }))
+  })
+
   it('503 when storage is not configured', async () => {
     m.isStorageConfigured.mockReturnValue(false)
     const POST = await importRoute()

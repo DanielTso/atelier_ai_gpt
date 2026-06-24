@@ -26,7 +26,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const type = artifact.type as ArtifactType
     const title = body.data.title ?? artifact.title
     const content = body.data.content
-    const format = artifact.format ?? (typeof content === 'string' ? 'markdown' : 'sheets')
+    const format = artifact.format ?? (type === 'html' ? 'html' : typeof content === 'string' ? 'markdown' : 'sheets')
 
     const { buffer, contentType, ext } = await renderArtifact(type, title, content)
     const path = artifactStoragePath(artifact.projectId, title, ext)

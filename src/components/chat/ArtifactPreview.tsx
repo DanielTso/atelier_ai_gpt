@@ -44,6 +44,19 @@ function SheetsPreview({ content }: { content: string }) {
 /** Inline preview of an artifact from its SOURCE content (not the binary):
  *  pdf → exact signed-URL iframe; sheets → HTML table; markdown (docx/pptx) → rendered HTML. */
 export function ArtifactPreview({ artifact }: { artifact: ArtifactSummary }) {
+  // HTML → live preview from the stored source. sandbox="allow-scripts" runs the
+  // page's own JS but, without allow-same-origin, it cannot reach app cookies/session.
+  if (artifact.type === 'html') {
+    return (
+      <iframe
+        srcDoc={artifact.content ?? ''}
+        title={artifact.title}
+        sandbox="allow-scripts"
+        className="h-full min-h-[60vh] w-full rounded-lg border border-border bg-white"
+      />
+    )
+  }
+
   if (artifact.type === 'pdf' && artifact.downloadUrl) {
     return (
       <iframe

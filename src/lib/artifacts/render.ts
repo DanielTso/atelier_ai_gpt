@@ -9,6 +9,7 @@ const CONTENT_TYPE: Record<ArtifactType, string> = {
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   pdf: 'application/pdf',
   pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  html: 'text/html; charset=utf-8',
 }
 
 export async function renderArtifact(
@@ -25,6 +26,9 @@ export async function renderArtifact(
     buffer = await toPdf(typeof content === 'string' ? content : '')
   } else if (type === 'pptx') {
     buffer = await toPptx(typeof content === 'string' ? content : '')
+  } else if (type === 'html') {
+    // HTML needs no conversion — the model's HTML string IS the artifact.
+    buffer = Buffer.from(typeof content === 'string' ? content : '', 'utf-8')
   } else {
     throw new Error(`Unknown artifact type: ${type}`)
   }
