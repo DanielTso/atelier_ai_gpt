@@ -5,6 +5,7 @@ vi.mock('@/db', () => ({ get db() { return testDb } }))
 vi.mock('@/lib/storage', () => ({
   createSignedDownloadUrl: vi.fn(async (p: string) => `signed:${p}`),
   isStorageConfigured: () => true,
+  ARTIFACT_URL_TTL_SECONDS: 86400,
 }))
 
 describe('getAllArtifacts', () => {

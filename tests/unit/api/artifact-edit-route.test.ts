@@ -16,6 +16,7 @@ async function importRoute() {
   vi.doMock('@/lib/storage', () => ({
     isStorageConfigured: m.isStorageConfigured, uploadBuffer: m.uploadBuffer,
     createSignedDownloadUrl: m.createSignedDownloadUrl, removeObjects: m.removeObjects,
+    ARTIFACT_URL_TTL_SECONDS: 86400,
   }))
   vi.doMock('@/lib/artifacts/render', () => ({ renderArtifact: m.renderArtifact }))
   const { POST } = await import('@/app/api/artifacts/[id]/edit/route')

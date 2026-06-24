@@ -3,7 +3,7 @@
 import { db } from '@/db'
 import { projects, chats, messages, settings, messageEmbeddings, personaUsage, chatTopics, documents, documentChunks, documentRevisions, messageAttachments, artifacts, artifactVersions, memorySuggestions } from '@/db/schema'
 import { eq, desc, isNull, isNotNull, and, lte, asc, count, inArray, sql } from 'drizzle-orm'
-import { isStorageConfigured, uploadBuffer, createSignedDownloadUrl, removeObjects } from '@/lib/storage'
+import { isStorageConfigured, uploadBuffer, createSignedDownloadUrl, removeObjects, ARTIFACT_URL_TTL_SECONDS } from '@/lib/storage'
 
 function sanitizeAttachmentName(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/^\.+$/, '_')
@@ -681,7 +681,7 @@ export async function getArtifactVersions(artifactId: number) {
   return await Promise.all(rows.map(async (v) => ({
     id: v.id, version: v.version, type: v.type, title: v.title, format: v.format, content: v.content,
     createdAt: v.createdAt,
-    downloadUrl: v.storagePath ? await createSignedDownloadUrl(v.storagePath).catch(() => null) : null,
+    downloadUrl: v.storagePath ? await createSignedDownloadUrl(v.storagePath, ARTIFACT_URL_TTL_SECONDS).catch(() => null) : null,
   })))
 }
 
@@ -725,12 +725,13 @@ export async function restoreArtifactVersion(artifactId: number, version: number
   })
 }
 
-// Row → API shape with a short-lived signed download URL (best-effort).
+// Row → API shape with a signed download URL (best-effort). Uses the generous
+// artifact TTL so the link doesn't expire before the user clicks Download.
 async function toArtifactSummary(r: typeof artifacts.$inferSelect) {
   return {
     id: r.id, chatId: r.chatId, type: r.type, title: r.title, status: r.status, createdAt: r.createdAt,
     format: r.format, content: r.content, version: r.currentVersion,
-    downloadUrl: r.storagePath ? await createSignedDownloadUrl(r.storagePath).catch(() => null) : null,
+    downloadUrl: r.storagePath ? await createSignedDownloadUrl(r.storagePath, ARTIFACT_URL_TTL_SECONDS).catch(() => null) : null,
   }
 }
 

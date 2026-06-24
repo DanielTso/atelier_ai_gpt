@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.21.1] - 2026-06-24 — Fix expired artifact download links (InvalidJWT)
+
+### Fixed
+
+- **Artifact "Download" failed with `InvalidJWT — "exp" claim timestamp check failed`** once the artifact workspace had been open longer than 5 minutes. Artifact download URLs were signed with the default 300s TTL, so the link expired before it was clicked. They now use a 24h TTL (`ARTIFACT_URL_TTL_SECONDS`, matching chat attachments), applied at every mint site: the `generate_artifact` tool, `getChatArtifacts`/`getAllArtifacts`, `getArtifactVersions`, and the edit/regenerate routes.
+
+### Notes
+
+- typecheck clean, lint 0 errors, build clean, 328 tests pass (artifact storage mocks updated for the new export).
+
 ## [4.21.0] - 2026-06-24 — Clean thinking + sources UI (Claude.ai-style)
 
 ### Added

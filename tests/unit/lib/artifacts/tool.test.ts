@@ -9,7 +9,7 @@ const mockRemove = vi.fn()
 async function load() {
   vi.resetModules()
   vi.doMock('@/lib/artifacts/render', () => ({ renderArtifact: mockRender }))
-  vi.doMock('@/lib/storage', () => ({ uploadBuffer: mockUpload, createSignedDownloadUrl: mockSigned, removeObjects: mockRemove, isStorageConfigured: () => true }))
+  vi.doMock('@/lib/storage', () => ({ uploadBuffer: mockUpload, createSignedDownloadUrl: mockSigned, removeObjects: mockRemove, isStorageConfigured: () => true, ARTIFACT_URL_TTL_SECONDS: 86400 }))
   vi.doMock('@/app/actions', () => ({ createArtifact: mockCreate, updateArtifactStoragePath: vi.fn() }))
   return (await import('@/lib/artifacts/tool')).createGenerateArtifactTool
 }

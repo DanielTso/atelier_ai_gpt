@@ -17,6 +17,7 @@ vi.mock('@/lib/storage', () => ({
   get uploadBuffer() { return mockUploadBuffer },
   get createSignedDownloadUrl() { return mockCreateSignedDownloadUrl },
   get removeObjects() { return mockRemoveObjects },
+  ARTIFACT_URL_TTL_SECONDS: 86400,
 }))
 
 import {

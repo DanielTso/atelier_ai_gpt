@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getArtifactById, addArtifactVersion } from '@/app/actions'
-import { isStorageConfigured, uploadBuffer, createSignedDownloadUrl, removeObjects } from '@/lib/storage'
+import { isStorageConfigured, uploadBuffer, createSignedDownloadUrl, removeObjects, ARTIFACT_URL_TTL_SECONDS } from '@/lib/storage'
 import { renderArtifact } from '@/lib/artifacts/render'
 import { artifactStoragePath } from '@/lib/artifacts/path'
 import type { ArtifactType } from '@/lib/artifacts/types'
@@ -41,7 +41,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       throw e
     }
 
-    const downloadUrl = await createSignedDownloadUrl(path).catch(() => null)
+    const downloadUrl = await createSignedDownloadUrl(path, ARTIFACT_URL_TTL_SECONDS).catch(() => null)
     return NextResponse.json({ artifactId: id, version: result.version, title, type, downloadUrl })
   } catch (error) {
     return apiError(error, 'Failed to edit artifact', 500)

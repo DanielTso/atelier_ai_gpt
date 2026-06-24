@@ -45,6 +45,11 @@ export async function downloadToBuffer(path: string): Promise<Buffer> {
   return Buffer.from(await data.arrayBuffer())
 }
 
+// Download links that sit in the UI (artifact cards, the artifact workspace) need a
+// generous TTL — a short one expires before the user clicks (Supabase returns an
+// "exp claim" InvalidJWT error). Matches the chat-attachment TTL.
+export const ARTIFACT_URL_TTL_SECONDS = 24 * 60 * 60 // 24h
+
 export async function createSignedDownloadUrl(path: string, ttlSeconds = 300): Promise<string> {
   const { data, error } = await bucket().createSignedUrl(path, ttlSeconds)
   if (error || !data) throw error ?? new Error('Failed to create signed URL')

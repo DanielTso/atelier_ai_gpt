@@ -2,7 +2,7 @@ import { tool } from 'ai'
 import { z } from 'zod'
 import { renderArtifact } from './render'
 import { artifactStoragePath } from './path'
-import { uploadBuffer, createSignedDownloadUrl, removeObjects } from '@/lib/storage'
+import { uploadBuffer, createSignedDownloadUrl, removeObjects, ARTIFACT_URL_TTL_SECONDS } from '@/lib/storage'
 import { createArtifact } from '@/app/actions'
 import type { ArtifactType } from './types'
 
@@ -41,7 +41,7 @@ export function createGenerateArtifactTool(ctx: { chatId: number; projectId: num
           await removeObjects([path]).catch(() => {}) // don't leave an orphan object if the insert fails
           throw e
         }
-        const downloadUrl = await createSignedDownloadUrl(path)
+        const downloadUrl = await createSignedDownloadUrl(path, ARTIFACT_URL_TTL_SECONDS)
         return { artifactId: row.id, title, type, downloadUrl }
       } catch (e) {
         console.warn('[generate_artifact] failed:', e instanceof Error ? e.message : e)
