@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.20.3] - 2026-06-24 — Fix raw Markdown (`**`, `##`) leaking into documents
+
+### Fixed
+
+- **Excel cells dumped raw Markdown** — `## Section`, `**bold**`, etc. showed their literal markers because the xlsx renderer never parsed Markdown in cells. Cells now run through `mdToPlainText()` so they show clean plain text (markers stripped), keeping the formula-injection guard.
+- **Word/PDF/PPTX list items leaked raw `**`/`*`** — marked nests a list item's inline content under a `text` token that the flattener didn't recurse into, so bold/italic inside bullets stayed literal. `inlines()` now recurses nested tokens, so list-item emphasis renders as real bold/italic.
+
+### Notes
+
+- Verified on rendered output: Word list item "bullet with **strong**" now renders as real bold with no leftover markers; Excel "## Section" → "Section". typecheck clean, lint 0 errors, build clean, **328 tests pass**.
+- Applies to **newly generated** documents. Documents created before this release still contain the old raw text — regenerate them to get the fix.
+
 ## [4.20.2] - 2026-06-22 — Chat-first: stop over-generating downloadable files
 
 ### Fixed

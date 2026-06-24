@@ -1,10 +1,14 @@
 // src/lib/artifacts/toXlsx.ts
 import type { SheetSpec } from './types'
 import { BRAND, FONT, argb } from './style'
+import { mdToPlainText } from './markdown'
 
-function neutralizeCell(value: unknown): unknown {
+// Excel can't render Markdown — convert any Markdown markup in a string cell to plain
+// text (so "## A", "**bold**" don't show their raw markers), then apply the formula guard.
+function cleanCell(value: unknown): unknown {
   if (typeof value !== 'string' || value.length === 0) return value
-  return /^[=+\-@\t\r]/.test(value) ? `'${value}` : value
+  const text = /[*_`#~]/.test(value) ? mdToPlainText(value) : value
+  return /^[=+\-@\t\r]/.test(text) ? `'${text}` : text
 }
 
 const BORDER = { style: 'thin' as const, color: { argb: argb(BRAND.mutedLine) } }
@@ -21,7 +25,7 @@ export async function toXlsx(sheets: SheetSpec[]): Promise<Buffer> {
     const rows = spec.rows ?? []
 
     rows.forEach((row, i) => {
-      const added = ws.addRow(row.map(neutralizeCell))
+      const added = ws.addRow(row.map(cleanCell))
       added.eachCell({ includeEmpty: true }, cell => {
         cell.border = ALL_BORDERS
         cell.alignment = { vertical: 'middle', wrapText: true }

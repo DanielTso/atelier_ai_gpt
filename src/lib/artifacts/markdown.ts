@@ -21,12 +21,29 @@ function inlines(tokens: Token[] | undefined, ctx: { bold?: boolean; italic?: bo
       case 'br': out.push({ text: '\n' }); break
       case 'escape': out.push({ text: (t as Tokens.Escape).text, ...ctx }); break
       default: {
+        // marked nests inline content of list items (and some loose text) under a
+        // `text` token that carries its own `.tokens` — recurse so bold/italic inside
+        // list items is parsed instead of leaking raw `**`/`*` markers.
+        const nested = (t as { tokens?: Token[] }).tokens
+        if (Array.isArray(nested) && nested.length) { out.push(...inlines(nested, ctx)); break }
         const text = 'text' in t ? String((t as { text: unknown }).text) : ''
         if (text) out.push({ text, ...ctx })
       }
     }
   }
   return out.length ? out : [{ text: '' }]
+}
+
+/** Strip Markdown to plain text — for surfaces that can't render it (e.g. Excel cells). */
+export function mdToPlainText(md: string): string {
+  const flat = (inls: Inline[]) => inls.map(i => i.text).join('')
+  const out = parseMarkdown(md).map(b => {
+    if (b.type === 'heading' || b.type === 'paragraph') return flat(b.inlines)
+    if (b.type === 'list') return b.items.map(flat).join('\n')
+    if (b.type === 'table') return [b.header, ...b.rows].map(r => r.map(flat).join(' ')).join('\n')
+    return b.text
+  }).join('\n').trim()
+  return out || md
 }
 
 function cellInlines(cell: Tokens.TableCell): Inline[] {

@@ -26,4 +26,14 @@ describe('toXlsx', () => {
     await wb.xlsx.load(buf as any)
     expect(wb.worksheets.length).toBe(1)
   })
+
+  it('strips Markdown markup from string cells', async () => {
+    const buf = await toXlsx([{ name: 'S', rows: [['Item', 'Note'], ['## Section', 'a **bold** value']] }])
+    const wb = new ExcelJS.Workbook()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await wb.xlsx.load(buf as any)
+    const ws = wb.getWorksheet('S')!
+    expect(String(ws.getRow(2).getCell(1).value)).toBe('Section')
+    expect(String(ws.getRow(2).getCell(2).value)).toBe('a bold value')
+  })
 })

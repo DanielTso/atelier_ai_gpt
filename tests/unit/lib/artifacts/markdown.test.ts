@@ -1,8 +1,16 @@
 // tests/unit/lib/artifacts/markdown.test.ts
 import { describe, it, expect } from 'vitest'
-import { parseMarkdown } from '@/lib/artifacts/markdown'
+import { parseMarkdown, mdToPlainText } from '@/lib/artifacts/markdown'
 
 describe('parseMarkdown', () => {
+  it('parses inline bold inside list items without leaking raw markers', () => {
+    const [list] = parseMarkdown('- bullet with **strong** text')
+    if (list.type !== 'list') throw new Error('expected list')
+    const runs = list.items[0]!
+    expect(runs.some(r => r.bold && r.text === 'strong')).toBe(true)
+    expect(runs.map(r => r.text).join('')).not.toContain('*')
+  })
+
   it('parses headings with level', () => {
     const [b] = parseMarkdown('## Scope')
     expect(b).toMatchObject({ type: 'heading', level: 2 })
@@ -37,5 +45,15 @@ describe('parseMarkdown', () => {
   it('degrades unsupported tokens and never throws', () => {
     expect(() => parseMarkdown('> quote\n\n---\n\n![x](y)')).not.toThrow()
     expect(parseMarkdown('')).toEqual([])
+  })
+})
+
+describe('mdToPlainText', () => {
+  it('strips heading, bold, italic, and code markers', () => {
+    expect(mdToPlainText('## Section A')).toBe('Section A')
+    expect(mdToPlainText('This is **bold** and *italic* and `code`')).toBe('This is bold and italic and code')
+  })
+  it('returns plain strings unchanged', () => {
+    expect(mdToPlainText('Total')).toBe('Total')
   })
 })
