@@ -8,7 +8,7 @@ import { useEffect, useState, useRef, useCallback, useMemo } from "react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { extractText } from "@/lib/messageParts"
-import { getProjects, createProject, getAllProjectChats, createChat, getChatMessages, saveMessage, deleteProject, updateProjectName, updateProjectContext, updateChatTitle, getStandaloneChats, createStandaloneChat, deleteChat, moveChatToProject, archiveChat, restoreChat, getArchivedChats, getMessageCount, getChatWithContext, updateChatSystemPrompt, getProjectDefaults, recordPersonaUsage, incrementUsageMessageCount, getProjectChatPreviews, saveMessageAttachments, getChatAttachments, getSetting, setSetting } from "./actions"
+import { getProjects, createProject, getAllProjectChats, createChat, getChatMessages, saveMessage, deleteProject, updateProjectName, updateProjectContext, updateChatTitle, getStandaloneChats, createStandaloneChat, deleteChat, moveChatToProject, archiveChat, restoreChat, getArchivedChats, getMessageCount, getChatWithContext, updateChatSystemPrompt, getProjectDefaults, recordPersonaUsage, incrementUsageMessageCount, getProjectChatPreviews, saveMessageAttachments, saveGeneratedImage, getChatAttachments, getSetting, setSetting } from "./actions"
 import { Sidebar } from "@/components/chat/sidebar"
 import type { SidebarActions, AppView } from "@/components/chat/sidebar"
 import { HomeGreeting } from "@/components/chat/HomeGreeting"
@@ -41,6 +41,24 @@ import type { Model, ArtifactSummary } from "@/types"
 // Types matching DB schema roughly
 type Project = { id: number; name: string; memory?: string | null; instructions?: string | null; createdAt?: Date | null; updatedAt?: Date | null }
 type Chat = { id: number; projectId: number | null; title: string; archived?: boolean | null }
+
+type GeneratedImageOutput = { storagePath: string; url: string; mediaType: string; filename?: string }
+
+// The generate_image tool surfaces its result as a tool-result part (not a `file` part).
+// Pull the successful outputs so onFinish can persist them and render them inline.
+function extractGeneratedImageOutputs(parts: readonly unknown[]): GeneratedImageOutput[] {
+  const out: GeneratedImageOutput[] = []
+  for (const p of parts) {
+    const part = p as { type?: string; toolName?: string; output?: unknown }
+    const isImageTool = part.type === 'tool-generate_image' || (part.type === 'dynamic-tool' && part.toolName === 'generate_image')
+    if (!isImageTool) continue
+    const o = part.output as Record<string, unknown> | undefined
+    if (o && typeof o.storagePath === 'string' && typeof o.url === 'string' && typeof o.mediaType === 'string') {
+      out.push({ storagePath: o.storagePath, url: o.url, mediaType: o.mediaType, filename: typeof o.filename === 'string' ? o.filename : undefined })
+    }
+  }
+  return out
+}
 
 export default function Home() {
   const { setTheme, theme } = useTheme()
@@ -233,9 +251,27 @@ export default function Home() {
 
       // Extract text content from message parts
       const textContent = extractText(message.parts)
+      // Images produced by the generate_image tool (surfaced as tool-result parts).
+      const imageOutputs = extractGeneratedImageOutputs(message.parts)
 
-      if (currentChatId && (textContent.trim() || message.parts.some(p => p.type === 'file'))) {
+      if (currentChatId && (textContent.trim() || message.parts.some(p => p.type === 'file') || imageOutputs.length > 0)) {
         const result = await saveMessage(currentChatId, 'assistant', textContent || '(image)')
+
+        // Persist + inline-render images from the generate_image tool. The bytes are
+        // already in storage (uploaded by the tool); link them to this message, then
+        // optimistically append file parts so they show without a reload.
+        if (result?.[0]?.id && imageOutputs.length > 0) {
+          try {
+            await saveGeneratedImage(result[0].id, currentChatId, imageOutputs.map(o => ({
+              storagePath: o.storagePath, mediaType: o.mediaType, filename: o.filename ?? 'generated-image.png',
+            })))
+          } catch (err) {
+            console.error('[onFinish] Failed to save generated image:', err)
+          }
+          setMessages(prev => prev.map(m => m.id === message.id
+            ? { ...m, parts: [...m.parts, ...imageOutputs.map(o => ({ type: 'file' as const, mediaType: o.mediaType, url: o.url }))] }
+            : m))
+        }
 
         // Save AI-generated images (file parts) to messageAttachments
         if (result?.[0]?.id) {

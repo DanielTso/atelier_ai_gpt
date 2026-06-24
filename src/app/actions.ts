@@ -627,6 +627,22 @@ export async function saveMessageAttachments(
   return await db.insert(messageAttachments).values(rows).returning()
 }
 
+// Link an already-uploaded generated image (from the generate_image tool) to a message.
+// The bytes are already in storage at `storagePath`; we just insert the attachment row so
+// getChatAttachments mints a signed URL and the image renders inline like any attachment.
+export async function saveGeneratedImage(
+  messageId: number,
+  chatId: number,
+  items: { storagePath: string; mediaType: string; filename: string }[]
+) {
+  if (items.length === 0) return []
+  const rows = items.map(it => ({
+    messageId, chatId, filename: it.filename, mediaType: it.mediaType,
+    storagePath: it.storagePath, dataUrl: null, fileSize: 0,
+  }))
+  return await db.insert(messageAttachments).values(rows).returning()
+}
+
 export async function getChatAttachments(chatId: number) {
   const rows = await db.select().from(messageAttachments).where(eq(messageAttachments.chatId, chatId))
   return await Promise.all(rows.map(async (r) => {

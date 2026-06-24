@@ -6,18 +6,20 @@ import { createProvider } from '@/lib/providers';
 import { apiError } from '@/lib/errors';
 import { chatRequestSchema } from '@/lib/validation';
 import { createGenerateArtifactTool } from '@/lib/artifacts/tool';
+import { createGenerateImageTool } from '@/lib/image/tool';
 import { isStorageConfigured } from '@/lib/storage';
 
 // Configuration for hybrid context management
 const RECENT_MESSAGES_LIMIT = 20; // Keep last N messages in full detail
 
-// Reinforces chat-first behavior when the generate_artifact tool is available, so the
-// model writes answers (emails, summaries, drafts) directly in the conversation and only
-// produces a downloadable file when the user explicitly asks for one.
-const ARTIFACT_GUIDANCE =
+// Reinforces chat-first behavior when the tools are available, so the model writes answers
+// (emails, summaries, drafts) directly in the conversation and only reaches for a tool on an
+// explicit file/image request.
+const TOOL_GUIDANCE =
   'You are a helpful assistant in a chat conversation. Respond directly in chat using Markdown for almost everything the user asks. ' +
-  'You also have a generate_artifact tool that creates a downloadable file (Word/Excel/PDF/PowerPoint). ' +
-  'Only use generate_artifact when the user EXPLICITLY asks for a downloadable or exported file (e.g. "make a spreadsheet", "export to Word", "create a PDF", "build a slide deck"). ' +
+  'You also have two tools: generate_image creates an image shown INLINE in the conversation; generate_artifact creates a DOWNLOADABLE file (Word/Excel/PDF/PowerPoint) or an HTML page with a live preview. ' +
+  'Use generate_image when the user asks to create/generate/draw/design/make an image, illustration, mockup, logo, icon, diagram, or picture. ' +
+  'Use generate_artifact only when the user EXPLICITLY asks for a downloadable/exported file or a web page/HTML mockup ("make a spreadsheet", "export to Word", "create a PDF", "build a slide deck", "build me a landing page"). ' +
   'If the user asks you to write, draft, or compose an email, message, summary, report, plan, list, or table to read in the conversation, write it directly in your reply — do NOT create a file. When in doubt, answer in chat.';
 
 function buildContextPrefix(
@@ -106,8 +108,12 @@ export async function POST(req: Request) {
       //    Prepend chat-first guidance so the tool is reserved for explicit file requests.
       if (modelName.startsWith('claude') && isStorageConfigured()) {
         const projectId = chat?.projectId ?? null;
-        tools = { ...(providerTools ?? {}), generate_artifact: createGenerateArtifactTool({ chatId, projectId }) };
-        systemPrompt = systemPrompt ? `${ARTIFACT_GUIDANCE}\n\n${systemPrompt}` : ARTIFACT_GUIDANCE;
+        tools = {
+          ...(providerTools ?? {}),
+          generate_artifact: createGenerateArtifactTool({ chatId, projectId }),
+          generate_image: createGenerateImageTool({ chatId, projectId }),
+        };
+        systemPrompt = systemPrompt ? `${TOOL_GUIDANCE}\n\n${systemPrompt}` : TOOL_GUIDANCE;
       }
     }
 

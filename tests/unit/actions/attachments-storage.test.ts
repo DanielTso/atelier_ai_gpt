@@ -24,6 +24,7 @@ import {
   createChat,
   saveMessage,
   saveMessageAttachments,
+  saveGeneratedImage,
   getChatAttachments,
   deleteChat,
 } from '@/app/actions'
@@ -127,6 +128,23 @@ describe('attachment storage lifecycle', () => {
     await expect(saveMessageAttachments(messageId, chatId, [
       { filename: 'big.png', mediaType: 'image/png', dataUrl: `data:image/png;base64,${huge}`, fileSize: huge.length },
     ])).rejects.toThrow('Attachment too large')
+  })
+
+  it('saveGeneratedImage links an existing storage object (no upload) and renders inline', async () => {
+    const path = `attachments/${chatId}/generated/abc.png`
+    const [row] = await saveGeneratedImage(messageId, chatId, [
+      { storagePath: path, mediaType: 'image/png', filename: 'generated-image.png' },
+    ])
+    // Inserts a row pointing at the already-uploaded object; no re-upload.
+    expect(row.storagePath).toBe(path)
+    expect(row.dataUrl).toBeNull()
+    expect(mockUploadBuffer).not.toHaveBeenCalled()
+
+    const rows = await getChatAttachments(chatId)
+    expect(rows).toHaveLength(1)
+    expect(rows[0].url).toBe(`signed:${path}`)
+    expect(rows[0].mediaType).toBe('image/png')
+    expect(rows[0].messageId).toBe(messageId)
   })
 
   it('configured → deleteChat calls removeObjects with the stored path', async () => {

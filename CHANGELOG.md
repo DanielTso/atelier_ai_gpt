@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.23.0] - 2026-06-24 — Inline image generation (Nano Banana tool for Claude)
+
+### Added
+
+- **`generate_image` tool** — Claude can now generate images **inline mid-conversation** via Nano Banana 2 (`gemini-3.1-flash-image`), instead of only being available as a separately selectable model. Ask "generate/draw/design an image of …" and the picture appears in the reply. New `src/lib/image/tool.ts`; merged into the Claude tool set (with `generate_artifact`) when storage is configured; system guidance steers chat-first / image-on-explicit-request.
+- The tool generates server-side, **uploads the image to storage, and returns only a small descriptor** (path + signed URL) — no base64 in the conversation, so token cost stays low. `onFinish` links it to the assistant message (new `saveGeneratedImage` action) and renders it inline immediately, reusing the existing `message_attachments` path (durable across reloads).
+
+### Notes
+
+- The standalone Nano-Banana-as-a-model picker entry is unchanged. Verified live: Claude generated a construction-dashboard image inline that persisted across reload. typecheck clean, lint 0 errors, build clean, 335 tests pass (new: image-tool + `saveGeneratedImage`).
+
 ## [4.22.0] - 2026-06-24 — HTML artifacts with live preview
 
 ### Added
