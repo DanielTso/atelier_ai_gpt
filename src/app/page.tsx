@@ -705,8 +705,9 @@ export default function Home() {
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // Send on Ctrl+Enter or Cmd+Enter
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    // Enter sends; Shift+Enter inserts a newline. Ignore Enter while an IME
+    // composition is active (e.g. CJK input) so it doesn't send mid-word.
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault()
       handleSendMessage()
     }

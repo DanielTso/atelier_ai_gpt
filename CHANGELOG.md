@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.20.5] - 2026-06-24 — Enter sends the message
+
+### Changed
+
+- **Enter now sends** a chat message; **Shift+Enter** inserts a newline (Ctrl/Cmd+Enter still sends too). Previously only Ctrl+Enter sent. Enter is ignored while an IME composition is active (CJK input) so it never sends mid-word. Composer placeholder updated.
+
+### Notes
+
+- typecheck clean, lint 0 errors, build clean, 328 tests pass.
+
 ## [4.20.4] - 2026-06-24 — Fix double "AI" bubble during streaming
 
 ### Fixed

@@ -431,7 +431,7 @@ export const ChatInputArea = memo(function ChatInputArea({
             minRows={1}
             maxRows={6}
             className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 pr-12 focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all placeholder:text-muted-foreground disabled:opacity-50 resize-none"
-            placeholder="Type a message... (Ctrl+Enter to send)"
+            placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
           />
           <button
             type="submit"
