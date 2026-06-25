@@ -4,6 +4,10 @@ import { db } from '@/db'
 import { projects, chats, messages, settings, messageEmbeddings, personaUsage, chatTopics, documents, documentChunks, documentRevisions, messageAttachments, artifacts, artifactVersions, memorySuggestions } from '@/db/schema'
 import { eq, desc, isNull, isNotNull, and, lte, asc, count, inArray, sql } from 'drizzle-orm'
 import { isStorageConfigured, uploadBuffer, createSignedDownloadUrl, removeObjects, signedArtifactUrl } from '@/lib/storage'
+import { blankArtifactTemplate } from '@/lib/artifacts/templates'
+import { renderArtifact } from '@/lib/artifacts/render'
+import { artifactStoragePath } from '@/lib/artifacts/path'
+import type { ArtifactType, SheetSpec } from '@/lib/artifacts/types'
 
 function sanitizeAttachmentName(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/^\.+$/, '_')
@@ -742,11 +746,62 @@ export async function deleteArtifact(id: number) {
   return await db.delete(artifacts).where(eq(artifacts.id, id)).returning()
 }
 
-// Bounded: select only a recent page and sign URLs for those rows. Without a cap
-// this grew unbounded with usage and fired one Storage request per artifact.
+// Bounded gallery list: recent artifacts + source metadata (chat title, project name)
+// and an "edited" timestamp = the latest version's created_at (fallback: the artifact's).
 export async function getAllArtifacts(limit = 60) {
-  const rows = await db.select().from(artifacts).orderBy(desc(artifacts.createdAt)).limit(limit)
-  return await Promise.all(rows.map(toArtifactSummary))
+  const rows = await db
+    .select({
+      id: artifacts.id, chatId: artifacts.chatId, type: artifacts.type, title: artifacts.title,
+      status: artifacts.status, createdAt: artifacts.createdAt, format: artifacts.format,
+      content: artifacts.content, version: artifacts.currentVersion, storagePath: artifacts.storagePath,
+      chatTitle: chats.title, projectName: projects.name,
+      editedAt: sql<Date>`max(${artifactVersions.createdAt})`,
+    })
+    .from(artifacts)
+    .leftJoin(chats, eq(artifacts.chatId, chats.id))
+    .leftJoin(projects, eq(artifacts.projectId, projects.id))
+    .leftJoin(artifactVersions, eq(artifactVersions.artifactId, artifacts.id))
+    .groupBy(artifacts.id, chats.title, projects.name)
+    .orderBy(desc(artifacts.createdAt))
+    .limit(limit)
+
+  return await Promise.all(rows.map(async (r) => ({
+    id: r.id, chatId: r.chatId, type: r.type, title: r.title, status: r.status,
+    createdAt: r.createdAt, format: r.format, content: r.content, version: r.version,
+    chatTitle: r.chatTitle, projectName: r.projectName,
+    editedAt: r.editedAt ?? r.createdAt,
+    downloadUrl: await signedArtifactUrl(r.storagePath),
+  })))
+}
+
+// New-artifact authoring: create a standalone host chat (chat_id is NOT NULL) + a blank
+// template artifact (v1), opened in the workspace editor by the client.
+export async function createBlankArtifact(type: ArtifactType): Promise<{ artifactId: number; chatId: number }> {
+  if (!isStorageConfigured()) throw new Error('File storage is not configured.')
+  const tpl = blankArtifactTemplate(type)
+  const renderContent: string | SheetSpec[] =
+    tpl.format === 'sheets' ? (JSON.parse(tpl.content) as SheetSpec[]) : tpl.content
+
+  const [chat] = await createStandaloneChat(tpl.title)
+  if (!chat) throw new Error('Failed to create host chat')
+
+  let path: string | null = null
+  try {
+    const { buffer, contentType, ext } = await renderArtifact(type, tpl.title, renderContent)
+    path = artifactStoragePath(null, tpl.title, ext)
+    await uploadBuffer(path, buffer, contentType)
+    const [art] = await createArtifact({
+      chatId: chat.id, projectId: null, type, title: tpl.title,
+      storagePath: path, status: 'ready', format: tpl.format, content: tpl.content,
+    })
+    if (!art) throw new Error('Failed to persist artifact')
+    return { artifactId: art.id, chatId: chat.id }
+  } catch (e) {
+    // Roll back so a failed create leaves no orphan host chat or storage object.
+    if (path) await removeObjects([path]).catch(() => {})
+    await deleteChat(chat.id).catch(() => {})
+    throw e
+  }
 }
 
 // ── Memory Suggestion Actions (auto-memory) ──

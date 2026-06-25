@@ -24,6 +24,9 @@ describe('getAllArtifacts', () => {
     expect(all.map(a => a.title)).toContain('Second')
     const second = all.find(a => a.title === 'Second')!
     expect(second.downloadUrl).toBe('signed:artifacts/a2.pdf')
+    expect(all[0]).toHaveProperty('editedAt')
+    expect(all[0]).toHaveProperty('chatTitle')
+    expect(all[0]).toHaveProperty('projectName')
   })
 
   it('returns [] when there are no artifacts', async () => {

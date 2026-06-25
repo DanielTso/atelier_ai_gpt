@@ -34,6 +34,14 @@ export interface ArtifactSummary {
   format?: string | null
   content?: string | null
   version?: number
+  // Gallery-only metadata (populated by getAllArtifacts; absent on per-chat lists).
+  editedAt?: Date | null
+  chatTitle?: string | null
+  projectName?: string | null
+}
+
+export const ARTIFACT_TYPE_LABELS: Record<string, string> = {
+  html: 'HTML', pdf: 'PDF', xlsx: 'Spreadsheet', docx: 'Document', pptx: 'Slides',
 }
 
 /** A single artifact version (D2), as the workspace panel consumes it. */
