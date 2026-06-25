@@ -4,7 +4,7 @@ A unified workspace for chat, construction-document intelligence, projects, and 
 
 ## Vision
 
-Atelier Studio is built for individuals, small teams, and companies who want a single, structured AI workspace they can shape to their own workflow. Chat with Claude, upload construction plans and documents into a RAG-powered knowledge base, extract information from drawings via vision, generate brand-styled artifacts (Excel/Word/PDF/PowerPoint, plus HTML pages with a live preview), and have Claude generate images inline — all from one calm, executive-grade interface.
+Atelier Studio is built for individuals, small teams, and companies who want a single, structured AI workspace they can shape to their own workflow. Chat with Claude, upload construction plans and documents into a RAG-powered knowledge base, extract information from drawings via vision, generate brand-styled artifacts (Excel/Word/PDF/PowerPoint, plus HTML pages with a live preview), and have Claude generate images inline — all from one calm, warm-minimal interface.
 
 **The provider split — Claude is the brain, Gemini is the senses:**
 - **Anthropic Claude** is the chat brain (Opus 4.8 default, Sonnet 4.6, Haiku 4.5) with web search.
@@ -28,8 +28,9 @@ Atelier Studio is built for individuals, small teams, and companies who want a s
 - **Context-Aware Chat:** The assistant references your uploaded documents when answering, scoped to the project
 
 ### Artifacts
-- **Claude-generated files:** Claude can produce downloadable **XLSX, DOCX, and PDF** artifacts via the `generate_artifact` tool during a chat turn
-- **Pure-JS rendering:** `exceljs` (Excel), `docx` (Word), `pdf-lib` (PDF) — no headless browser; serverless-safe
+- **Claude-generated files:** Claude can produce brand-styled **XLSX, DOCX, PDF, and PPTX** files plus **HTML** pages (with a live preview) via the `generate_artifact` tool during a chat turn
+- **Pure-JS rendering:** `exceljs` (Excel), `docx` (Word), `pdf-lib` (PDF), `pptxgenjs` (PowerPoint) — no headless browser; serverless-safe
+- **Artifacts gallery:** a searchable, type-filterable grid of all your artifacts with rendered preview thumbnails; open any one into a Preview / Edit / Versions workspace, or author a new one from scratch ("New artifact")
 - **Persisted & signed:** Artifacts are stored in Supabase Storage and surfaced as download cards below the assistant message
 
 ### Project Management
@@ -43,7 +44,7 @@ Atelier Studio is built for individuals, small teams, and companies who want a s
 - **Five-Layer Context:** System prompt → document RAG → semantic retrieval → summary → recent messages
 
 ### Customization
-- **Theming:** Light, dark, and system modes on a calm executive-grade interface (Atelier brand system)
+- **Theming:** Light, dark, and system modes on a warm, minimal interface — paper canvas, terracotta accent, and a Fraunces serif on display headings (Atelier brand system, v4.30.0 re-theme)
 - **Appearance:** Configurable font size and message density
 - **Settings:** Runtime-configurable API keys and model defaults — DB-first with `.env.local` fallback, no restarts needed
 
