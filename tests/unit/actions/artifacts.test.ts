@@ -10,12 +10,14 @@ vi.mock('@/db', () => ({
 const mockIsStorageConfigured = vi.fn(() => true)
 const mockUploadBuffer = vi.fn(async () => {})
 const mockCreateSignedDownloadUrl = vi.fn(async (p: string) => `signed:${p}`)
+const mockSignedArtifactUrl = vi.fn(async (p: string | null) => (p ? `signed:${p}` : null))
 const mockRemoveObjects = vi.fn(async () => {})
 
 vi.mock('@/lib/storage', () => ({
   get isStorageConfigured() { return mockIsStorageConfigured },
   get uploadBuffer() { return mockUploadBuffer },
   get createSignedDownloadUrl() { return mockCreateSignedDownloadUrl },
+  get signedArtifactUrl() { return mockSignedArtifactUrl },
   get removeObjects() { return mockRemoveObjects },
   ARTIFACT_URL_TTL_SECONDS: 86400,
 }))

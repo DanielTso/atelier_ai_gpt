@@ -12,9 +12,25 @@ export function isAuthEnabled(): boolean {
 }
 
 // AUTH_SECRET signs the cookie; fall back to the password so a single env var
-// is enough to turn the gate on.
+// is enough to turn the gate on. Falling back is a weak config — the cookie is
+// then signed with the low-entropy human password — so warn once when it happens.
+let warnedNoSecret = false
 function authSecret(): string {
-  return process.env.AUTH_SECRET || process.env.APP_ACCESS_PASSWORD || ''
+  const secret = process.env.AUTH_SECRET
+  if (secret) return secret
+  const password = process.env.APP_ACCESS_PASSWORD
+  if (password) {
+    if (!warnedNoSecret) {
+      warnedNoSecret = true
+      console.warn(
+        '[auth] APP_ACCESS_PASSWORD is set but AUTH_SECRET is not — the access cookie is ' +
+        'being signed with the password itself (low-entropy key, two secrets collapsed into one). ' +
+        'Set AUTH_SECRET to a high-entropy value (openssl rand -hex 32) in any real deployment.'
+      )
+    }
+    return password
+  }
+  return ''
 }
 
 function toHex(buf: ArrayBuffer): string {

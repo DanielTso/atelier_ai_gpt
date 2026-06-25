@@ -5,7 +5,7 @@ const m = {
   addArtifactVersion: vi.fn(),
   isStorageConfigured: vi.fn(() => true),
   uploadBuffer: vi.fn(async () => undefined),
-  createSignedDownloadUrl: vi.fn(async (p: string) => `signed:${p}`),
+  signedArtifactUrl: vi.fn(async (p: string) => `signed:${p}`),
   removeObjects: vi.fn(async () => undefined),
   renderArtifact: vi.fn(async () => ({ buffer: Buffer.from('x'), contentType: 'application/pdf', ext: 'pdf' })),
 }
@@ -15,8 +15,7 @@ async function importRoute() {
   vi.doMock('@/app/actions', () => ({ getArtifactById: m.getArtifactById, addArtifactVersion: m.addArtifactVersion }))
   vi.doMock('@/lib/storage', () => ({
     isStorageConfigured: m.isStorageConfigured, uploadBuffer: m.uploadBuffer,
-    createSignedDownloadUrl: m.createSignedDownloadUrl, removeObjects: m.removeObjects,
-    ARTIFACT_URL_TTL_SECONDS: 86400,
+    signedArtifactUrl: m.signedArtifactUrl, removeObjects: m.removeObjects,
   }))
   vi.doMock('@/lib/artifacts/render', () => ({ renderArtifact: m.renderArtifact }))
   const { POST } = await import('@/app/api/artifacts/[id]/edit/route')
@@ -35,7 +34,7 @@ describe('POST /api/artifacts/[id]/edit', () => {
     Object.values(m).forEach(f => f.mockReset())
     m.isStorageConfigured.mockReturnValue(true)
     m.uploadBuffer.mockResolvedValue(undefined)
-    m.createSignedDownloadUrl.mockImplementation(async (p: string) => `signed:${p}`)
+    m.signedArtifactUrl.mockImplementation(async (p: string) => `signed:${p}`)
     m.renderArtifact.mockResolvedValue({ buffer: Buffer.from('x'), contentType: 'application/pdf', ext: 'pdf' })
     m.addArtifactVersion.mockResolvedValue({ version: 2 })
   })

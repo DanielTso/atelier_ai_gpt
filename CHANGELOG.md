@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.26.0] - 2026-06-25 — Audit batch B: correctness, perf & cleanup
+
+### Fixed
+
+- **pgvector HNSW index was being bypassed.** `findSimilarMessages` / `findSimilarDocumentChunks` ordered by `1 - distance DESC`, which the planner treats as an opaque expression → sequential scan + sort on every chat turn (time-to-first-token critical path). Now they `ORDER BY` the raw `cosineDistance` **ascending** (so the `vector_cosine_ops` HNSW index drives the top-k scan) and apply the similarity threshold as a post-filter on the small result. Verified semantics-preserving by the real-pgvector `vector-search` test.
+- **Media-only assistant turns no longer leak a `(image)` placeholder.** Image-only replies were saved with the literal content `"(image)"`, which rendered as a stray text bubble after reload. They now persist empty content, and `loadMessages` skips empty text parts (the image/artifact still reconstructs).
+- **Artifact-only turns are now persisted.** A turn that only called `generate_artifact` with no surrounding prose matched none of the save-guard conditions and vanished from message history on reload. The guard now also detects `tool-generate_artifact` parts.
+
+### Changed
+
+- **`getProjectChatPreviews`** replaced a fetch-all-user-messages-then-truncate-in-JS pass with a single `DISTINCT ON (chat_id) … left(content, 120)` query — transfers ~120 bytes/chat instead of full message bodies.
+
+### Security
+
+- **HTML artifacts now download instead of executing inline.** `createSignedDownloadUrl` forces `Content-Disposition: attachment` for `.html` objects, so model-generated HTML/JS no longer runs on the `*.supabase.co` storage origin when the Download link is clicked. The in-app live preview (sandboxed `<iframe srcDoc>`) is unaffected; PDFs (previewed inline via the signed URL) and binaries stay inline.
+- **`AUTH_SECRET` fallback now warns.** When the gate is enabled with only `APP_ACCESS_PASSWORD` set (cookie signed with the low-entropy password), `authSecret()` logs a one-time warning recommending a high-entropy `AUTH_SECRET`.
+
+### Refactor / cleanup
+
+- Removed dead exports `applyDocumentReplacement` and `updateArtifactStoragePath` (superseded by the transactional `commitDocumentReplacement` and insert-time `createArtifact` seeding); repointed the re-versioning test to the live `commitDocumentReplacement` path.
+- Added a `signedArtifactUrl(path)` helper (bakes in the artifact TTL + null-swallow) and replaced the 4 byte-identical artifact signing sites (versions/summary/edit/regenerate).
+- Fixed a stale `// virtual model resolution` comment in the chat route (no virtual models exist).
+
+### Notes
+
+- Gate: typecheck 0 errors, lint 0 errors (27 baseline warnings), build clean, **335 tests pass**. No DB migration required (HNSW indexes already exist; the fix is query-shape only).
+
 ## [4.25.0] - 2026-06-25 — Dependency security bump (audit batch A)
 
 ### Security

@@ -29,13 +29,14 @@ describe('document re-versioning actions', () => {
       storagePath: before!.storagePath, thumbnailPath: before!.thumbnailPath,
       charCount: before!.charCount, chunkCount: before!.chunkCount, extractionMethod: before!.extractionMethod,
     })
-    await a.deleteDocumentChunks(doc.id)
-    await a.saveDocumentChunks([{ documentId: doc.id, projectId: p.id, chunkIndex: 0, content: 'rev B chunk 0' }])
-    await a.applyDocumentReplacement(doc.id, {
-      filename: 'grading-revB.pdf', mimeType: 'application/pdf', fileSize: 1200,
-      storagePath: 'documents/x/1/rev2/grading-revB.pdf', thumbnailPath: null,
-      charCount: 30, chunkCount: 1, extractionMethod: 'text', revision: 2,
-    })
+    // Live flow: one transactional commit swaps chunks + metadata + revision in place.
+    await a.commitDocumentReplacement(doc.id, p.id,
+      [{ chunkIndex: 0, content: 'rev B chunk 0', embedding: null }],
+      {
+        filename: 'grading-revB.pdf', mimeType: 'application/pdf', fileSize: 1200,
+        storagePath: 'documents/x/1/rev2/grading-revB.pdf', thumbnailPath: null,
+        charCount: 30, chunkCount: 1, extractionMethod: 'text', revision: 2, status: 'ready',
+      })
 
     const after = await a.getDocumentById(doc.id)
     expect(after!.id).toBe(doc.id)            // same document identity

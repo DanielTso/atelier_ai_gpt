@@ -51,9 +51,26 @@ export async function downloadToBuffer(path: string): Promise<Buffer> {
 export const ARTIFACT_URL_TTL_SECONDS = 24 * 60 * 60 // 24h
 
 export async function createSignedDownloadUrl(path: string, ttlSeconds = 300): Promise<string> {
-  const { data, error } = await bucket().createSignedUrl(path, ttlSeconds)
+  // Force an attachment disposition for HTML artifacts so Supabase serves them as a
+  // download (Content-Disposition: attachment) rather than rendering model-generated
+  // HTML/JS inline on the *.supabase.co origin. The in-app live preview uses a sandboxed
+  // <iframe srcDoc> with the source content, so it is unaffected. PDFs (previewed inline
+  // via the signed URL) and binaries are left inline.
+  const options = path.toLowerCase().endsWith('.html') ? { download: true } : undefined
+  const { data, error } = await bucket().createSignedUrl(path, ttlSeconds, options)
   if (error || !data) throw error ?? new Error('Failed to create signed URL')
   return data.signedUrl
+}
+
+/**
+ * Sign a possibly-null artifact storage path with the artifact TTL, swallowing failures
+ * to null. Centralizes the `path ? createSignedDownloadUrl(path, ARTIFACT_URL_TTL_SECONDS)
+ * .catch(() => null) : null` pattern duplicated across the artifact read/version/edit/
+ * regenerate paths, so the TTL and error policy live in one place.
+ */
+export async function signedArtifactUrl(path: string | null | undefined): Promise<string | null> {
+  if (!path) return null
+  return createSignedDownloadUrl(path, ARTIFACT_URL_TTL_SECONDS).catch(() => null)
 }
 
 export async function removeObjects(paths: string[]): Promise<void> {

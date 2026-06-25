@@ -1,6 +1,6 @@
 import { embed } from 'ai'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
-import { sql, and, eq, gt, desc, cosineDistance } from 'drizzle-orm'
+import { sql, eq, cosineDistance } from 'drizzle-orm'
 import { db } from '@/db'
 import { messageEmbeddings, documentChunks, documents } from '@/db/schema'
 import { getGeminiApiKey } from './settings'
@@ -72,22 +72,29 @@ export async function findSimilarMessages(
   topK: number = 5,
   threshold: number = 0.7
 ): Promise<{ content: string; similarity: number; chatId: number; messageId: number; embedding: number[] }[]> {
-  const similarity = sql<number>`1 - (${cosineDistance(messageEmbeddings.embedding, queryEmbedding)})`
+  // Order by the RAW cosine distance ascending so the HNSW index (vector_cosine_ops)
+  // is used for the top-k scan. Wrapping it as `1 - distance DESC` (or filtering on
+  // that expression in WHERE) makes the planner treat it as opaque and fall back to a
+  // full scan + sort, defeating the index. The similarity threshold is therefore applied
+  // as a post-filter on the small top-k result instead of in WHERE.
+  const distance = cosineDistance(messageEmbeddings.embedding, queryEmbedding)
+  const similarity = sql<number>`1 - (${distance})`
   const scopeFilter = scope.projectId
     ? eq(messageEmbeddings.projectId, scope.projectId)
     : scope.chatId
       ? eq(messageEmbeddings.chatId, scope.chatId)
       : undefined
-  return db.select({
+  const rows = await db.select({
     content: messageEmbeddings.content,
     similarity,
     chatId: messageEmbeddings.chatId,
     messageId: messageEmbeddings.messageId,
     embedding: messageEmbeddings.embedding,
   }).from(messageEmbeddings)
-    .where(scopeFilter ? and(scopeFilter, gt(similarity, threshold)) : gt(similarity, threshold))
-    .orderBy(desc(similarity))
+    .where(scopeFilter)
+    .orderBy(distance)
     .limit(topK)
+  return rows.filter((r) => r.similarity > threshold)
 }
 
 /**
@@ -100,8 +107,11 @@ export async function findSimilarDocumentChunks(
   topK: number = 3,
   threshold: number = 0.5
 ): Promise<{ content: string; similarity: number; chunkId: number; documentId: number; filename: string; embedding: number[] | null }[]> {
-  const similarity = sql<number>`1 - (${cosineDistance(documentChunks.embedding, queryEmbedding)})`
-  return db.select({
+  // Order by raw cosine distance ascending to keep the HNSW index in play; apply the
+  // threshold as a post-filter (see findSimilarMessages for the rationale).
+  const distance = cosineDistance(documentChunks.embedding, queryEmbedding)
+  const similarity = sql<number>`1 - (${distance})`
+  const rows = await db.select({
     content: documentChunks.content,
     similarity,
     chunkId: documentChunks.id,
@@ -110,9 +120,10 @@ export async function findSimilarDocumentChunks(
     embedding: documentChunks.embedding,
   }).from(documentChunks)
     .innerJoin(documents, eq(documentChunks.documentId, documents.id))
-    .where(and(eq(documentChunks.projectId, projectId), gt(similarity, threshold)))
-    .orderBy(desc(similarity))
+    .where(eq(documentChunks.projectId, projectId))
+    .orderBy(distance)
     .limit(topK)
+  return rows.filter((r) => r.similarity > threshold)
 }
 
 /**

@@ -3,7 +3,7 @@
 import { db } from '@/db'
 import { projects, chats, messages, settings, messageEmbeddings, personaUsage, chatTopics, documents, documentChunks, documentRevisions, messageAttachments, artifacts, artifactVersions, memorySuggestions } from '@/db/schema'
 import { eq, desc, isNull, isNotNull, and, lte, asc, count, inArray, sql } from 'drizzle-orm'
-import { isStorageConfigured, uploadBuffer, createSignedDownloadUrl, removeObjects, ARTIFACT_URL_TTL_SECONDS } from '@/lib/storage'
+import { isStorageConfigured, uploadBuffer, createSignedDownloadUrl, removeObjects, signedArtifactUrl } from '@/lib/storage'
 
 function sanitizeAttachmentName(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/^\.+$/, '_')
@@ -108,28 +108,28 @@ export async function getProjectChatPreviews(projectId: number) {
   if (projectChats.length === 0) return []
 
   const chatIds = projectChats.map(c => c.id)
-  const allFirstMessages = await db.select({
+  // Pick the first user message per chat and truncate to 120 chars in SQL, so we transfer
+  // ~120 bytes/chat instead of every full message body. DISTINCT ON (chat_id) with the
+  // ORDER BY leading on chat_id then created_at keeps the earliest row per chat.
+  const previews = await db.selectDistinctOn([messages.chatId], {
     chatId: messages.chatId,
-    content: messages.content,
+    preview: sql<string>`left(${messages.content}, 120)`,
   }).from(messages)
     .where(and(
       inArray(messages.chatId, chatIds),
       eq(messages.role, 'user')
     ))
-    .orderBy(asc(messages.createdAt))
+    .orderBy(messages.chatId, asc(messages.createdAt))
 
-  // Keep only the first message per chat
   const firstMsgMap = new Map<number, string>()
-  for (const msg of allFirstMessages) {
-    if (!firstMsgMap.has(msg.chatId)) {
-      firstMsgMap.set(msg.chatId, msg.content)
-    }
+  for (const row of previews) {
+    firstMsgMap.set(row.chatId, row.preview)
   }
 
   return projectChats.map(chat => ({
     id: chat.id,
     title: chat.title,
-    preview: firstMsgMap.get(chat.id)?.substring(0, 120) ?? null,
+    preview: firstMsgMap.get(chat.id) ?? null,
     createdAt: chat.createdAt,
   }))
 }
@@ -488,24 +488,6 @@ export async function getDocumentRevisions(documentId: number) {
     .orderBy(desc(documentRevisions.revision))
 }
 
-/** Swap a document's active revision in place: new file metadata + bump revision. */
-export async function applyDocumentReplacement(documentId: number, fields: {
-  filename: string
-  mimeType: string
-  fileSize: number
-  storagePath: string
-  thumbnailPath?: string | null
-  charCount: number
-  chunkCount: number
-  extractionMethod: 'text' | 'vision'
-  revision: number
-}) {
-  return await db.update(documents)
-    .set({ ...fields, status: 'ready', updatedAt: new Date() })
-    .where(eq(documents.id, documentId))
-    .returning()
-}
-
 /**
  * Atomically commit a document replacement: delete the old chunks, insert the new
  * (already-embedded) chunks, and swap the document's metadata + revision — all in
@@ -697,7 +679,7 @@ export async function getArtifactVersions(artifactId: number) {
   return await Promise.all(rows.map(async (v) => ({
     id: v.id, version: v.version, type: v.type, title: v.title, format: v.format, content: v.content,
     createdAt: v.createdAt,
-    downloadUrl: v.storagePath ? await createSignedDownloadUrl(v.storagePath, ARTIFACT_URL_TTL_SECONDS).catch(() => null) : null,
+    downloadUrl: await signedArtifactUrl(v.storagePath),
   })))
 }
 
@@ -747,7 +729,7 @@ async function toArtifactSummary(r: typeof artifacts.$inferSelect) {
   return {
     id: r.id, chatId: r.chatId, type: r.type, title: r.title, status: r.status, createdAt: r.createdAt,
     format: r.format, content: r.content, version: r.currentVersion,
-    downloadUrl: r.storagePath ? await createSignedDownloadUrl(r.storagePath, ARTIFACT_URL_TTL_SECONDS).catch(() => null) : null,
+    downloadUrl: await signedArtifactUrl(r.storagePath),
   }
 }
 
@@ -758,10 +740,6 @@ export async function getChatArtifacts(chatId: number) {
 
 export async function deleteArtifact(id: number) {
   return await db.delete(artifacts).where(eq(artifacts.id, id)).returning()
-}
-
-export async function updateArtifactStoragePath(id: number, storagePath: string) {
-  return await db.update(artifacts).set({ storagePath }).where(eq(artifacts.id, id)).returning()
 }
 
 // Bounded: select only a recent page and sign URLs for those rows. Without a cap

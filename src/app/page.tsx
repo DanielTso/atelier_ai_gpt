@@ -257,9 +257,17 @@ export default function Home() {
       const textContent = extractText(message.parts)
       // Images produced by the generate_image tool (surfaced as tool-result parts).
       const imageOutputs = extractGeneratedImageOutputs(message.parts)
+      // Artifacts produced by the generate_artifact tool surface as tool-result parts
+      // (not file parts). Detect them so an artifact-only turn (no prose) is still saved.
+      const hasArtifactOutput = message.parts.some(
+        p => typeof p.type === 'string' && p.type.startsWith('tool-generate_artifact')
+      )
 
-      if (currentChatId && (textContent.trim() || message.parts.some(p => p.type === 'file') || imageOutputs.length > 0)) {
-        const result = await saveMessage(currentChatId, 'assistant', textContent || '(image)')
+      if (currentChatId && (textContent.trim() || message.parts.some(p => p.type === 'file') || imageOutputs.length > 0 || hasArtifactOutput)) {
+        // Persist empty content (not an '(image)' placeholder) for media-only turns:
+        // loadMessages reconstructs the image/artifact, and an empty string renders no
+        // stray text bubble on reload (the old placeholder leaked the literal "(image)").
+        const result = await saveMessage(currentChatId, 'assistant', textContent)
 
         // Persist + inline-render images from the generate_image tool. The bytes are
         // already in storage (uploaded by the tool); link them to this message, then
@@ -489,9 +497,10 @@ export default function Home() {
       // Convert DB messages to AI SDK UIMessage format with parts
       setMessages(msgs.map(m => {
         const msgAttachments = attachmentsByMessageId.get(m.id)
-        const parts: Array<{ type: 'text'; text: string } | { type: 'file'; mediaType: string; url: string }> = [
-          { type: 'text' as const, text: m.content },
-        ]
+        // Skip empty text parts: media-only turns (generated image / artifact) are saved
+        // with empty content, and a blank text part would otherwise render a stray bubble.
+        const parts: Array<{ type: 'text'; text: string } | { type: 'file'; mediaType: string; url: string }> =
+          m.content ? [{ type: 'text' as const, text: m.content }] : []
         // Append image file parts from saved attachments. `url` is resolved
         // server-side: a signed Storage URL for storage-backed rows, or the
         // legacy base64 data URL for old rows. Skip any that failed to resolve.
