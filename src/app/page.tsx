@@ -37,28 +37,13 @@ import type { AttachedFile, AttachedImage } from "@/lib/fileAttachments"
 import { buildFileMessage } from "@/lib/fileAttachments"
 import type { FileUIPart } from "ai"
 import type { Model, ArtifactSummary } from "@/types"
+import { extractGeneratedImageOutputs } from "@/lib/generatedImages"
+import { useChatTitle } from "@/hooks/useChatTitle"
+import { useSummarization, SUMMARIZATION_THRESHOLD } from "@/hooks/useSummarization"
 
 // Types matching DB schema roughly
 type Project = { id: number; name: string; memory?: string | null; instructions?: string | null; createdAt?: Date | null; updatedAt?: Date | null }
 type Chat = { id: number; projectId: number | null; title: string; archived?: boolean | null }
-
-type GeneratedImageOutput = { storagePath: string; url: string; mediaType: string; filename?: string }
-
-// The generate_image tool surfaces its result as a tool-result part (not a `file` part).
-// Pull the successful outputs so onFinish can persist them and render them inline.
-function extractGeneratedImageOutputs(parts: readonly unknown[]): GeneratedImageOutput[] {
-  const out: GeneratedImageOutput[] = []
-  for (const p of parts) {
-    const part = p as { type?: string; toolName?: string; output?: unknown }
-    const isImageTool = part.type === 'tool-generate_image' || (part.type === 'dynamic-tool' && part.toolName === 'generate_image')
-    if (!isImageTool) continue
-    const o = part.output as Record<string, unknown> | undefined
-    if (o && typeof o.storagePath === 'string' && typeof o.url === 'string' && typeof o.mediaType === 'string') {
-      out.push({ storagePath: o.storagePath, url: o.url, mediaType: o.mediaType, filename: typeof o.filename === 'string' ? o.filename : undefined })
-    }
-  }
-  return out
-}
 
 export default function Home() {
   const { setTheme, theme } = useTheme()
@@ -106,44 +91,17 @@ export default function Home() {
   const standaloneChatsRef = useRef(standaloneChats)
   standaloneChatsRef.current = standaloneChats
 
-  // Auto-name a still-"New Chat" once it has at least one user+assistant exchange.
-  // Called both after a turn finishes (onFinish) and when such a chat is opened, so a
-  // chat that missed titling during its live turn gets backfilled on next open.
-  const maybeGenerateTitle = useCallback(async (chatId: number) => {
-    const chat = [...chatsRef.current, ...standaloneChatsRef.current].find(c => c.id === chatId)
-    if (!chat || chat.title !== 'New Chat') return
-    try {
-      const dbMessages = await getChatMessages(chatId, 2)
-      const userMsg = dbMessages.find(m => m.role === 'user')
-      const assistantMsg = dbMessages.find(m => m.role === 'assistant')
-      if (!userMsg || !assistantMsg) return // need a full exchange to title from
-      const res = await fetch('/api/generate-title', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chatId,
-          messages: [
-            { role: 'user', content: (userMsg.content || '').slice(0, 500) },
-            { role: 'assistant', content: (assistantMsg.content || '').slice(0, 500) },
-          ],
-          model: selectedModelRef.current,
-        }),
-      })
-      const data = res.ok ? await res.json().catch(() => null) : null
-      // Prefer the model's title; if it comes back empty, fall back to the first few
-      // words of the user's message so the chat never stays stuck on "New Chat".
-      let title: string = (data?.title || '').trim()
-      if (!title) {
-        title = (userMsg.content || '').replace(/\s+/g, ' ').trim().split(' ').slice(0, 6).join(' ').slice(0, 50)
-      }
-      if (!title) return
-      await updateChatTitle(chatId, title)
-      setChats(prev => prev.map(c => (c.id === chatId ? { ...c, title } : c)))
-      setStandaloneChats(prev => prev.map(c => (c.id === chatId ? { ...c, title } : c)))
-    } catch {
-      // Title generation is best-effort; silently ignore failures (retries on next open).
-    }
+  // Auto-name a still-"New Chat" once it has a full exchange. Logic lives in useChatTitle;
+  // page state is injected via stable callbacks.
+  const readTitleChats = useCallback(
+    () => [...chatsRef.current, ...standaloneChatsRef.current].map(c => ({ id: c.id, title: c.title })),
+    [],
+  )
+  const applyChatTitle = useCallback((chatId: number, title: string) => {
+    setChats(prev => prev.map(c => (c.id === chatId ? { ...c, title } : c)))
+    setStandaloneChats(prev => prev.map(c => (c.id === chatId ? { ...c, title } : c)))
   }, [])
+  const maybeGenerateTitle = useChatTitle({ readChats: readTitleChats, modelRef: selectedModelRef, applyTitle: applyChatTitle })
 
   // Command palette state
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
@@ -199,47 +157,14 @@ export default function Home() {
     }),
   }), [])
 
-  // Context management configuration
-  const SUMMARIZATION_THRESHOLD = 30 // Trigger summarization when message count exceeds this
-  const MESSAGES_TO_KEEP = 10 // Keep this many recent messages after summarization
-
   // Auto-memory: per-chat message count at the last suggestion pass. Gating on a
   // monotonic delta (count - last >= 6) instead of `count % 6` avoids both missed
   // boundaries (count jumps) and double-fires (overlapping onFinish).
   const lastSuggestedAtRef = useRef<Map<number, number>>(new Map())
   const MEMORY_SUGGEST_EVERY = 6
 
-  const triggerSummarization = useCallback(async (chatId: number, messageCount: number) => {
-    if (messageCount <= SUMMARIZATION_THRESHOLD) return
-
-    // Calculate cutoff: summarize all but the most recent MESSAGES_TO_KEEP
-    const messages = await getChatMessages(chatId)
-    if (messages.length <= MESSAGES_TO_KEEP) return
-
-    const cutoffIndex = messages.length - MESSAGES_TO_KEEP
-    const cutoffMessageId = messages[cutoffIndex - 1]?.id
-
-    if (!cutoffMessageId) return
-
-    try {
-      const response = await fetch('/api/summarize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chatId,
-          cutoffMessageId,
-          model: selectedModelRef.current,
-        }),
-      })
-
-      if (response.ok) {
-        await response.json()
-        toast.success('Conversation summarized for better context management')
-      }
-    } catch (error) {
-      console.error('[Summarization] Error:', error)
-    }
-  }, [])
+  // Context-window management (auto-summarize older messages past the threshold).
+  const triggerSummarization = useSummarization(selectedModelRef)
 
   const {
     messages,
@@ -653,50 +578,17 @@ export default function Home() {
     }
   }
 
-  const handleCreateChat = async () => {
-    if (!activeProjectId) {
-      toast.error("Select a project first")
-      return
-    }
-    try {
-      const [newC] = await createChat(activeProjectId, "New Chat")
-      setChats([newC, ...chats])
-      setActiveChatId(newC.id)
-
-      // Auto-apply project defaults if configured
-      try {
-        const defaults = await getProjectDefaults(activeProjectId)
-        if (defaults.defaultPersonaId) {
-          const persona = getPersonaById(defaults.defaultPersonaId)
-          if (persona?.prompt) {
-            await updateChatSystemPrompt(newC.id, persona.prompt)
-            setCurrentSystemPrompt(persona.prompt)
-            setSelectedEffort(persona.effort)
-            toast.success(`Applied project default: ${persona.name}`)
-          }
-        }
-        if (defaults.defaultModel) {
-          setSelectedModel(defaults.defaultModel)
-        }
-      } catch {
-        // Defaults are optional, don't block chat creation
-      }
-
-      toast.success("Chat created")
-    } catch (e) {
-      console.error(e)
-      setError("Failed to create chat.")
-    }
-  }
-
-  const handleCreateChatInProject = async (projectId: number) => {
+  // Create a "New Chat" in the given project, make it active, and apply the project's
+  // configured defaults (persona system prompt + model). Shared by the toolbar "+"
+  // (current project) and the projects-view per-project create.
+  const createChatForProject = async (projectId: number) => {
     try {
       setActiveProjectId(projectId)
       const [newC] = await createChat(projectId, "New Chat")
-      setChats([newC, ...chats])
+      setChats(prev => [newC, ...prev])
       setActiveChatId(newC.id)
 
-      // Auto-apply project defaults if configured
+      // Auto-apply project defaults if configured (optional — never blocks creation).
       try {
         const defaults = await getProjectDefaults(projectId)
         if (defaults.defaultPersonaId) {
@@ -721,6 +613,16 @@ export default function Home() {
       setError("Failed to create chat.")
     }
   }
+
+  const handleCreateChat = async () => {
+    if (!activeProjectId) {
+      toast.error("Select a project first")
+      return
+    }
+    await createChatForProject(activeProjectId)
+  }
+
+  const handleCreateChatInProject = (projectId: number) => createChatForProject(projectId)
 
   // "New chat" goes to a fresh Home compose — it does NOT persist an empty chat.
   // The first message sent auto-creates the standalone chat (see handleSendMessage),

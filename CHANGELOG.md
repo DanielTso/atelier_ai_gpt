@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.28.0] - 2026-06-25 — Audit batch D: page.tsx decomposition (first pass)
+
+### Refactor
+
+- Began decomposing the 1355-line `src/app/page.tsx` god component into cohesive, testable units (behavior-preserving):
+  - **`src/lib/generatedImages.ts`** — extracted the `extractGeneratedImageOutputs` helper + `GeneratedImageOutput` type out of the page module (now unit-tested).
+  - **`src/hooks/useChatTitle.ts`** — the `maybeGenerateTitle` auto-titling logic, decoupled from page state via stable injected callbacks (`readChats` / `modelRef` / `applyTitle`).
+  - **`src/hooks/useSummarization.ts`** — the `triggerSummarization` context-window compression + the `SUMMARIZATION_THRESHOLD` / `MESSAGES_TO_KEEP` constants.
+  - Folded the near-identical `handleCreateChat` / `handleCreateChatInProject` into one `createChatForProject(projectId)` helper (the project-defaults block was duplicated verbatim).
+
+### Notes
+
+- No behavior change — pure structural extraction. Gate: typecheck 0 errors, lint 0 errors (27 baseline warnings), build clean, **344 tests pass** (+5 new for the extracted image helper).
+- Remaining decomposition (deferred, higher coupling): a `useDialogs` reducer for the 13 dialog-state pairs, and lifting the `onFinish` persistence pipeline into a `useChatPersistence` hook — best done with E2E coverage running, since they touch the central streaming/persistence path.
+
 ## [4.27.0] - 2026-06-25 — Audit batch C: auth session hardening
 
 ### Security
