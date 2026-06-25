@@ -40,7 +40,7 @@ export function SmartChatMenu({ sortedProjects, variant }: SmartChatMenuProps) {
     return (
       <DropdownMenu.Root>
         <DropdownMenu.Trigger asChild>
-          <button className="p-2 rounded-lg hover:bg-accent transition-colors text-primary">
+          <button title="Smart Chat" className="p-2 rounded-lg hover:bg-accent transition-colors text-primary">
             <Zap className="h-5 w-5" />
           </button>
         </DropdownMenu.Trigger>

@@ -271,7 +271,7 @@ export const ChatInputArea = memo(function ChatInputArea({
 
   return (
     <div
-      className="p-4 border-t border-white/10 bg-white/5 relative"
+      className="p-4 border-t border-border/40 relative"
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -312,7 +312,7 @@ export const ChatInputArea = memo(function ChatInputArea({
           )}
           <button
             onClick={onSystemPromptClick}
-            className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-white/10 transition-colors"
+            className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
             title="Edit system prompt"
           >
             <FileText className="h-3.5 w-3.5" />
@@ -322,7 +322,7 @@ export const ChatInputArea = memo(function ChatInputArea({
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={isLoading}
-            className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-white/10 transition-colors disabled:opacity-50"
+            className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-50"
             title="Attach to this message"
           >
             <Paperclip className="h-3.5 w-3.5" />
@@ -403,7 +403,7 @@ export const ChatInputArea = memo(function ChatInputArea({
                 )}
                 <button
                   onClick={() => removeFile(index)}
-                  className="ml-0.5 p-0.5 rounded hover:bg-white/10 text-muted-foreground hover:text-foreground transition-colors"
+                  className="ml-0.5 p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
                   title="Remove file"
                 >
                   <X className="h-3 w-3" />
@@ -428,15 +428,15 @@ export const ChatInputArea = memo(function ChatInputArea({
             onKeyDown={onKeyDown}
             onPaste={handlePaste}
             disabled={isLoading}
-            minRows={1}
+            minRows={2}
             maxRows={6}
-            className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 pr-12 focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all placeholder:text-muted-foreground disabled:opacity-50 resize-none"
+            className="w-full bg-card border border-border rounded-2xl px-5 py-4 pr-14 shadow-sm focus:outline-none focus:ring-1 focus:ring-ring focus:border-ring transition-all placeholder:text-muted-foreground disabled:opacity-50 resize-none"
             placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
           />
           <button
             type="submit"
             disabled={isLoading || (!input?.trim() && !hasFiles && !hasImages)}
-            className="absolute right-2 top-2 p-1.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground transition-colors disabled:opacity-50"
+            className="absolute right-3 bottom-3 p-2 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground transition-colors disabled:opacity-50"
           >
             {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </button>

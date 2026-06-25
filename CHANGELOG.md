@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.30.1] - 2026-06-25 — Composer aesthetic + collapsed Smart Chat fix
+
+### Changed
+
+- **The message composer now reads like the reference (Manus-style):** the input box uses a clean **`bg-card`** surface (was a hardcoded `bg-black/20` that never followed the warm theme), a soft warm **`border-border`**, **larger** default size (2 rows, more padding), softer **`rounded-2xl`** corners, and a subtle **shadow**; the send button is now **circular** and bottom-right. The footer's gray `bg-white/5` tint is gone and the toolbar/chip hovers use `hover:bg-accent` (was the invisible `hover:bg-white/10`). **Functionality is unchanged** — pure styling.
+
+### Fixed
+
+- **Collapsed sidebar no longer leaves the "Smart Chat" tooltip stuck open.** The Smart Chat control is its own dropdown; wrapping it in a Radix tooltip meant the tooltip never saw a pointer-leave once the menu portaled over it, so the label stayed visible. Replaced the wrapping tooltip with a native `title` on the button (can't get stuck).
+
+### Notes
+
+- Gate: typecheck 0, lint 0 errors (27 baseline warnings), build clean, 366 tests pass.
+
 ## [4.30.0] - 2026-06-25 — Warm palette + serif typography re-theme
 
 ### Changed

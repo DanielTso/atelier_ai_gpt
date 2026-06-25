@@ -67,21 +67,10 @@ export function CollapsedSidebar({ sortedProjects }: CollapsedSidebarProps) {
       </Tooltip.Provider>
       <CollapsedButton label="Expand sidebar" icon={PanelLeftOpen} onClick={actions.toggleCollapse} />
       <div className="h-px w-full bg-border my-1" />
-      <Tooltip.Provider delayDuration={200}>
-        <Tooltip.Root>
-          <Tooltip.Trigger asChild>
-            <div>
-              <SmartChatMenu sortedProjects={sortedProjects} variant="collapsed" />
-            </div>
-          </Tooltip.Trigger>
-          <Tooltip.Portal>
-            <Tooltip.Content side="right" sideOffset={8} className="px-2 py-1 text-xs rounded bg-popover border border-border shadow-lg z-50">
-              Smart Chat
-              <Tooltip.Arrow className="fill-popover" />
-            </Tooltip.Content>
-          </Tooltip.Portal>
-        </Tooltip.Root>
-      </Tooltip.Provider>
+      {/* Smart Chat is its own dropdown; a wrapping Radix tooltip got stuck open when the
+          menu opened (the menu portals over the trigger, so the tooltip never sees a
+          pointer-leave). Use a native `title` on the button instead — it can't stick. */}
+      <SmartChatMenu sortedProjects={sortedProjects} variant="collapsed" />
       <div className="flex-1" />
       <CollapsedButton label="Toggle theme" icon={Sun} onClick={actions.toggleTheme} />
       <CollapsedButton label="Settings" icon={Settings} onClick={actions.openSettings} />
