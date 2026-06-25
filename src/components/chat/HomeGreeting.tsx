@@ -9,7 +9,7 @@ export function HomeGreeting({ displayName }: { displayName?: string }) {
   return (
     <div className="flex items-center justify-center gap-3 mb-8">
       <Sparkles className="h-7 w-7 text-primary shrink-0" aria-hidden />
-      <h1 className="text-3xl font-semibold text-foreground tracking-tight">{text}</h1>
+      <h1 className="text-3xl font-serif font-medium text-foreground tracking-tight">{text}</h1>
     </div>
   )
 }

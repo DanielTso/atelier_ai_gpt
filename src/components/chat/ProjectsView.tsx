@@ -70,7 +70,7 @@ export function ProjectsView({
     <div className="flex-1 overflow-y-auto p-8">
       {/* Header */}
       <div className="flex items-center justify-between gap-4 mb-6">
-        <h2 className="text-2xl font-semibold text-foreground">Projects</h2>
+        <h2 className="text-2xl font-serif font-medium text-foreground">Projects</h2>
         <div className="flex items-center gap-2">
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>

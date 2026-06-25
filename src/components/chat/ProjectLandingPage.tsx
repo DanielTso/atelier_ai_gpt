@@ -46,7 +46,7 @@ export const ProjectLandingPage = memo(function ProjectLandingPage({
         <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/10">
           <Folder className="h-5 w-5 text-primary" />
         </div>
-        <h1 className="text-xl font-semibold text-foreground">{project.name}</h1>
+        <h1 className="text-xl font-serif font-medium text-foreground">{project.name}</h1>
         <button
           onClick={() => onDeleteProject(project.id)}
           aria-label={`Delete project ${project.name}`}

@@ -70,7 +70,7 @@ export function ArtifactsView({ onOpenChat, sidebarCollapsedRef, setSidebarColla
     <div className="flex-1 flex min-h-0 overflow-hidden">
       <div className="flex-1 overflow-y-auto p-8">
         <div className="mb-6 flex items-center justify-between gap-4">
-          <h2 className="text-2xl font-semibold text-foreground">Artifacts</h2>
+          <h2 className="text-2xl font-serif font-medium text-foreground">Artifacts</h2>
           <div className="flex items-center gap-2">
             <div className="relative">
               <button onClick={() => setFilterOpen(o => !o)} className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-sm text-foreground hover:bg-accent">
