@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { Boxes, Loader2, Search, ChevronDown, Plus } from 'lucide-react'
 import type { ArtifactSummary } from '@/types'
 import { ARTIFACT_TYPE_LABELS } from '@/types'
@@ -10,6 +10,7 @@ import { filterArtifacts, type ArtifactTypeFilter } from '@/lib/artifactFilter'
 import { ArtifactGalleryCard } from '@/components/chat/ArtifactGalleryCard'
 import { ArtifactWorkspace } from '@/components/chat/ArtifactWorkspace'
 import { useLocalStorage } from '@/hooks/useLocalStorage'
+import { useAutoCollapseSidebar } from '@/hooks/useAutoCollapseSidebar'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
@@ -19,7 +20,11 @@ const FILTERS: { value: ArtifactTypeFilter; label: string }[] = [
 ]
 const NEW_TYPES: ArtifactType[] = ['html', 'docx', 'pdf', 'pptx', 'xlsx']
 
-export function ArtifactsView({ onOpenChat }: { onOpenChat?: (chatId: number) => void }) {
+export function ArtifactsView({ onOpenChat, sidebarCollapsedRef, setSidebarCollapsed }: {
+  onOpenChat?: (chatId: number) => void
+  sidebarCollapsedRef?: RefObject<boolean>
+  setSidebarCollapsed?: (v: boolean) => void
+}) {
   const [artifacts, setArtifacts] = useState<ArtifactSummary[] | null>(null)
   const [query, setQuery] = useState('')
   const [typeFilter, setTypeFilter] = useState<ArtifactTypeFilter>('all')
@@ -32,6 +37,16 @@ export function ArtifactsView({ onOpenChat }: { onOpenChat?: (chatId: number) =>
 
   const reload = () => getAllArtifacts().then(setArtifacts).catch(() => setArtifacts([]))
   useEffect(() => { reload() }, [])
+
+  // Auto-collapse the sidebar when the gallery's artifact panel is dragged wide, mirroring
+  // the chat workspace. Falls back to no-ops if the sidebar control wasn't provided.
+  const fallbackCollapsedRef = useRef(false)
+  useAutoCollapseSidebar({
+    active: activeId != null,
+    panelWidth,
+    sidebarCollapsedRef: sidebarCollapsedRef ?? fallbackCollapsedRef,
+    setSidebarCollapsed: setSidebarCollapsed ?? (() => {}),
+  })
 
   const visible = useMemo(() => filterArtifacts(artifacts ?? [], { query, type: typeFilter }), [artifacts, query, typeFilter])
   const active = artifacts?.find(a => a.id === activeId) ?? null

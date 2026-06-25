@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.29.2] - 2026-06-25 — Sidebar auto-collapse works in the artifacts gallery
+
+### Fixed
+
+- **Dragging an artifact panel wide in the Artifacts gallery now auto-collapses the sidebar**, matching the chat workspace. The auto-collapse logic was page-local and keyed on the chat's artifact state, so the gallery's own workspace (which manages its own panel width) never triggered it. Extracted the behavior into a shared `useAutoCollapseSidebar` hook used by **both** the chat workspace and `ArtifactsView`; the gallery hook also restores the sidebar if you navigate away with the panel still open. The chat-workspace copy is now gated to when the chat is actually visible so the two don't fight.
+
+### Notes
+
+- New `src/hooks/useAutoCollapseSidebar.ts` (+ 6 unit tests: collapse-when-wide, restore-on-narrow, restore-on-close, leave-a-user-collapsed-sidebar-alone, restore-on-unmount). Gate: typecheck 0, lint 0 errors (27 baseline warnings), build clean, **366 tests pass**.
+
 ## [4.29.1] - 2026-06-25 — Drag-and-drop files into the project Files panel
 
 ### Fixed
