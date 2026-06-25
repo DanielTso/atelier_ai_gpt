@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.25.0] - 2026-06-25 — Dependency security bump (audit batch A)
+
+### Security
+
+- **`next` 16.1.6 → 16.2.9** — clears the high-CVSS advisories affecting 16.1.6: HTTP request smuggling in rewrites, SSRF via WebSocket upgrades (CVSS 8.6), **middleware/proxy bypass via dynamic-route param injection (CVSS 8.1)** — directly relevant since the access gate is a middleware — and the image-cache / RSC / postponed-resume DoS advisories. `eslint-config-next` bumped to match. (Next 16.2 renames the middleware build output to "Proxy".)
+- **`drizzle-orm` 0.45.1 → 0.45.2** — patches GHSA-gpj5-g38j-94v9 (SQL injection via unescaped identifiers). The sink was unreachable here (no `sql.identifier`/`sql.raw` with user input), but the patch removes the risk class.
+- **`@xmldom/xmldom` 0.8.11 → 0.8.13** (transitive via `mammoth`) — clears the XML-injection/recursion-DoS advisories.
+- **`vitest` 4.0.18 → 4.1.9** + **`vite`** to a patched 7.x (dev-only) — clears the critical "arbitrary file read+exec when the Vitest UI server is listening" and the vite path-traversal advisories. Not shipped to production.
+
+### Notes
+
+- Audit dropped from 21 vulnerabilities (1 critical, 8 high, …) to **8 moderate**, all dev-tooling or internal transitives whose only available "fix" is a breaking major *downgrade* (`next`→9, `exceljs`→3) — deliberately left: `esbuild ≤0.24.2` (via `drizzle-kit`, dev-server only), `postcss <8.5.10` (nested in `next`), `uuid <11.1.1` (via `exceljs`, server-side file gen only).
+- Gate: typecheck 0 errors, lint 0 errors (27 baseline warnings), build clean, **335 tests pass**. First batch of a multi-batch codebase security/quality audit.
+
 ## [4.24.2] - 2026-06-24 — Docs refresh
 
 ### Docs
