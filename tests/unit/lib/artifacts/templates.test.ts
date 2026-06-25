@@ -22,6 +22,8 @@ describe('blankArtifactTemplate', () => {
     expect(sheets[0]?.rows.length).toBeGreaterThan(0)
   })
 
+  // Renders all 5 real formats (PDF/PPTX/XLSX/DOCX use native libraries), which can
+  // exceed the 5s default under full-suite contention — give it a generous timeout.
   it('each template renders to a non-empty buffer', async () => {
     for (const t of TYPES) {
       const tpl = blankArtifactTemplate(t)
@@ -30,5 +32,5 @@ describe('blankArtifactTemplate', () => {
       expect(out.ext).toBe(t)
       expect(out.buffer.length).toBeGreaterThan(0)
     }
-  })
+  }, 30000)
 })

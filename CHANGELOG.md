@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.29.0] - 2026-06-25 — Claude-style Artifacts gallery
+
+### Added
+
+- **The Artifacts page is now a Claude-style gallery.** The bare icon+title+Download list is replaced by a responsive 2/3/4-column grid of rich cards, each with a **rendered preview thumbnail**, a **search bar**, a **type filter** (All / HTML / PDF / Spreadsheet / Document / Slides), and a **New artifact** action.
+  - **Preview thumbnails** (`ArtifactThumbnail`) render by type — a live, sandboxed, non-interactive mini-render for HTML; first-page for PDF; a table snippet for spreadsheets; a text snippet for docs/slides; a branded type tile as fallback. Thumbnails are **lazy-mounted** via IntersectionObserver (only when scrolled near) so a full grid never mounts dozens of live iframes at once.
+  - **Cards** (`ArtifactGalleryCard`) show the title, type label, an "Edited X ago" timestamp, and a **source chip** (project name → else chat title) that opens that chat. Clicking a card opens the existing **ArtifactWorkspace** (Preview / Edit / Versions / Download / regenerate) as a resizable overlay.
+  - **Search + type filter** are client-side via a pure `filterArtifacts` reducer (matches title + source text; AND with the type filter).
+  - **New artifact** authors any of the 5 types from scratch: `createBlankArtifact(type)` creates a standalone host chat (`chat_id` is NOT NULL — no migration), renders a blank template, persists the artifact (v1), and opens it in the workspace **Edit** tab. Render/upload failures roll back the host chat + storage object (no orphans).
+- `getAllArtifacts` now returns `editedAt` (latest version time), `chatTitle`, and `projectName` via joins (new optional `ArtifactSummary` fields; per-chat lists unchanged). `ARTIFACT_TYPE_LABELS` added.
+
+### Notes
+
+- **No DB migration.** Dropped from scope (no backing model): Published/Private visibility and view counts.
+- Security: HTML thumbnails render only in a sandboxed `<iframe sandbox="allow-scripts">` (no `allow-same-origin`), matching the existing live-preview sandbox; storage paths use a server-side UUID (no user-controlled segment).
+- Built via subagent-driven TDD (8 tasks, per-task spec+quality review, final whole-branch review = "ready to merge"). Spec: `docs/specs/2026-06-25-artifacts-gallery-design.md`; plan: `docs/plans/2026-06-25-artifacts-gallery.md`.
+- Gate: typecheck 0 errors, lint 0 errors (27 baseline warnings), build clean, **359 tests pass** (new: `filterArtifacts`, templates, `createBlankArtifact` incl. rollback, `ArtifactGalleryCard`, gallery render/filter).
+
 ## [4.28.0] - 2026-06-25 — Audit batch D: page.tsx decomposition (first pass)
 
 ### Refactor
