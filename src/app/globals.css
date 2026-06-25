@@ -6,9 +6,11 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* ----------------------------------------------------------------
-   Atelier Technologies, Inc. — Master Brand Tokens
-   Light-first, executive-grade. Calm, structured, premium.
-   Palette reference: ATELIER_BRAND_SKILL_V2.md
+   Atelier Studio — Warm-minimal brand tokens (re-theme v4.30.0)
+   Light-first. Warm paper canvas, terracotta accent, warm-charcoal
+   dark mode. Token names are preserved from the prior cool palette;
+   the two cool names (navy/steel-blue) are repurposed to warm values.
+   (ATELIER_BRAND_SKILL_V2.md is historical for color.)
 ---------------------------------------------------------------- */
 :root {
   /* Brand palette — warm swatches. Names preserved; the two cool names are
