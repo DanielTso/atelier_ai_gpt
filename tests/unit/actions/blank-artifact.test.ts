@@ -3,8 +3,8 @@ import { createTestDb, testDb } from '../../helpers/test-db'
 
 vi.mock('@/db', () => ({ get db() { return testDb } }))
 
-const mockUpload = vi.fn(async () => {})
-const mockRemove = vi.fn(async () => {})
+const mockUpload = vi.fn(async (..._args: unknown[]) => {})
+const mockRemove = vi.fn(async (..._args: unknown[]) => {})
 vi.mock('@/lib/storage', () => ({
   isStorageConfigured: () => true,
   uploadBuffer: (...a: unknown[]) => mockUpload(...a),
