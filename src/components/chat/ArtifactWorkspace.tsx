@@ -12,12 +12,13 @@ import { ArtifactPreview } from './ArtifactPreview'
 const ICON: Record<string, LucideIcon> = { xlsx: FileSpreadsheet, docx: FileType, pdf: FileText, pptx: Presentation, html: Code }
 type Mode = 'preview' | 'edit' | 'versions'
 
-export function ArtifactWorkspace({ artifact, onClose, onChanged, width = 448, onWidthChange }: {
+export function ArtifactWorkspace({ artifact, onClose, onChanged, width = 448, onWidthChange, initialMode = 'preview' }: {
   artifact: ArtifactSummary
   onClose: () => void
   onChanged: () => void
   width?: number
   onWidthChange?: (w: number) => void
+  initialMode?: Mode
 }) {
   const Icon = ICON[artifact.type] ?? FileText
 
@@ -40,7 +41,7 @@ export function ArtifactWorkspace({ artifact, onClose, onChanged, width = 448, o
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
   }
-  const [mode, setMode] = useState<Mode>('preview')
+  const [mode, setMode] = useState<Mode>(initialMode)
   const [editText, setEditText] = useState(artifact.content ?? '')
   const [instruction, setInstruction] = useState('')
   const [busy, setBusy] = useState(false)
@@ -48,7 +49,7 @@ export function ArtifactWorkspace({ artifact, onClose, onChanged, width = 448, o
 
   // Reset local edit buffer whenever the underlying artifact changes (id or a new
   // version's content), so the editor reflects the current source.
-  useEffect(() => { setEditText(artifact.content ?? ''); setMode('preview') }, [artifact.id, artifact.content])
+  useEffect(() => { setEditText(artifact.content ?? ''); setMode(initialMode) }, [artifact.id, artifact.content, initialMode])
 
   const loadVersions = useCallback(async () => {
     try { setVersions((await getArtifactVersions(artifact.id)) as ArtifactVersionSummary[]) } catch { /* silent */ }
