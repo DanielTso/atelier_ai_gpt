@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.27.0] - 2026-06-25 — Audit batch C: auth session hardening
+
+### Security
+
+- **Access cookie now expires server-side.** The cookie was a static `HMAC-SHA256(secret, "atelier-authed-v1")` over a fixed string — no expiry, no nonce, valid forever once issued. It's now `base64url({exp, n}).HMAC(secret, payload)`: a signed 30-day **expiry** (enforced in `verifyAuthCookie`) and a random **nonce** per issue. **Upgrading invalidates existing cookies — everyone re-logs-in once.** (`src/lib/auth.ts`: `mintAuthToken` replaces `authToken`; `AUTH_TTL_SECONDS` added.)
+- **Login is now rate-limited.** `POST /api/auth` throttles failed attempts per client IP (best-effort in-memory `src/lib/rateLimit.ts`: 10 failures / 15-min window → `429` + `Retry-After`, plus a 250ms per-failure delay). A successful login clears the counter. Documented Vercel WAF as the cross-instance hard guarantee.
+- **Password compare no longer leaks length.** `checkPassword` now compares HMAC digests of both sides (fixed 64-hex length, collision-resistant) instead of the raw strings, closing the early-length-return timing side-channel — without the collision risk of a non-cryptographic normalizer. (Now async.)
+- **Middleware matcher tightened.** The gate excluded *any* path ending in an image extension (`.svg/.png/…`) anywhere in the URL — a latent bypass where a future route ending in one of those would be reachable unauthenticated. Scoped the exclusion to Next internals (`_next/static`, `_next/image`, `favicon.ico`) only. `public/` assets are gated too, but none are needed pre-auth (the login page references no static assets).
+
+### Notes
+
+- `docs/AUTH.md` updated to the new cookie format, throttle, and matcher.
+- Gate: typecheck 0 errors, lint 0 errors (27 baseline warnings), build clean, **339 tests pass** (+4 new: cookie expiry, nonce uniqueness, login throttle, counter-reset-on-success).
+
 ## [4.26.0] - 2026-06-25 — Audit batch B: correctness, perf & cleanup
 
 ### Fixed

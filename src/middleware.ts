@@ -23,6 +23,11 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  // Run on everything except Next internals and static asset files.
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)'],
+  // Run on everything except Next internals (build assets, image optimizer) and the
+  // favicon. The previous matcher also excluded ANY path ending in an image extension
+  // (.svg/.png/…), which was a latent gate bypass: a future route ending in one of
+  // those would have been reachable unauthenticated. Scoping the exclusion to known
+  // Next prefixes closes that hole. (Files in public/ are now gated too, but none are
+  // needed pre-auth — the login page references no static assets.)
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 }

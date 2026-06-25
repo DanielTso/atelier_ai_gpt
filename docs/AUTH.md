@@ -1,6 +1,6 @@
 # Authentication — Access Gate
 
-_Last updated: 2026-06-21. How the app is protected, how it was set up, and how to operate it._
+_Last updated: 2026-06-25. How the app is protected, how it was set up, and how to operate it._
 
 ## What it is
 
@@ -12,20 +12,20 @@ Atelier Studio is a **single-user** app (all projects/chats/documents are global
 
 ## How it works
 
-1. `src/middleware.ts` runs on every request (except `/login`, `/api/auth`, and static assets).
+1. `src/middleware.ts` runs on every request except Next internals (`_next/static`, `_next/image`, `favicon.ico`), `/login`, and `/api/auth`. (Files in `public/` are gated too — none are needed pre-auth.)
 2. If `APP_ACCESS_PASSWORD` is not set → gate disabled, all requests pass.
-3. If set → the request must carry a valid `atelier_auth` cookie. Missing/invalid →
+3. If set → the request must carry a valid `atelier_auth` cookie. Missing/invalid/**expired** →
    - API routes get `401 JSON`,
    - page routes redirect to `/login`.
-4. `/login` posts the password to `POST /api/auth`, which constant-time-compares it to `APP_ACCESS_PASSWORD` and, on success, sets a signed httpOnly cookie.
-5. The cookie value is `HMAC-SHA256(AUTH_SECRET, "atelier-authed-v1")` (Web Crypto, runtime-agnostic) — the password itself is never stored in the cookie. `DELETE /api/auth` clears it (logout).
+4. `/login` posts the password to `POST /api/auth`, which compares HMAC digests of the submitted and real password (constant-time, fixed-length so the password length is never leaked) and, on success, sets a signed httpOnly cookie. Failed attempts are **rate-limited per client IP** (best-effort in-memory: `LOGIN_MAX_FAILURES`=10 within a 15-minute window → `429` with `Retry-After`, plus a small per-failure delay). For a hard guarantee across instances, add a Vercel WAF rate-limit rule on `/api/auth`.
+5. The cookie value is `base64url({exp,n}).HMAC-SHA256(AUTH_SECRET, payload)` — a signed **expiry** (`exp`, unix seconds, 30-day default) and a random **nonce** (`n`) so the cookie expires server-side and each issued cookie is unique. The password itself is never stored in the cookie. `DELETE /api/auth` clears it (logout). _(The earlier static `HMAC(secret, "atelier-authed-v1")` format had no server-side expiry; upgrading invalidates old cookies, so everyone re-logs-in once.)_
 
 ## Environment variables
 
 | Var | Required | Purpose |
 |---|---|---|
 | `APP_ACCESS_PASSWORD` | to enable the gate | The shared password. Setting it turns the gate ON. |
-| `AUTH_SECRET` | recommended | HMAC key that signs the cookie. If omitted, falls back to the password (still works, but set a separate random value in production). |
+| `AUTH_SECRET` | strongly recommended | HMAC key that signs the cookie. If omitted, falls back to the password (still works, but the cookie is then signed with the low-entropy password and the server logs a one-time warning — set a separate `openssl rand -hex 32` value in any real deployment). |
 
 ## Status — ACTIVE in production (2026-06-21)
 
