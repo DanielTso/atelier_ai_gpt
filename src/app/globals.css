@@ -11,19 +11,21 @@
    Palette reference: ATELIER_BRAND_SKILL_V2.md
 ---------------------------------------------------------------- */
 :root {
-  /* Brand palette — raw swatches */
-  --brand-navy: #1F3447;
-  --brand-steel-blue: #4F7396;
-  --brand-ink: #16202A;
-  --brand-canvas-light: #F7F6F2;
+  /* Brand palette — warm swatches. Names preserved; the two cool names are
+     repurposed to warm values (no component uses *-navy / *-steel-blue directly). */
+  --brand-navy: #6B4A38;            /* deep warm clay (accent-foreground) */
+  --brand-steel-blue: #C96442;      /* terracotta — accent / primary (light) */
+  --brand-ink: #20201E;             /* warm near-black text */
+  --brand-canvas-light: #FAF9F6;    /* warm paper canvas */
   --brand-pure-surface: #FFFFFF;
-  --brand-warm-sand: #D9CFBF;
-  --brand-stone-sage: #8C9A86;
-  --brand-soft-mist: #F3F1EC;
-  --brand-muted-line: #E3DDD2;
-  --brand-slate-text: #6F7781;
-  --brand-success: #3F7252;
+  --brand-warm-sand: #E0D6C5;       /* warm sand (prose blockquote rule) */
+  --brand-stone-sage: #94977F;      /* warm sage */
+  --brand-soft-mist: #F2EFE9;       /* warm soft surface */
+  --brand-muted-line: #E8E6DF;      /* warm low-contrast border */
+  --brand-slate-text: #78776E;      /* warm gray (muted text) */
+  --brand-success: #4F7A4A;
   --brand-warning: #A06D2E;
+  --brand-terracotta-light: #D98A6A; /* lifted terracotta for dark-mode accent */
 
   /* Semantic tokens — Light mode (primary experience) */
   --background: var(--brand-canvas-light);
@@ -47,43 +49,43 @@
   --ring: var(--brand-steel-blue);
   --radius: 0.625rem;
 
-  /* Layout structure dimensions — keep structure separable from theme. */
-  --sidebar-width: 18rem;     /* 288px — matches the prior w-72 sidebar */
-  --rail-width: 20rem;        /* 320px — project context rail (Slice 2) */
-  --thread-max-width: 48rem;  /* 768px — centered conversation/composer column */
-  --artifact-panel-width: 28rem; /* 448px — artifact workspace panel (D2) */
+  /* Layout structure dimensions — UNCHANGED. */
+  --sidebar-width: 18rem;
+  --rail-width: 20rem;
+  --thread-max-width: 48rem;
+  --artifact-panel-width: 28rem;
 
-  /* Layered surfaces — for elevation hierarchy */
+  /* Layered surfaces */
   --surface-raised: var(--brand-pure-surface);
   --surface-sunken: var(--brand-soft-mist);
   --surface-divider: var(--brand-muted-line);
 }
 
 .dark {
-  /* Dark mode — re-themed to the brand. Still secondary; light is primary. */
-  --background: var(--brand-ink);
-  --foreground: var(--brand-canvas-light);
-  --card: #1F2831;
-  --card-foreground: var(--brand-canvas-light);
-  --popover: #1F2831;
-  --popover-foreground: var(--brand-canvas-light);
-  --primary: var(--brand-steel-blue);
-  --primary-foreground: var(--brand-pure-surface);
-  --secondary: var(--brand-navy);
-  --secondary-foreground: var(--brand-canvas-light);
-  --muted: var(--brand-navy);
-  --muted-foreground: #9AA3AE;
-  --accent: #28394A;
-  --accent-foreground: var(--brand-canvas-light);
-  --destructive: #B04D48;
-  --destructive-foreground: var(--brand-canvas-light);
-  --border: #2A3540;
-  --input: #2A3540;
-  --ring: var(--brand-steel-blue);
+  /* Dark mode — re-themed warm. Light is still primary. */
+  --background: #1A1815;
+  --foreground: #ECEAE3;
+  --card: #26231D;
+  --card-foreground: #ECEAE3;
+  --popover: #26231D;
+  --popover-foreground: #ECEAE3;
+  --primary: var(--brand-terracotta-light);
+  --primary-foreground: #211712;
+  --secondary: #2E2A22;
+  --secondary-foreground: #ECEAE3;
+  --muted: #2E2A22;
+  --muted-foreground: #9A968B;
+  --accent: #322E26;
+  --accent-foreground: #ECEAE3;
+  --destructive: #C56A5C;
+  --destructive-foreground: #211712;
+  --border: #322E26;
+  --input: #322E26;
+  --ring: var(--brand-terracotta-light);
 
-  --surface-raised: #1F2831;
-  --surface-sunken: var(--brand-ink);
-  --surface-divider: #2A3540;
+  --surface-raised: #26231D;
+  --surface-sunken: #1A1815;
+  --surface-divider: #322E26;
 }
 
 @theme inline {
@@ -140,8 +142,8 @@ body {
   background-color: var(--surface-raised);
   border: 1px solid var(--surface-divider);
   box-shadow:
-    0 1px 2px rgba(22, 32, 42, 0.04),
-    0 8px 24px rgba(22, 32, 42, 0.06);
+    0 1px 2px rgba(32, 32, 30, 0.04),
+    0 8px 24px rgba(32, 32, 30, 0.06);
 }
 
 .dark .glass-panel {
