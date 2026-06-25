@@ -54,7 +54,7 @@ export const ArtifactGalleryCard = memo(function ArtifactGalleryCard({ artifact,
               rel="noreferrer"
               onClick={(e) => e.stopPropagation()}
               className={cn('inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] opacity-0 transition-opacity',
-                'bg-primary text-primary-foreground hover:opacity-90 group-hover:opacity-100')}
+                'bg-primary text-primary-foreground hover:bg-primary/90 group-hover:opacity-100')}
             >
               <Download className="h-3 w-3" /> Download
             </a>
