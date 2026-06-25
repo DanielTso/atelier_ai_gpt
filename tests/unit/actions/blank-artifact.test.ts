@@ -40,4 +40,18 @@ describe('createBlankArtifact', () => {
     expect(row!.chatTitle).toContain('Untitled')
     expect(row!.editedAt).toBeTruthy()
   })
+
+  it('rolls back the host chat and storage object when upload fails (no orphans)', async () => {
+    const a = await import('@/app/actions')
+    const beforeChats = (await a.getStandaloneChats()).length
+    mockUpload.mockRejectedValueOnce(new Error('upload boom'))
+
+    await expect(a.createBlankArtifact('html')).rejects.toThrow('upload boom')
+
+    // Host chat was deleted (count unchanged) and no artifact row persisted.
+    expect((await a.getStandaloneChats()).length).toBe(beforeChats)
+    expect(await a.getAllArtifacts()).toHaveLength(0)
+    // The uploaded object (path was assigned before the failing upload) was swept.
+    expect(mockRemove).toHaveBeenCalled()
+  })
 })
