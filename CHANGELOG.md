@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.30.2] - 2026-06-25 — Don't create a chat until the first message is sent
+
+### Fixed
+
+- **"New chat" inside a project no longer spawns an empty `New Chat` row.** Clicking New chat in a project (or the per-project entry in the Smart Chat menu) now drops you into a **project-scoped compose** surface without persisting anything; the chat is created — in that project, with the project's default persona/model applied — **only when you send the first message**. Previously it created an empty chat immediately, even if you typed nothing. Quick (standalone) chats already behaved this way; both paths are now consistent. (`page.tsx`: `newChatCompose` compose state + deferred create in `handleSendMessage`.)
+
+### Notes
+
+- Gate: typecheck 0, lint 0 errors (27 baseline warnings), build clean, 366 tests pass.
+
 ## [4.30.1] - 2026-06-25 — Composer aesthetic + collapsed Smart Chat fix
 
 ### Changed

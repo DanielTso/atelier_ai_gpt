@@ -71,6 +71,10 @@ export default function Home() {
   const [chats, setChats] = useState<Chat[]>([])
   const [standaloneChats, setStandaloneChats] = useState<Chat[]>([])
   const [activeChatId, setActiveChatId] = useState<number | null>(null)
+  // "New chat" started inside a project: show a compose surface (not the project
+  // landing) WITHOUT persisting a chat row. The chat is created only when the first
+  // message is sent (see handleSendMessage), scoped to the active project.
+  const [newChatCompose, setNewChatCompose] = useState(false)
   const [activeView, setActiveView] = useState<AppView>('home')
   const [displayName, setDisplayName] = useState('')
 
@@ -565,37 +569,34 @@ export default function Home() {
   // Create a "New Chat" in the given project, make it active, and apply the project's
   // configured defaults (persona system prompt + model). Shared by the toolbar "+"
   // (current project) and the projects-view per-project create.
+  // "New chat" inside a project — DEFERRED. Don't persist a chat row; just enter a
+  // project-scoped compose surface and pre-apply the project's defaults to the composer.
+  // The actual chat is created on the first message send (handleSendMessage), so hitting
+  // "New chat" and walking away never spawns an empty "New Chat" row.
   const createChatForProject = async (projectId: number) => {
+    setActiveProjectId(projectId)
+    setActiveChatId(null)
+    setNewChatCompose(true)
+    setActiveView('home')
+    setInput('')
+    // Reflect project defaults in the composer now; persisted to the new chat on send.
+    // Set the system prompt explicitly (default persona's, else null) so a previous
+    // chat's prompt is never carried into — or persisted onto — the new project chat.
+    let promptToApply: string | null = null
     try {
-      setActiveProjectId(projectId)
-      const [newC] = await createChat(projectId, "New Chat")
-      setChats(prev => [newC, ...prev])
-      setActiveChatId(newC.id)
-
-      // Auto-apply project defaults if configured (optional — never blocks creation).
-      try {
-        const defaults = await getProjectDefaults(projectId)
-        if (defaults.defaultPersonaId) {
-          const persona = getPersonaById(defaults.defaultPersonaId)
-          if (persona?.prompt) {
-            await updateChatSystemPrompt(newC.id, persona.prompt)
-            setCurrentSystemPrompt(persona.prompt)
-            setSelectedEffort(persona.effort)
-            toast.success(`Applied project default: ${persona.name}`)
-          }
+      const defaults = await getProjectDefaults(projectId)
+      if (defaults.defaultPersonaId) {
+        const persona = getPersonaById(defaults.defaultPersonaId)
+        if (persona?.prompt) {
+          promptToApply = persona.prompt
+          setSelectedEffort(persona.effort)
         }
-        if (defaults.defaultModel) {
-          setSelectedModel(defaults.defaultModel)
-        }
-      } catch {
-        // Defaults are optional, don't block chat creation
       }
-
-      toast.success("Chat created")
-    } catch (e) {
-      console.error(e)
-      setError("Failed to create chat.")
+      if (defaults.defaultModel) setSelectedModel(defaults.defaultModel)
+    } catch {
+      // Defaults are optional.
     }
+    setCurrentSystemPrompt(promptToApply)
   }
 
   const handleCreateChat = async () => {
@@ -615,22 +616,34 @@ export default function Home() {
     setActiveView('home')
     setActiveChatId(null)
     setActiveProjectId(null)
+    setNewChatCompose(false)
     setInput('')
   }
 
   const handleSendMessage = async () => {
     if ((!input.trim() && attachedFiles.length === 0 && attachedImages.length === 0) || isLoading) return
 
-    // Auto-create a quick chat if no chat is selected
+    // No chat yet → create it now (deferred create). In a project compose, create the
+    // chat in that project and persist the (default) system prompt; otherwise a quick
+    // standalone chat. Either way nothing is persisted until this first message.
     if (!activeChatId) {
       try {
-        const [newC] = await createStandaloneChat("New Chat")
-        setStandaloneChats(prev => [newC, ...prev])
-        setActiveChatId(newC.id)
-        setActiveProjectId(null)
-        // Wait for the chat to be set before sending
-        // sendMessage will fire after activeChatId updates via the ref
-        activeChatIdRef.current = newC.id
+        const projectId = activeProjectIdRef.current
+        if (projectId != null) {
+          const [newC] = await createChat(projectId, "New Chat")
+          setChats(prev => [newC, ...prev])
+          if (currentSystemPrompt) {
+            await updateChatSystemPrompt(newC.id, currentSystemPrompt).catch(() => {})
+          }
+          setActiveChatId(newC.id)
+          activeChatIdRef.current = newC.id
+        } else {
+          const [newC] = await createStandaloneChat("New Chat")
+          setStandaloneChats(prev => [newC, ...prev])
+          setActiveChatId(newC.id)
+          activeChatIdRef.current = newC.id
+        }
+        setNewChatCompose(false)
       } catch (e) {
         console.error(e)
         setError("Failed to create chat.")
@@ -841,7 +854,11 @@ export default function Home() {
   const handleSelectProject = useCallback((id: number) => {
     setActiveProjectId(id)
     setActiveChatId(null) // Reset chat when switching project
+    setNewChatCompose(false) // Opening a project shows its landing, not a new-chat compose
   }, [])
+
+  // Selecting/opening any real chat exits new-chat compose mode.
+  useEffect(() => { if (activeChatId != null) setNewChatCompose(false) }, [activeChatId])
 
   const handleSelectStandaloneChat = useCallback((id: number) => {
     setActiveProjectId(null) // Clear project when selecting standalone chat
@@ -1100,7 +1117,7 @@ export default function Home() {
               ) : null
             })()}
           </div>
-        ) : activeProjectId && projects.find(p => p.id === activeProjectId) ? (
+        ) : activeProjectId && !newChatCompose && projects.find(p => p.id === activeProjectId) ? (
           <ProjectLandingPage
             project={projects.find(p => p.id === activeProjectId)!}
             chatPreviews={chatPreviews}
