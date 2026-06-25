@@ -33,6 +33,7 @@ export function ProjectContextRail({ project, onSaveContext, onAddFiles }: Proje
   const [instructions, setInstructions] = useState(project.instructions ?? '')
   const [documents, setDocuments] = useState<DocumentSummary[]>([])
   const [previewDoc, setPreviewDoc] = useState<DocumentSummary | null>(null)
+  const [dragOver, setDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { save: saveMemory, cancel: cancelMemorySave } = useDebouncedSave(project.id, onSaveContext)
   const { save: saveInstructions } = useDebouncedSave(project.id, onSaveContext)
@@ -82,10 +83,20 @@ export function ProjectContextRail({ project, onSaveContext, onAddFiles }: Proje
   }
 
   const { upload, replace, uploading } = useDocumentUpload()
-  const handleUpload = async (file: File) => {
-    if (uploading) return
-    try { await upload(file, project.id); toast.success(`Uploaded: ${file.name}`); await loadDocuments() }
-    catch (e) { toast.error(e instanceof Error ? e.message : 'Upload failed') }
+  // Upload one or more files sequentially (drag-drop can yield several), then refresh once.
+  const handleFiles = async (files: File[]) => {
+    if (uploading || files.length === 0) return
+    for (const file of files) {
+      try { await upload(file, project.id); toast.success(`Uploaded: ${file.name}`) }
+      catch (e) { toast.error(e instanceof Error ? e.message : `Upload failed: ${file.name}`) }
+    }
+    await loadDocuments()
+  }
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOver(false)
+    const files = Array.from(e.dataTransfer.files)
+    if (files.length) handleFiles(files)
   }
   const handleReplace = async (docId: number, file: File) => {
     if (uploading) return
@@ -152,7 +163,19 @@ export function ProjectContextRail({ project, onSaveContext, onAddFiles }: Proje
       </section>
 
       {/* Files */}
-      <section className="flex-1">
+      <section
+        className={cn('flex-1 relative rounded-lg transition-colors', dragOver && 'ring-2 ring-primary ring-offset-2 ring-offset-background')}
+        onDragOver={(e) => { e.preventDefault(); if (!dragOver) setDragOver(true) }}
+        onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false) }}
+        onDrop={handleDrop}
+      >
+        {dragOver && (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-lg border-2 border-dashed border-primary bg-primary/5">
+            <p className="flex items-center gap-2 text-sm font-medium text-primary">
+              <Upload className="h-4 w-4" /> Drop files to upload
+            </p>
+          </div>
+        )}
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
             <FileText className="h-4 w-4 text-muted-foreground" /> Files
@@ -165,9 +188,9 @@ export function ProjectContextRail({ project, onSaveContext, onAddFiles }: Proje
           </button>
         </div>
         <input
-          ref={fileInputRef} type="file" className="hidden"
+          ref={fileInputRef} type="file" multiple className="hidden"
           accept=".pdf,.docx,.xlsx,.txt,.md,.csv,.py,.js,.ts,.tsx,.jsx,.json,.html,.css,.java,.c,.cpp,.go,.rs,.rb,.php,.sh,.yaml,.yml,.xml,.sql,.png,.jpg,.jpeg,.webp"
-          onChange={e => { const f = e.target.files?.[0]; if (f) handleUpload(f); e.target.value = '' }}
+          onChange={e => { handleFiles(Array.from(e.target.files ?? [])); e.target.value = '' }}
         />
         <div className="mb-3"><CapacityBar usedBytes={usedBytes} capBytes={PROJECT_CAPACITY_BYTES} /></div>
         {documents.length === 0 ? (

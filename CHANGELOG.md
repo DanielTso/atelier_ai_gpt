@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.29.1] - 2026-06-25 — Drag-and-drop files into the project Files panel
+
+### Fixed
+
+- **You can now drag and drop files onto a project's Files panel** (`ProjectContextRail` on the project landing page), not just click "+ File". The whole Files section is a drop zone — dragging over it shows a dashed "Drop files to upload" overlay, and dropping uploads through the same 3-step direct-to-Storage flow. The modal documents dialog already supported drop; this brings the inline panel to parity.
+- The Files "+ File" button and drop both now accept **multiple files at once** (uploaded sequentially, with a per-file toast).
+
+### Notes
+
+- Reuses the existing `useDocumentUpload` hook — no new upload path. Gate: typecheck 0, lint 0 errors (27 baseline warnings), build clean, 360 tests pass.
+
 ## [4.29.0] - 2026-06-25 — Claude-style Artifacts gallery
 
 ### Added
