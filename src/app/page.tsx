@@ -1015,7 +1015,7 @@ export default function Home() {
             onNewProject={handleCreateProject}
           />
         ) : activeView === 'artifacts' ? (
-          <ArtifactsView />
+          <ArtifactsView onOpenChat={(chatId) => { setActiveView('home'); setActiveChatId(chatId) }} />
         ) : activeChatId ? (
           <div className="flex-1 flex min-h-0 overflow-hidden">
             <div className="flex-1 flex flex-col min-w-0">
