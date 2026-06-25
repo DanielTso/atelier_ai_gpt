@@ -148,19 +148,20 @@ Embeddings: 768-dim vectors via Gemini `gemini-embedding-001`. `generateEmbeddin
 
 ### Styling
 
-Tailwind CSS v4 on the **Atelier Technologies master brand system** (`ATELIER_BRAND_SKILL_V2.md`). Light-first, executive-grade, calm palette. Default theme is `light`; dark mode is re-themed around Ink with Steel Blue accents, not dropped.
+Tailwind CSS v4, **warm-minimal palette** (re-theme of 2026-06-25, v4.30.0 — "Manus/Claude" warm look). Light-first; default theme is `light`; dark mode is re-themed to a **warm near-black** with a lifted terracotta accent, not dropped. (Supersedes the prior cool steel-blue/navy "Atelier Technologies" palette in `ATELIER_BRAND_SKILL_V2.md`, which is now historical for color.)
 
-Brand tokens live in [src/app/globals.css](src/app/globals.css):
+Brand tokens live in [src/app/globals.css](src/app/globals.css). **Token names are preserved from the old system; values are warm** (the cool names `--brand-navy` / `--brand-steel-blue` are intentionally repurposed to warm values — no component uses `bg-navy`/`bg-steel-blue` directly):
 
-- **Raw swatches** (don't use directly unless semantic tokens don't fit): `--brand-navy` `#1F3447`, `--brand-steel-blue` `#4F7396`, `--brand-ink` `#16202A`, `--brand-canvas-light` `#F7F6F2`, `--brand-pure-surface` `#FFFFFF`, `--brand-warm-sand` `#D9CFBF`, `--brand-stone-sage` `#8C9A86`, `--brand-soft-mist` `#F3F1EC`, `--brand-muted-line` `#E3DDD2`, `--brand-slate-text` `#6F7781`, `--brand-success` `#3F7252`, `--brand-warning` `#A06D2E`.
-- **Semantic tokens (prefer these in components)**: `bg-background`, `bg-card`, `bg-primary` (Steel Blue — CTA color), `bg-secondary`/`bg-muted`/`bg-accent` (all Soft Mist in light mode), `text-foreground` (Ink), `text-muted-foreground` (Slate Text), `border-border` (Muted Line), `ring-ring` (Steel Blue), `bg-destructive`.
-- **Direct brand utilities** (for cases where semantic tokens don't express intent): `bg-navy`, `bg-steel-blue`, `bg-canvas`, `bg-warm-sand`, `bg-stone-sage`, `bg-soft-mist`, `text-ink`, `text-slate-text`, `border-muted-line`, `text-success`, `text-warning`.
+- **Raw swatches** (don't use directly unless semantic tokens don't fit): `--brand-steel-blue` `#C96442` (**terracotta — the accent/primary**), `--brand-terracotta-light` `#D98A6A` (dark-mode accent), `--brand-navy` `#6B4A38` (deep warm clay — accent-foreground), `--brand-ink` `#20201E` (warm near-black text), `--brand-canvas-light` `#FAF9F6` (warm paper), `--brand-pure-surface` `#FFFFFF`, `--brand-warm-sand` `#E0D6C5`, `--brand-stone-sage` `#94977F`, `--brand-soft-mist` `#F2EFE9`, `--brand-muted-line` `#E8E6DF`, `--brand-slate-text` `#78776E`, `--brand-success` `#4F7A4A`, `--brand-warning` `#A06D2E`. Dark mode overrides surfaces directly (bg `#1A1815`, card `#26231D`, border `#322E26`, foreground `#ECEAE3`).
+- **Semantic tokens (prefer these in components)**: `bg-background` (warm paper / warm near-black), `bg-card`, `bg-primary` (**Terracotta — CTA color**), `bg-secondary`/`bg-muted`/`bg-accent` (Soft Mist light / warm charcoal dark), `text-foreground` (warm Ink), `text-muted-foreground` (warm Slate), `border-border` (warm Muted Line), `ring-ring` (Terracotta), `bg-destructive`.
+- **Direct brand utilities** (rare; for cases where semantic tokens don't express intent): `text-ink`, `bg-warm-sand`, `text-stone-sage`, `text-success`, `text-warning` (these are the only ones in use). The remaining `--color-*` exports still resolve to warm values.
+- **Typography:** **Fraunces** (variable serif via `next/font/google`, exposed as `--font-serif`) on **display headings only** — the home hero greeting and the top-level view titles (Artifacts/Projects/project name). Body & UI stay **Geist Sans**; code stays **Geist Mono**. Apply with the `font-serif` utility; do not put serif on body text.
 
 **Surfaces.** The legacy `.glass-panel` class is retained (16 consumers across dialogs/menus/sidebar) but **redefined** as a light modular card: Pure Surface bg, Muted Line border, soft layered shadow. Dark mode uses an elevated Ink variant. There is **no backdrop-blur, no bg/60 opacity, no dark translucent glass** anywhere in the system.
 
 **Forbidden patterns** (brand guide): blue→purple gradient text/CTAs, `bg-white/X` / `border-white/X` / `via-white/X` opacity utilities (replace with semantic tokens), oversaturated multi-accent gradients. Hover states use `hover:bg-accent`, not `hover:bg-white/10`.
 
-**Other styling infra**: Animations via Framer Motion, CSS keyframes, and `SmoothStreamingWrapper` (ResizeObserver). Radix UI primitives for accessibility. Typography is Geist Sans / Geist Mono via `next/font/google`.
+**Other styling infra**: Animations via Framer Motion, CSS keyframes, and `SmoothStreamingWrapper` (ResizeObserver). Radix UI primitives for accessibility. Fonts via `next/font/google`: **Fraunces** (serif, display headings) + **Geist Sans** (body/UI) + **Geist Mono** (code).
 
 ### Provider Routing
 

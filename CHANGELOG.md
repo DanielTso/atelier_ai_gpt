@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.30.0] - 2026-06-25 — Warm palette + serif typography re-theme
+
+### Changed
+
+- **New warm-minimal theme** (the "Manus/Claude" look), light and dark:
+  - **Color:** paper canvas `#FAF9F6`, warm-ink text `#20201E`, a single **terracotta `#C96442`** accent, warm low-contrast borders `#E8E6DF`. **Dark** is re-themed to a warm near-black (`#1A1815`, surfaces `#26231D`, borders `#322E26`) with a lifted coral accent `#D98A6A` — replacing the cool steel-blue/navy/sand palette. Token-driven (`src/app/globals.css`), so it propagates app-wide; token names are preserved (the cool swatch names are repurposed to warm values).
+  - **Typography:** added **Fraunces** (variable serif, `next/font/google`, `--font-serif`) on **display headings only** — the home hero greeting and the top-level Artifacts/Projects/project-name titles. Body & UI stay Geist Sans; code stays Geist Mono.
+
+### Notes
+
+- Scope was deliberately limited to **color palette + typography**. Not touched: radius/shadow geometry/layout, the body font, and the ~250 pre-existing hardcoded `white/X`·`black/X` overlay utilities (a separate brand-cleanup follow-up; theme-neutral). `CLAUDE.md` styling section updated to the new palette.
+- Gate: typecheck 0 errors, lint 0 errors (27 baseline warnings), build clean, 366 tests pass (no logic touched). Spec: `docs/specs/2026-06-25-warm-palette-typography-design.md`; plan: `docs/plans/2026-06-25-warm-palette-typography.md`.
+
 ## [4.29.2] - 2026-06-25 — Sidebar auto-collapse works in the artifacts gallery
 
 ### Fixed
