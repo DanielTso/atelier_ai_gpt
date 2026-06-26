@@ -42,6 +42,7 @@ describe('generate_image tool', () => {
       url: 'signed:url',
       mediaType: 'image/png',
       filename: 'generated-image.png',
+      fileSize: 3, // byteLength of the mocked image (Uint8Array([1,2,3]))
     })
     // tiny result — no base64 image bytes leak into the conversation
     expect(JSON.stringify(out).length).toBeLessThan(300)
