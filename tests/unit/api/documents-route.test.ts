@@ -17,6 +17,7 @@ async function importRoute() {
   vi.doMock('@/lib/storage', () => ({
     createSignedDownloadUrl: mockCreateSignedDownloadUrl,
     removeObjects: mockRemoveObjects,
+    DOCUMENT_URL_TTL_SECONDS: 3600,
   }))
   return await import('@/app/api/documents/route')
 }
@@ -39,6 +40,9 @@ describe('GET /api/documents', () => {
     expect(data.documents[0].url).toBe('signed:documents/1/1/a.pdf')
     expect(data.documents[0].thumbnailUrl).toBe('signed:documents/1/1/thumb.webp')
     expect(data.documents[1].url).toBeNull()
+    // originals/thumbnails get the generous document TTL (not the 300s default that expires before a click)
+    expect(mockCreateSignedDownloadUrl).toHaveBeenCalledWith('documents/1/1/a.pdf', 3600)
+    expect(mockCreateSignedDownloadUrl).toHaveBeenCalledWith('documents/1/1/thumb.webp', 3600)
   })
 })
 

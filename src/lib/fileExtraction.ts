@@ -41,7 +41,17 @@ export async function extractTextFromBuffer(buffer: Buffer, extension: string): 
   if (extension === 'pdf') {
     const { extractText } = await import('unpdf')
     const result = await extractText(new Uint8Array(buffer))
-    return result.text.join('\n')
+    // Bound the joined output: accumulate page-by-page and stop at MAX_TEXT_LENGTH so
+    // a very large PDF (sets can be 200MB) can't build a multi-megabyte string on top
+    // of the buffer already in memory. Downstream truncates too, but bounding here
+    // avoids the extra full-size copy and the unbounded join.
+    const pages = Array.isArray(result.text) ? result.text : [String(result.text)]
+    let out = ''
+    for (const page of pages) {
+      out += (out ? '\n' : '') + page
+      if (out.length >= MAX_TEXT_LENGTH) { out = out.slice(0, MAX_TEXT_LENGTH); break }
+    }
+    return out
   } else if (extension === 'docx') {
     const mammoth = await import('mammoth')
     const result = await mammoth.extractRawText({ buffer })

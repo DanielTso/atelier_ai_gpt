@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import ExcelJS from 'exceljs'
 import { extractTextFromBuffer, isSupported, getExtension } from '@/lib/fileExtraction'
 
@@ -32,5 +32,29 @@ describe('fileExtraction — xlsx', () => {
   it('treats .xlsx as a supported extension', () => {
     expect(getExtension('quarterly.xlsx')).toBe('xlsx')
     expect(isSupported('quarterly.xlsx', '')).toBe(true)
+  })
+})
+
+// The PDF text path is bounded so a very large document can't build an unbounded
+// joined string on top of the buffer already in memory. We mock unpdf to control
+// the page array and re-import the real module so its dynamic import resolves the mock.
+describe('fileExtraction — pdf text bounding', () => {
+  async function loadWithPdfPages(pages: string[]) {
+    vi.resetModules()
+    vi.doMock('unpdf', () => ({ extractText: async () => ({ totalPages: pages.length, text: pages }) }))
+    return await import('@/lib/fileExtraction')
+  }
+
+  it('caps output at MAX_TEXT_LENGTH for a very large PDF', async () => {
+    const { extractTextFromBuffer: extract, MAX_TEXT_LENGTH } = await loadWithPdfPages([
+      'A'.repeat(80_000), 'B'.repeat(80_000), 'C'.repeat(80_000),
+    ])
+    const out = await extract(Buffer.from('x'), 'pdf')
+    expect(out.length).toBe(MAX_TEXT_LENGTH)
+  })
+
+  it('returns the full joined text when under the cap', async () => {
+    const { extractTextFromBuffer: extract } = await loadWithPdfPages(['hello', 'world'])
+    expect(await extract(Buffer.from('x'), 'pdf')).toBe('hello\nworld')
   })
 })

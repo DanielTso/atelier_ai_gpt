@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getProjectDocuments, getDocumentById, deleteDocument, getDocumentRevisions } from '@/app/actions'
-import { createSignedDownloadUrl, removeObjects } from '@/lib/storage'
+import { createSignedDownloadUrl, removeObjects, DOCUMENT_URL_TTL_SECONDS } from '@/lib/storage'
 import { apiError } from '@/lib/errors'
 
 export async function GET(request: NextRequest) {
@@ -13,8 +13,8 @@ export async function GET(request: NextRequest) {
     const docs = await getProjectDocuments(projectId)
     const withUrls = await Promise.all(docs.map(async (d) => {
       const [url, thumbnailUrl] = await Promise.all([
-        d.storagePath ? createSignedDownloadUrl(d.storagePath).catch((e) => { console.warn('[documents] signed url failed:', e instanceof Error ? e.message : e); return null }) : Promise.resolve(null),
-        d.thumbnailPath ? createSignedDownloadUrl(d.thumbnailPath).catch(() => null) : Promise.resolve(null),
+        d.storagePath ? createSignedDownloadUrl(d.storagePath, DOCUMENT_URL_TTL_SECONDS).catch((e) => { console.warn('[documents] signed url failed:', e instanceof Error ? e.message : e); return null }) : Promise.resolve(null),
+        d.thumbnailPath ? createSignedDownloadUrl(d.thumbnailPath, DOCUMENT_URL_TTL_SECONDS).catch(() => null) : Promise.resolve(null),
       ])
       return { ...d, url, thumbnailUrl }
     }))

@@ -2,6 +2,10 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
 const BUCKET = process.env.SUPABASE_STORAGE_BUCKET || 'atelier-files'
 
+// Module-level cache is intentional: Storage credentials come ONLY from process.env
+// (unlike the AI keys, which are DB-overridable and therefore built per-request). Env
+// changes already require a redeploy/restart, so caching the client never serves a
+// stale runtime config here.
 let cached: SupabaseClient | null = null
 
 export function isStorageConfigured(): boolean {
@@ -49,6 +53,12 @@ export async function downloadToBuffer(path: string): Promise<Buffer> {
 // generous TTL — a short one expires before the user clicks (Supabase returns an
 // "exp claim" InvalidJWT error). Matches the chat-attachment TTL.
 export const ARTIFACT_URL_TTL_SECONDS = 24 * 60 * 60 // 24h
+
+// Document originals/thumbnails are listed in the grid and clicked minutes later (and
+// a PDF preview iframe can re-request byte ranges), so the 300s default expires too
+// soon and Supabase returns an "exp claim" InvalidJWT error. Use a generous TTL like
+// artifacts. (The 300s default below stays for short-lived one-off links.)
+export const DOCUMENT_URL_TTL_SECONDS = 60 * 60 // 1h
 
 export async function createSignedDownloadUrl(path: string, ttlSeconds = 300): Promise<string> {
   // Force an attachment disposition for HTML artifacts so Supabase serves them as a

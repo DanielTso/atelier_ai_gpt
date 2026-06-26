@@ -46,4 +46,12 @@ describe('thumbnails', () => {
     expect(mockDrawImage).toHaveBeenCalledTimes(1)
     expect(Buffer.isBuffer(out)).toBe(true)
   })
+
+  it('rejects a pathological source raster above the pixel budget (no further work)', async () => {
+    setup()
+    mockLoadImage.mockResolvedValue({ width: 100_000, height: 100_000 }) // 10 GP
+    const { generateImageThumbnail } = await import('@/lib/thumbnails')
+    await expect(generateImageThumbnail(Buffer.from('img'))).rejects.toThrow(/too large/i)
+    expect(mockDrawImage).not.toHaveBeenCalled()
+  })
 })
