@@ -161,6 +161,28 @@ describe('POST /api/documents/process', () => {
     expect(m.commitDocumentReplacement).toHaveBeenCalledWith(21, 1, expect.any(Array), expect.objectContaining({ status: 'error' }))
   })
 
+  it('replace path: rejects an unsupported declared file type before downloading', async () => {
+    m.getDocumentById.mockResolvedValue({ id: 22, projectId: 1, revision: 1, filename: 'old.pdf', mimeType: 'application/pdf', fileSize: 5, storagePath: 'documents/1/22/old.pdf', thumbnailPath: null, charCount: 10, chunkCount: 1, extractionMethod: 'text' })
+    const POST = await importRoute()
+    const res = await POST(new Request('http://localhost/api/documents/process', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ documentId: 22, filename: 'malware.exe', mimeType: 'application/octet-stream', fileSize: 9 }),
+    }) as never)
+    expect(res.status).toBe(400)
+    expect(m.downloadToBuffer).not.toHaveBeenCalled()
+  })
+
+  it('replace path: rejects an oversize declared file before downloading', async () => {
+    m.getDocumentById.mockResolvedValue({ id: 23, projectId: 1, revision: 1, filename: 'old.pdf', mimeType: 'application/pdf', fileSize: 5, storagePath: 'p', thumbnailPath: null, charCount: 10, chunkCount: 1, extractionMethod: 'text' })
+    const POST = await importRoute()
+    const res = await POST(new Request('http://localhost/api/documents/process', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ documentId: 23, filename: 'big.pdf', mimeType: 'application/pdf', fileSize: 300 * 1024 * 1024 }),
+    }) as never)
+    expect(res.status).toBe(400)
+    expect(m.downloadToBuffer).not.toHaveBeenCalled()
+  })
+
   it('extractor throwing (corrupt file) → error status + 500, not stuck processing', async () => {
     m.getDocumentById.mockResolvedValue({ id: 13, projectId: 1, filename: 'corrupt.pdf', mimeType: 'application/pdf', storagePath: 'p' })
     m.extractTextFromBuffer.mockRejectedValue(new Error('pdfjs worker crashed'))

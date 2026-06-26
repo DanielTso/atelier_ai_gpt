@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getDocumentById, updateDocumentStatus, saveDocumentChunks, updateChunkEmbedding, createDocumentRevision, commitDocumentReplacement } from '@/app/actions'
 import { generateEmbedding, ensureEmbeddingModel } from '@/lib/embeddings'
 import { chunkText } from '@/lib/chunking'
-import { MAX_TEXT_LENGTH, getExtension, isImageExtension, extractTextFromBuffer } from '@/lib/fileExtraction'
+import { MAX_FILE_SIZE, MAX_TEXT_LENGTH, getExtension, isImageExtension, isSupported, extractTextFromBuffer } from '@/lib/fileExtraction'
 import { extractViaVision, extractViaVisionImage } from '@/lib/visionExtraction'
 import { downloadToBuffer, uploadBuffer, sanitizeStorageName } from '@/lib/storage'
 import { generatePdfThumbnail, generateImageThumbnail } from '@/lib/thumbnails'
@@ -30,6 +30,22 @@ export async function POST(request: NextRequest) {
     const sourcePath = isReplace
       ? `documents/${doc.projectId}/${doc.id}/rev${nextRevision}/${sanitizeStorageName(effFilename)}`
       : doc.storagePath
+
+    // Replace flow: the client declares the new file's type/size, so re-validate it
+    // here the same way /api/documents/upload-url does before issuing the signed URL.
+    // (The storage path is already derived server-side above, so traversal isn't the
+    // risk — this just keeps the two halves of the upload flow on one validation
+    // contract and refuses to route an unsupported/oversized object into the extractor.)
+    if (isReplace) {
+      const replExt = getExtension(effFilename)
+      const replIsImage = isImageExtension(replExt) || effMimeType.startsWith('image/')
+      if (!replIsImage && !isSupported(effFilename, effMimeType)) {
+        return NextResponse.json({ error: 'Unsupported file type' }, { status: 400 })
+      }
+      if (effFileSize > MAX_FILE_SIZE) {
+        return NextResponse.json({ error: 'File too large' }, { status: 400 })
+      }
+    }
 
     const { available } = await ensureEmbeddingModel()
     if (!available) {

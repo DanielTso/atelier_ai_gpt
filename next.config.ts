@@ -17,6 +17,15 @@ const imgFrame = supabaseOrigin || "https:";
 // Next's App Router injects inline scripts/styles (hydration data, streaming) and
 // has no nonce pipeline configured here, so 'unsafe-inline' is required. 'unsafe-eval'
 // is dev-only (React Refresh). Images allow data:/blob: for AI-generated images.
+//
+// SECURITY TRADEOFF (accepted): 'unsafe-inline' on script-src weakens CSP as an XSS
+// backstop for the top-level origin. This is accepted for now because (a) the app is
+// single-user and password-gated (no untrusted authors), and (b) the one surface that
+// runs untrusted/model-generated HTML — the artifact preview — is isolated in an
+// iframe with sandbox="allow-scripts" and NO allow-same-origin, so it executes on an
+// opaque origin and cannot reach app cookies/storage (see ArtifactPreview.tsx). If the
+// trust model changes, the hardening path is a Next 16 nonce pipeline (middleware
+// nonce + script-src 'nonce-…' 'strict-dynamic') to drop 'unsafe-inline' in prod.
 const csp = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,

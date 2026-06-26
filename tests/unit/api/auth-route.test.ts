@@ -105,6 +105,28 @@ describe('POST /api/auth', () => {
     expect(after.status).toBe(401)
   })
 
+  it('keys the throttle on x-real-ip even when X-Forwarded-For is rotated', async () => {
+    // Attacker rotates a fresh LEFTMOST X-Forwarded-For per request, but Vercel's
+    // x-real-ip is the true connecting IP → failures must still accumulate to a block.
+    for (let i = 0; i < LOGIN_MAX_FAILURES; i++) {
+      const r = await POST(req({ password: 'nope' }, { 'x-real-ip': '198.51.100.5', 'x-forwarded-for': `10.0.0.${i}` }))
+      expect(r.status).toBe(401)
+    }
+    const blocked = await POST(req({ password: 'hunter2' }, { 'x-real-ip': '198.51.100.5', 'x-forwarded-for': '10.0.0.250' }))
+    expect(blocked.status).toBe(429)
+  })
+
+  it('keys on the rightmost (proxy-appended) X-Forwarded-For entry, not the spoofable leftmost', async () => {
+    // No x-real-ip; the real client is the RIGHTMOST entry the proxy appends. A
+    // rotating client-controlled leftmost must NOT mint a fresh throttle key.
+    for (let i = 0; i < LOGIN_MAX_FAILURES; i++) {
+      const r = await POST(req({ password: 'nope' }, { 'x-forwarded-for': `${i}.${i}.${i}.${i}, 203.0.113.50` }))
+      expect(r.status).toBe(401)
+    }
+    const blocked = await POST(req({ password: 'hunter2' }, { 'x-forwarded-for': '9.9.9.9, 203.0.113.50' }))
+    expect(blocked.status).toBe(429)
+  })
+
   it('is a no-op when the gate is disabled', async () => {
     delete process.env.APP_ACCESS_PASSWORD
     const res = await POST(req({ password: 'whatever' }))

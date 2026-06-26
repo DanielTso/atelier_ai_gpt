@@ -67,6 +67,19 @@ function sanitizeFilename(name: string): string {
 }
 
 /**
+ * Neutralize our own comment sentinels if they appear inside file content. A file
+ * whose body literally contains `<!-- /FILECONTENT -->` (or a `<!-- FILES:` /
+ * `<!-- FILECONTENT:` marker) could otherwise forge/close the delimiter block, so
+ * parseFileMetadata/stripFilePrefix mis-parse the message and the displayed text
+ * diverges from what was sent to the model. We defang ONLY our markers (break the
+ * `<!--` opener that precedes FILES/FILECONTENT), leaving any other `<!-- … -->`
+ * HTML comments in the content intact.
+ */
+function sanitizeFileContent(content: string): string {
+  return content.replace(/<!--(\s*\/?(?:FILECONTENT|FILES)\b)/gi, '<!-_$1')
+}
+
+/**
  * Build a message string with file content embedded using HTML comment delimiters.
  * Format:
  *   <!-- FILES:[{...metadata}] -->
@@ -88,7 +101,7 @@ export function buildFileMessage(text: string, files: AttachedFile[]): string {
 
   for (const file of files) {
     result += `<!-- FILECONTENT:${sanitizeFilename(file.name)} -->\n`
-    result += file.textContent
+    result += sanitizeFileContent(file.textContent)
     result += `\n<!-- /FILECONTENT -->\n`
   }
 

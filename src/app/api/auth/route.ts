@@ -11,10 +11,23 @@ const COOKIE_OPTS = { httpOnly: true, secure: true, sameSite: 'lax', path: '/' }
 // Small fixed delay on a wrong password to further slow automated guessing.
 const FAILURE_DELAY_MS = 250
 
+// Derive the throttle key from the client IP. On Vercel, `x-real-ip` is set to the
+// true connecting IP, and `x-forwarded-for` has the real client appended on the
+// RIGHT (anything the client itself sends is preserved to the left of it). So we
+// trust `x-real-ip` first and otherwise take the RIGHTMOST forwarded entry — never
+// the leftmost, which is fully client-spoofable: an attacker could rotate a fresh
+// leftmost X-Forwarded-For per request and never accumulate failures against one
+// key, defeating the per-key brute-force throttle entirely. Off-Vercel deployments
+// must front this with a proxy that sets x-real-ip / overwrites x-forwarded-for.
 function clientKey(req: Request): string {
+  const realIp = req.headers.get('x-real-ip')?.trim()
+  if (realIp) return realIp
   const fwd = req.headers.get('x-forwarded-for')
-  if (fwd) return fwd.split(',')[0]!.trim()
-  return req.headers.get('x-real-ip')?.trim() || 'unknown'
+  if (fwd) {
+    const parts = fwd.split(',').map((s) => s.trim()).filter(Boolean)
+    if (parts.length > 0) return parts[parts.length - 1]!
+  }
+  return 'unknown'
 }
 
 export async function POST(req: Request) {
