@@ -668,6 +668,11 @@ export default function Home() {
         } else {
           const [newC] = await createStandaloneChat("New Chat")
           setStandaloneChats(prev => [newC, ...prev])
+          // Persist the composer's selected persona prompt (if any) so it survives the
+          // post-create reload and applies to the first message — mirrors the project branch.
+          if (currentSystemPrompt) {
+            await updateChatSystemPrompt(newC.id, currentSystemPrompt).catch(() => {})
+          }
           skipLoadOnceRef.current = newC.id
           setActiveChatId(newC.id)
           activeChatIdRef.current = newC.id
@@ -912,7 +917,15 @@ export default function Home() {
   }, [models])
 
   const handleSaveSystemPrompt = useCallback(async (prompt: string | null) => {
-    if (!activeChatId) return
+    // No chat yet (compose/empty state — the default now that chats are created lazily on
+    // first send): update the composer state locally so the persona chip reflects the
+    // choice immediately. The prompt is persisted to the chat when it's created in
+    // handleSendMessage. Without this, selecting a persona before sending did nothing and
+    // the chip stayed on the default "General Assistant".
+    if (!activeChatId) {
+      setCurrentSystemPrompt(prompt)
+      return
+    }
     try {
       await updateChatSystemPrompt(activeChatId, prompt)
       setCurrentSystemPrompt(prompt)
