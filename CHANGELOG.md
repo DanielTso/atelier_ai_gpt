@@ -2,6 +2,39 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.31.0] - 2026-06-26 — Code-review hardening: security, correctness & robustness
+
+A structured 7-dimension code review (9 module reviewers, every finding adversarially verified against the source) surfaced 34 confirmed issues. All are fixed here, batched and individually tested. No Critical issues were found.
+
+### Security
+
+- **Login throttle can no longer be bypassed by spoofing `X-Forwarded-For`.** The brute-force throttle now keys on the trusted `x-real-ip` / rightmost (proxy-appended) XFF entry instead of the client-controllable leftmost token. (`api/auth/route.ts`)
+- **Document replace flow re-validates declared type/size** before downloading/extracting, matching the upload contract. (`api/documents/process`)
+- **Embedded file content can't forge the `FILECONTENT`/`FILES` comment sentinels**, so a pasted file body can't corrupt the message round-trip. (`fileAttachments.ts`)
+- The `'unsafe-inline'` CSP tradeoff is now **documented** (single-user app; the artifact preview iframe is already opaque-origin sandboxed). (`next.config.ts`)
+- Light **input bounds** (role enum, length caps) on free-text persisted by `saveMessage`/`createChat`/`createProject`.
+
+### Fixed (correctness)
+
+- **The copy-code button now copies its own block** instead of always the first code block on the page. (`CodeBlock.tsx`)
+- **First-message-in-a-new-chat no longer flickers/drops** — `loadMessages` bails on a stale chat switch and skips the load once for a just-created chat, so the optimistic + streaming state survives. The assistant-message save is de-duplicated against a double-firing `onFinish`. (`page.tsx`)
+- **Artifact delete now sweeps every version's Storage object** (not just the current one), so editing/regenerating an artifact no longer orphans blobs in the bucket. (`api/artifacts/route.ts`)
+- **Markdown link URLs survive export** — docx gets real hyperlinks, pdf/pptx get `text (url)` (previously the URL was dropped). (`lib/artifacts/*`)
+- A failed **message-retrieval** path no longer also nulls **document** context (independent guard + logging); rerank de-duplicates repeated model indices; the artifact **edit** route rejects a content/type-shape mismatch (422) instead of silently writing a blank version; **classify** is pinned to internal Flash; inline-code styling renders again under react-markdown v10.
+- localStorage hydration is shape-validated (with cross-tab sync); custom-persona ids use `crypto.randomUUID()`.
+
+### Performance / robustness
+
+- PDF text extraction is **bounded** (no unbounded join on a 200 MB plan); image thumbnailing **rejects pathological rasters**; semantic retrieval skips fetching the 768-d embedding column when MMR is off; document signed-URL TTL widened to 1 h so previews don't expire mid-view.
+
+### Other
+
+- Login redirect **preserves the requested page** via a validated same-origin `?next=`; generated-image rows store the real byte size; file-type badges get light-mode color pairs; `/api/extract` shares one validation helper and both extract/process routes drop the `includeDetail` footgun; access-gate middleware now has unit coverage (matcher bypass + branch logic); CLAUDE.md migration range + CI step list corrected.
+
+### Notes
+
+- Gate: lint 0 errors (26 baseline warnings), typecheck 0, build clean, **407 tests pass**. ~30 new/extended tests across auth/middleware/storage/artifacts/RAG/client. E2E runs in CI (gate-off, ephemeral pgvector) — not run locally (gate on + production DB).
+
 ## [4.30.2] - 2026-06-25 — Don't create a chat until the first message is sent
 
 ### Fixed
