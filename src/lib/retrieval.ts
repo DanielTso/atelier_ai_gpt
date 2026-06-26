@@ -21,26 +21,40 @@ export async function retrieveContext(
     // so it's a pure Flash round-trip of overhead.
     const query = (cfg.rewriteEnabled && turns.length > 1) ? await rewriteQuery(turns) : lastUserText
     const queryEmbedding = await generateEmbedding(query, 'query')
+    // Exclude messages already in the prompt from semantic results. NOTE: this matches
+    // String(msg.id) against the DB messageId, which only aligns for RELOADED messages
+    // (whose UI id IS the DB integer id). Just-sent messages carry client UUID ids that
+    // never match — they're safe only because they have no embedding yet (embeddings are
+    // written async after the exchange), so they aren't retrieval candidates. If that
+    // timing ever changes, this dedup must switch to a stable id the route controls.
     const recentIds = new Set(messages.map(msg => String(msg.id)))
 
     // Message and document retrieval are independent (both only need the query
     // embedding) — run them concurrently so their rerank Flash calls overlap
     // instead of running back-to-back on the chat critical path.
     const messagesP = (async (): Promise<string | null> => {
-      let msgCands = (await findSimilarMessages(
-        queryEmbedding,
-        { projectId: scope.projectId ?? undefined, chatId: !scope.projectId ? scope.chatId : undefined },
-        cfg.topN, cfg.msgThreshold,
-      )).filter(c => !recentIds.has(String(c.messageId)))
-      if (cfg.mmrEnabled) msgCands = mmr(msgCands as (typeof msgCands[number] & MmrItem)[], cfg.msgTopK * 2, cfg.mmrLambda)
-      const msgFinal = cfg.rerankEnabled ? await rerankCandidates(query, msgCands, cfg.msgTopK) : msgCands.slice(0, cfg.msgTopK)
-      return msgFinal.length > 0 ? msgFinal.map(s => s.content).join('\n---\n') : null
+      try {
+        // Only fetch the embedding column when MMR will actually consume it.
+        let msgCands = (await findSimilarMessages(
+          queryEmbedding,
+          { projectId: scope.projectId ?? undefined, chatId: !scope.projectId ? scope.chatId : undefined },
+          cfg.topN, cfg.msgThreshold, cfg.mmrEnabled,
+        )).filter(c => !recentIds.has(String(c.messageId)))
+        if (cfg.mmrEnabled) msgCands = mmr(msgCands as (typeof msgCands[number] & MmrItem)[], cfg.msgTopK * 2, cfg.mmrLambda)
+        const msgFinal = cfg.rerankEnabled ? await rerankCandidates(query, msgCands, cfg.msgTopK) : msgCands.slice(0, cfg.msgTopK)
+        return msgFinal.length > 0 ? msgFinal.map(s => s.content).join('\n---\n') : null
+      } catch (e) {
+        // Guard the message path independently so a failure here can't also null out
+        // document context (which has its own try/catch below).
+        console.warn('[retrieval] message retrieval failed:', e instanceof Error ? e.message : e)
+        return null
+      }
     })()
 
     const documentsP = (async (): Promise<string | null> => {
       if (!scope.projectId) return null
       try {
-        let docCands = await findSimilarDocumentChunks(queryEmbedding, scope.projectId, cfg.topN, cfg.docThreshold)
+        let docCands = await findSimilarDocumentChunks(queryEmbedding, scope.projectId, cfg.topN, cfg.docThreshold, cfg.mmrEnabled)
         if (cfg.mmrEnabled) {
           docCands = mmr(
             docCands.filter(c => c.embedding != null) as (typeof docCands[number] & MmrItem)[],
@@ -49,14 +63,16 @@ export async function retrieveContext(
         }
         const docFinal = cfg.rerankEnabled ? await rerankCandidates(query, docCands, cfg.docTopK) : docCands.slice(0, cfg.docTopK)
         return docFinal.length > 0 ? docFinal.map(c => `[From: ${c.filename}]\n${c.content}`).join('\n---\n') : null
-      } catch {
+      } catch (e) {
+        console.warn('[retrieval] document retrieval failed:', e instanceof Error ? e.message : e)
         return null // Document retrieval is best-effort
       }
     })()
 
     const [semanticContext, documentContext] = await Promise.all([messagesP, documentsP])
     return { semanticContext, documentContext }
-  } catch {
+  } catch (e) {
+    console.warn('[retrieval] retrieval pipeline failed:', e instanceof Error ? e.message : e)
     return empty
   }
 }

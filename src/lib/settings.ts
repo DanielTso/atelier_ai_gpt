@@ -4,6 +4,9 @@ import { eq } from 'drizzle-orm'
 
 const settingsCache = new Map<string, { value: string | null; expiresAt: number }>()
 const SETTINGS_CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+// Cache a NEGATIVE (null) result only briefly: an env key added to an already-running
+// process (or set after first read) should not appear "missing" for a full 5 minutes.
+const SETTINGS_NULL_CACHE_TTL = 30 * 1000 // 30 seconds
 
 /**
  * Clear the settings cache. Call after saving settings to ensure changes take effect immediately.
@@ -31,7 +34,8 @@ export async function getServerSetting(key: string, envFallback?: string): Promi
     value = process.env[envFallback] ?? null
   }
 
-  settingsCache.set(cacheKey, { value, expiresAt: Date.now() + SETTINGS_CACHE_TTL })
+  const ttl = value === null ? SETTINGS_NULL_CACHE_TTL : SETTINGS_CACHE_TTL
+  settingsCache.set(cacheKey, { value, expiresAt: Date.now() + ttl })
   return value
 }
 

@@ -28,9 +28,14 @@ export async function rerankCandidates<T extends { content: string }>(
     const match = text.match(/\[[\s\S]*\]/)
     if (!match) return candidates.slice(0, topK)
     const scored = JSON.parse(match[0]) as { index: number; score: number }[]
+    // Dedup repeated indices (the LLM occasionally lists the same candidate twice).
+    // Without this, a duplicate index would place the same chunk in two scarce top-K
+    // slots and feed the model redundant context.
+    const seenIdx = new Set<number>()
     const ordered = scored
       .filter(s => Number.isInteger(s.index) && s.index >= 0 && s.index < candidates.length)
       .sort((a, b) => b.score - a.score)
+      .filter(s => (seenIdx.has(s.index) ? false : (seenIdx.add(s.index), true)))
       .map(s => candidates[s.index])
       .filter((c): c is T => c !== undefined)
     const seen = new Set(ordered)

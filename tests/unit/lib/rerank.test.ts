@@ -41,4 +41,16 @@ describe('rerankCandidates', () => {
     const out = await rerankCandidates('q', cands, 3)
     expect(out).toEqual(cands)
   })
+
+  it('dedups a repeated model index so one candidate never fills two slots', async () => {
+    setup()
+    // The LLM returns index 1 twice — must collapse to a single occurrence.
+    mockGenerateText.mockResolvedValue({ text: '[{"index":1,"score":95},{"index":1,"score":90},{"index":0,"score":50}]' })
+    const { rerankCandidates } = await import('@/lib/rerank')
+    const out = await rerankCandidates('q', cands, 3)
+    const contents = out.map(c => c.content)
+    expect(contents.filter(c => c === 'the answer is here')).toHaveLength(1)
+    expect(new Set(contents).size).toBe(contents.length) // all unique
+    expect(out).toHaveLength(3)
+  })
 })

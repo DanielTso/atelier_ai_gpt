@@ -11,9 +11,13 @@ export async function GET(req: Request) {
 
     const { available, provider } = await ensureEmbeddingModel();
 
+    // Validate ids before use (the POST path uses a Zod schema; mirror that here so a
+    // malformed `?projectId=abc` → NaN can't silently produce a wrong/zero count).
     const scope: { chatId?: number; projectId?: number } = {};
-    if (projectId) scope.projectId = Number(projectId);
-    else if (chatId) scope.chatId = Number(chatId);
+    const pid = Number(projectId);
+    const cid = Number(chatId);
+    if (projectId && Number.isInteger(pid) && pid > 0) scope.projectId = pid;
+    else if (chatId && Number.isInteger(cid) && cid > 0) scope.chatId = cid;
 
     const embeddingCount = await getEmbeddingCount(scope);
 

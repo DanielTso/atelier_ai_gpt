@@ -34,7 +34,7 @@ export async function POST(req: Request) {
     if (!body.success) {
       return apiError(body.error, 'Invalid request body', 400);
     }
-    const { chatId, messages, model } = body.data;
+    const { chatId, messages } = body.data;
 
     // Check if already classified
     const existing = await getChatTopics(chatId);
@@ -51,8 +51,6 @@ export async function POST(req: Request) {
       .map((m) => `${m.role}: ${messageText(m)}`)
       .join('\n');
 
-    // Use Gemini for classification
-    const modelName = model || 'gemini-3.5-flash';
     const apiKey = await getGeminiApiKey();
     if (!apiKey) {
       return new Response(JSON.stringify({ error: 'No API key available' }), {
@@ -61,7 +59,11 @@ export async function POST(req: Request) {
       });
     }
     const google = createGoogleGenerativeAI({ apiKey });
-    const selectedModel = google(modelName.startsWith('gemini') ? modelName : 'gemini-3.5-flash');
+    // Classification is housekeeping — always pin to internal Flash, never the body's
+    // model (which may be a Claude or the Nano Banana image model). The previous
+    // `startsWith('gemini')` guard let the image model through, defeating the pin.
+    // Mirrors summarize/generate-title.
+    const selectedModel = google('gemini-3.5-flash');
 
     const result = await generateText({
       model: selectedModel,

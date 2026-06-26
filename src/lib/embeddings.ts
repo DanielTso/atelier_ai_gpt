@@ -70,8 +70,9 @@ export async function findSimilarMessages(
   queryEmbedding: number[],
   scope: { chatId?: number; projectId?: number },
   topK: number = 5,
-  threshold: number = 0.7
-): Promise<{ content: string; similarity: number; chatId: number; messageId: number; embedding: number[] }[]> {
+  threshold: number = 0.7,
+  includeEmbedding: boolean = true
+): Promise<{ content: string; similarity: number; chatId: number; messageId: number; embedding: number[] | null }[]> {
   // Order by the RAW cosine distance ascending so the HNSW index (vector_cosine_ops)
   // is used for the top-k scan. Wrapping it as `1 - distance DESC` (or filtering on
   // that expression in WHERE) makes the planner treat it as opaque and fall back to a
@@ -84,17 +85,25 @@ export async function findSimilarMessages(
     : scope.chatId
       ? eq(messageEmbeddings.chatId, scope.chatId)
       : undefined
-  const rows = await db.select({
+  const baseCols = {
     content: messageEmbeddings.content,
     similarity,
     chatId: messageEmbeddings.chatId,
     messageId: messageEmbeddings.messageId,
-    embedding: messageEmbeddings.embedding,
-  }).from(messageEmbeddings)
-    .where(scopeFilter)
-    .orderBy(distance)
-    .limit(topK)
-  return rows.filter((r) => r.similarity > threshold)
+  }
+  // The 768-d embedding column is only needed by MMR; skip fetching it otherwise
+  // (~20 vectors parsed per query on the chat critical path for nothing).
+  const rows = includeEmbedding
+    ? await db.select({ ...baseCols, embedding: messageEmbeddings.embedding })
+        .from(messageEmbeddings).where(scopeFilter).orderBy(distance).limit(topK)
+    : await db.select(baseCols)
+        .from(messageEmbeddings).where(scopeFilter).orderBy(distance).limit(topK)
+  return rows
+    .filter((r) => r.similarity > threshold)
+    .map((r) => ({
+      content: r.content, similarity: r.similarity, chatId: r.chatId, messageId: r.messageId,
+      embedding: 'embedding' in r ? (r.embedding as number[]) : null,
+    }))
 }
 
 /**
@@ -105,25 +114,35 @@ export async function findSimilarDocumentChunks(
   queryEmbedding: number[],
   projectId: number,
   topK: number = 3,
-  threshold: number = 0.5
+  threshold: number = 0.5,
+  includeEmbedding: boolean = true
 ): Promise<{ content: string; similarity: number; chunkId: number; documentId: number; filename: string; embedding: number[] | null }[]> {
   // Order by raw cosine distance ascending to keep the HNSW index in play; apply the
   // threshold as a post-filter (see findSimilarMessages for the rationale).
   const distance = cosineDistance(documentChunks.embedding, queryEmbedding)
   const similarity = sql<number>`1 - (${distance})`
-  const rows = await db.select({
+  const baseCols = {
     content: documentChunks.content,
     similarity,
     chunkId: documentChunks.id,
     documentId: documentChunks.documentId,
     filename: documents.filename,
-    embedding: documentChunks.embedding,
-  }).from(documentChunks)
-    .innerJoin(documents, eq(documentChunks.documentId, documents.id))
-    .where(eq(documentChunks.projectId, projectId))
-    .orderBy(distance)
-    .limit(topK)
-  return rows.filter((r) => r.similarity > threshold)
+  }
+  // The embedding column is only consumed by MMR; skip it when MMR is disabled.
+  const rows = includeEmbedding
+    ? await db.select({ ...baseCols, embedding: documentChunks.embedding })
+        .from(documentChunks).innerJoin(documents, eq(documentChunks.documentId, documents.id))
+        .where(eq(documentChunks.projectId, projectId)).orderBy(distance).limit(topK)
+    : await db.select(baseCols)
+        .from(documentChunks).innerJoin(documents, eq(documentChunks.documentId, documents.id))
+        .where(eq(documentChunks.projectId, projectId)).orderBy(distance).limit(topK)
+  return rows
+    .filter((r) => r.similarity > threshold)
+    .map((r) => ({
+      content: r.content, similarity: r.similarity, chunkId: r.chunkId,
+      documentId: r.documentId, filename: r.filename,
+      embedding: 'embedding' in r ? (r.embedding as number[]) : null,
+    }))
 }
 
 /**

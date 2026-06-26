@@ -98,6 +98,13 @@ export async function POST(req: Request) {
       // 3. Build context prefix (document chunks + semantic context + summary)
       const contextPrefix = buildContextPrefix(documentContext, semanticContext, chat?.summary ?? null);
       if (contextPrefix.length > 0) {
+        // When a summary exists, send only the recent tail in full. RECENT_MESSAGES_LIMIT
+        // (20) is intentionally >= the count the summarizer leaves un-summarized (it keeps
+        // the last ~10 in full, summarizing older ones up to summaryUpToMessageId), so the
+        // tail always covers everything after the summary boundary — i.e. NO gap. Some
+        // overlap (a message both summarized and re-sent) is accepted as the safe side of
+        // the tradeoff: client-side messages carry UUID ids, not DB ids, so we can't slice
+        // precisely by the cutoff here (see the recent-id dedup note in retrieval.ts).
         const recentMessages = chat?.summary
           ? contextMessages.slice(-RECENT_MESSAGES_LIMIT)
           : contextMessages;

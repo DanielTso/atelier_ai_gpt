@@ -71,6 +71,21 @@ describe('retrieveContext', () => {
     expect(out).toEqual({ semanticContext: null, documentContext: null })
   })
 
+  it('returns document context even when the message path throws (independent guard)', async () => {
+    setup()
+    m.generateEmbedding.mockResolvedValue([1, 0, 0])
+    m.findSimilarMessages.mockRejectedValue(new Error('msg path down'))
+    m.findSimilarDocumentChunks.mockResolvedValue([
+      { content: 'doc body', similarity: 0.9, chunkId: 1, documentId: 1, filename: 'spec.pdf', embedding: [1, 0, 0] },
+    ])
+    m.rerankCandidates.mockImplementation((_q: unknown, c: unknown) => Promise.resolve(c))
+    const { retrieveContext } = await import('@/lib/retrieval')
+    const out = await retrieveContext(msgs as never, { chatId: 1, projectId: 7 })
+    // The message failure must NOT also null out the document context.
+    expect(out.semanticContext).toBeNull()
+    expect(out.documentContext).toContain('spec.pdf')
+  })
+
   it('skips rewrite when disabled (uses last user text)', async () => {
     setup({ rewriteEnabled: false })
     m.generateEmbedding.mockResolvedValue([1, 0, 0])

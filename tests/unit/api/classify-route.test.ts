@@ -96,6 +96,15 @@ describe('POST /api/classify', () => {
     expect(callArgs.model.modelId).toBe('gemini-3.5-flash')
   })
 
+  it('pins to gemini-3.5-flash even when the body requests the image model', async () => {
+    const POST = await importRoute()
+    const messages = [{ role: 'user', parts: [{ type: 'text', text: 'test' }] }]
+    // The image model (and any non-flash model) must be coerced to Flash, not passed through.
+    await POST(makeRequest({ chatId: 1, messages, model: 'gemini-3.1-flash-image' }))
+    const callArgs = mockGenerateText.mock.calls[0][0]
+    expect(callArgs.model.modelId).toBe('gemini-3.5-flash')
+  })
+
   it('parses topics from LLM response and saves to DB', async () => {
     const [project] = await createProject('P')
     const [chat] = await createChat(project.id, 'Chat')
