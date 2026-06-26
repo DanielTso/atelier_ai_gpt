@@ -63,10 +63,18 @@ describe('middleware gate', () => {
     expect(res.status).toBe(401)
   })
 
-  it('redirects a page request without a cookie to /login', async () => {
+  it('redirects a page request without a cookie to /login, preserving the destination', async () => {
     const res = await middleware(mkReq('/dashboard'))
     expect(res.status).toBe(307)
-    expect(res.headers.get('location')).toMatch(/\/login$/)
+    const loc = res.headers.get('location')!
+    expect(loc).toContain('/login')
+    expect(loc).toContain('next=%2Fdashboard')
+  })
+
+  it('does not append a next param for the root path', async () => {
+    const res = await middleware(mkReq('/'))
+    expect(res.status).toBe(307)
+    expect(res.headers.get('location')).not.toContain('next=')
   })
 
   it('lets /login and /api/auth through unauthenticated', async () => {

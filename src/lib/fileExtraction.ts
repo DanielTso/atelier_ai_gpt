@@ -37,6 +37,21 @@ export function isSupported(filename: string, mimeType: string): boolean {
   return false
 }
 
+/**
+ * Shared pre-extraction validation (size cap + supported type). Returns a user-facing
+ * error message, or null if the file is acceptable. Keeps the size/type contract in one
+ * place for callers like /api/extract.
+ */
+export function validateUploadedFile(filename: string, mimeType: string, size: number): string | null {
+  if (size > MAX_FILE_SIZE) {
+    return `File too large. Maximum size is ${MAX_FILE_SIZE / (1024 * 1024)}MB.`
+  }
+  if (!isSupported(filename, mimeType)) {
+    return `Unsupported file type: ${filename}. Supported: PDF, Word (.docx), Excel (.xlsx), and text/code files.`
+  }
+  return null
+}
+
 export async function extractTextFromBuffer(buffer: Buffer, extension: string): Promise<string> {
   if (extension === 'pdf') {
     const { extractText } = await import('unpdf')

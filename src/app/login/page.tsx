@@ -20,7 +20,11 @@ export default function LoginPage() {
         body: JSON.stringify({ password }),
       })
       if (res.ok) {
-        router.replace('/')
+        // Return to the originally requested page if the middleware passed a safe
+        // same-origin `next` path; otherwise go home. Re-validate it here too.
+        const next = new URLSearchParams(window.location.search).get('next')
+        const dest = next && next.startsWith('/') && !next.startsWith('//') ? next : '/'
+        router.replace(dest)
         router.refresh()
       } else {
         setError((await res.json().catch(() => ({}))).error || 'Incorrect password')

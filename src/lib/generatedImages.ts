@@ -1,4 +1,4 @@
-export type GeneratedImageOutput = { storagePath: string; url: string; mediaType: string; filename?: string }
+export type GeneratedImageOutput = { storagePath: string; url: string; mediaType: string; filename?: string; fileSize?: number }
 
 // The generate_image tool surfaces its result as a tool-result part (not a `file` part).
 // Pull the successful outputs so the persistence pipeline can save them and render inline.
@@ -17,6 +17,7 @@ export function extractGeneratedImageOutputs(parts: readonly unknown[]): Generat
         url: o.url,
         mediaType: o.mediaType,
         filename: typeof o.filename === 'string' ? o.filename : undefined,
+        fileSize: typeof o.fileSize === 'number' ? o.fileSize : undefined,
       })
     }
   }

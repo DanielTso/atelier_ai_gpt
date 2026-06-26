@@ -160,6 +160,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ documentId: doc.id, status, revision: doc.revision, chunkCount: saved.length, charCount: textContent.length })
   } catch (error) {
-    return apiError(error, 'Failed to process document', 500, true)
+    return apiError(error, 'Failed to process document', 500)
   }
 }

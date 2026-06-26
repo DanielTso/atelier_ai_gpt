@@ -383,7 +383,10 @@ export async function recordPersonaUsage(data: {
 }
 
 export async function incrementUsageMessageCount(chatId: number) {
-  // Get existing usage record for this chat
+  // Best-effort analytics. The increment itself is atomic SQL (`messageCount + 1`), but
+  // the select-then-update is not transactional, so a row inserted between the two could
+  // be missed under concurrent same-chat writes — acceptable here (single-user app; a
+  // slightly under-counted usage stat is non-critical). Wrap in a transaction only if it drifts.
   const [existing] = await db.select().from(personaUsage)
     .where(eq(personaUsage.chatId, chatId))
     .orderBy(desc(personaUsage.lastUsedAt))
@@ -629,12 +632,12 @@ export async function saveMessageAttachments(
 export async function saveGeneratedImage(
   messageId: number,
   chatId: number,
-  items: { storagePath: string; mediaType: string; filename: string }[]
+  items: { storagePath: string; mediaType: string; filename: string; fileSize?: number }[]
 ) {
   if (items.length === 0) return []
   const rows = items.map(it => ({
     messageId, chatId, filename: it.filename, mediaType: it.mediaType,
-    storagePath: it.storagePath, dataUrl: null, fileSize: 0,
+    storagePath: it.storagePath, dataUrl: null, fileSize: it.fileSize ?? 0,
   }))
   return await db.insert(messageAttachments).values(rows).returning()
 }

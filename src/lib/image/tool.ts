@@ -47,7 +47,7 @@ export function createGenerateImageTool(ctx: { chatId: number; projectId: number
         const path = `attachments/${ctx.chatId}/generated/${randomUUID()}.${ext}`
         await uploadBuffer(path, Buffer.from(img.uint8Array), img.mediaType)
         const url = await createSignedDownloadUrl(path, ARTIFACT_URL_TTL_SECONDS)
-        return { storagePath: path, url, mediaType: img.mediaType, filename: `generated-image.${ext}` }
+        return { storagePath: path, url, mediaType: img.mediaType, filename: `generated-image.${ext}`, fileSize: img.uint8Array.byteLength }
       } catch (e) {
         console.warn('[generate_image] failed:', e instanceof Error ? e.message : e)
         return { error: 'Image generation failed.' }

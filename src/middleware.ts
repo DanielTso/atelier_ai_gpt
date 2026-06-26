@@ -16,10 +16,20 @@ export async function middleware(req: NextRequest) {
   if (pathname.startsWith('/api/')) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+  // Preserve the originally requested path so login can return the user there. Only a
+  // same-origin RELATIVE path is encoded (validated again on the login page) so this can
+  // never be turned into an open redirect.
+  const dest = req.nextUrl.pathname + req.nextUrl.search
   const url = req.nextUrl.clone()
   url.pathname = '/login'
-  url.search = ''
+  url.search = isSafeRelativePath(dest) && dest !== '/' ? `?next=${encodeURIComponent(dest)}` : ''
   return NextResponse.redirect(url)
+}
+
+// Same-origin relative path only: must start with a single '/', not '//host' (protocol-
+// relative) nor '/\' — so it can't redirect off-origin.
+function isSafeRelativePath(p: string): boolean {
+  return p.startsWith('/') && !p.startsWith('//') && !p.startsWith('/\\')
 }
 
 export const config = {

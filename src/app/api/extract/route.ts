@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { MAX_FILE_SIZE, MAX_TEXT_LENGTH, getExtension, isSupported, extractTextFromBuffer } from '@/lib/fileExtraction'
+import { MAX_TEXT_LENGTH, getExtension, validateUploadedFile, extractTextFromBuffer } from '@/lib/fileExtraction'
 import { apiError } from '@/lib/errors'
 
 export async function POST(request: NextRequest) {
@@ -11,18 +11,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 })
     }
 
-    if (file.size > MAX_FILE_SIZE) {
-      return NextResponse.json(
-        { error: `File too large. Maximum size is ${MAX_FILE_SIZE / (1024 * 1024)}MB.` },
-        { status: 400 }
-      )
-    }
-
-    if (!isSupported(file.name, file.type)) {
-      return NextResponse.json(
-        { error: `Unsupported file type: ${file.name}. Supported: PDF, Word (.docx), Excel (.xlsx), and text/code files.` },
-        { status: 400 }
-      )
+    const validationError = validateUploadedFile(file.name, file.type, file.size)
+    if (validationError) {
+      return NextResponse.json({ error: validationError }, { status: 400 })
     }
 
     const ext = getExtension(file.name)
@@ -42,6 +33,6 @@ export async function POST(request: NextRequest) {
       truncated,
     })
   } catch (error) {
-    return apiError(error, 'Failed to extract text from file:', 500, true)
+    return apiError(error, 'Failed to extract text from file', 500)
   }
 }

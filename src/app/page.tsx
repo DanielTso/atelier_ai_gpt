@@ -215,7 +215,7 @@ export default function Home() {
         if (result?.[0]?.id && imageOutputs.length > 0) {
           try {
             await saveGeneratedImage(result[0].id, currentChatId, imageOutputs.map(o => ({
-              storagePath: o.storagePath, mediaType: o.mediaType, filename: o.filename ?? 'generated-image.png',
+              storagePath: o.storagePath, mediaType: o.mediaType, filename: o.filename ?? 'generated-image.png', fileSize: o.fileSize ?? 0,
             })))
           } catch (err) {
             console.error('[onFinish] Failed to save generated image:', err)
