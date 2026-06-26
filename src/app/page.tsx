@@ -63,6 +63,13 @@ export default function Home() {
 
   // Dedup ref for message saving
   const lastSavedMessageIdRef = useRef<string | null>(null)
+  // Dedup ref for the assistant-message save — guards against a double-firing onFinish
+  // (error+retry / remount) persisting, embedding, and rendering the reply twice.
+  const lastSavedAssistantIdRef = useRef<string | null>(null)
+  // One-shot flag: suppress the next loadMessages for a chat we just created in
+  // handleSendMessage, so the deferred-create optimistic + streaming state isn't
+  // clobbered by an empty/partial DB snapshot.
+  const skipLoadOnceRef = useRef<number | null>(null)
 
   // Data State
   const [projects, setProjects] = useState<Project[]>([])
@@ -193,6 +200,10 @@ export default function Home() {
       )
 
       if (currentChatId && (textContent.trim() || message.parts.some(p => p.type === 'file') || imageOutputs.length > 0 || hasArtifactOutput)) {
+        // Dedup: if onFinish double-fires for the same assistant message (error+retry or
+        // a remount), don't persist/embed/render it twice (mirrors the user-save guard).
+        if (lastSavedAssistantIdRef.current === message.id) return
+        lastSavedAssistantIdRef.current = message.id
         // Persist empty content (not an '(image)' placeholder) for media-only turns:
         // loadMessages reconstructs the image/artifact, and an empty string renders no
         // stray text bubble on reload (the old placeholder leaked the literal "(image)").
@@ -403,13 +414,16 @@ export default function Home() {
         getChatMessages(cid),
         getChatAttachments(cid),
       ])
+      // Bail if the active chat changed while we were awaiting — a stale load must not
+      // clobber the chat the user switched to (or a freshly-created chat's live state).
+      if (activeChatIdRef.current !== cid) return
 
       // Best-effort: fetch artifacts for this chat
       try {
         const artifactsRes = await fetch(`/api/artifacts?chatId=${cid}`)
         if (artifactsRes.ok) {
           const artifactsData = await artifactsRes.json()
-          setArtifacts(artifactsData.artifacts ?? [])
+          if (activeChatIdRef.current === cid) setArtifacts(artifactsData.artifacts ?? [])
         }
       } catch {
         // Artifact fetch failure must not break message loading
@@ -422,6 +436,10 @@ export default function Home() {
         existing.push(att)
         attachmentsByMessageId.set(att.messageId, existing)
       }
+
+      // Re-check after the artifact fetch's awaits: don't overwrite the live message
+      // list if the user switched chats (or the deferred-create stream started) meanwhile.
+      if (activeChatIdRef.current !== cid) return
 
       // Convert DB messages to AI SDK UIMessage format with parts
       setMessages(msgs.map(m => {
@@ -501,12 +519,21 @@ export default function Home() {
   // Load Messages and System Prompt when Chat Changes
   useEffect(() => {
     if (activeChatId) {
-      loadMessages(activeChatId)
+      // Skip the DB message-load exactly once for a chat we just created in
+      // handleSendMessage: useChat already holds the authoritative optimistic user
+      // message + streaming reply, so loading the empty/partial snapshot would clobber
+      // them. Subsequent opens of the same chat load normally.
+      if (skipLoadOnceRef.current === activeChatId) {
+        skipLoadOnceRef.current = null
+      } else {
+        loadMessages(activeChatId)
+      }
       // Backfill the title if this chat is still "New Chat" but already has an exchange.
       maybeGenerateTitle(activeChatId)
       // Load system prompt for this chat
       getChatWithContext(activeChatId).then(chat => {
-        setCurrentSystemPrompt(chat?.systemPrompt ?? null)
+        // Ignore a stale resolve if the user switched chats while this was in flight.
+        if (activeChatIdRef.current === activeChatId) setCurrentSystemPrompt(chat?.systemPrompt ?? null)
       })
     } else {
       setMessages([])
@@ -635,11 +662,13 @@ export default function Home() {
           if (currentSystemPrompt) {
             await updateChatSystemPrompt(newC.id, currentSystemPrompt).catch(() => {})
           }
+          skipLoadOnceRef.current = newC.id
           setActiveChatId(newC.id)
           activeChatIdRef.current = newC.id
         } else {
           const [newC] = await createStandaloneChat("New Chat")
           setStandaloneChats(prev => [newC, ...prev])
+          skipLoadOnceRef.current = newC.id
           setActiveChatId(newC.id)
           activeChatIdRef.current = newC.id
         }

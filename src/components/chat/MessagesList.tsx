@@ -182,8 +182,13 @@ const MARKDOWN_COMPONENTS = {
       {children}
     </CodeBlock>
   ),
-  code: ({inline, ...props}: React.HTMLAttributes<HTMLElement> & { inline?: boolean }) =>
-    inline ? <InlineCode {...props} /> : <code {...props} />,
+  code: ({className, ...props}: React.HTMLAttributes<HTMLElement>) => {
+    // react-markdown v10 removed the `inline` prop. A fenced code block carries a
+    // `language-*` className (and is wrapped by the `pre` renderer above); everything
+    // else is an inline span → render it with the styled InlineCode.
+    const isBlock = typeof className === 'string' && /(^|\s)language-/.test(className)
+    return isBlock ? <code className={className} {...props} /> : <InlineCode className={className} {...props} />
+  },
 }
 
 // Message animation variants

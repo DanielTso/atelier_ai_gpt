@@ -206,6 +206,9 @@ const PERSONAS: Persona[] = [
 
 const DEFAULT_PERSONA = PERSONAS.find(p => p.isDefault) ?? PERSONAS[0]
 
+// Soft cap on user-created personas to keep the localStorage entry bounded.
+const MAX_CUSTOM_PERSONAS = 50
+
 export function usePersonas() {
   const [customPersonas, setCustomPersonas] = useLocalStorage<Persona[]>('custom-personas', [])
 
@@ -217,9 +220,12 @@ export function usePersonas() {
       // Custom personas default to the house model/effort if none provided.
       model: persona.model || DEFAULT_PERSONA.model,
       effort: persona.effort ?? DEFAULT_PERSONA.effort,
-      id: `custom-${Date.now()}`,
+      // crypto.randomUUID() instead of Date.now() — two adds in the same millisecond
+      // would otherwise collide and make update/delete hit the wrong persona.
+      id: `custom-${crypto.randomUUID()}`,
     }
-    setCustomPersonas(prev => [...prev, newPersona])
+    // Soft cap to keep localStorage bounded (drop the oldest beyond the cap).
+    setCustomPersonas(prev => [...prev, newPersona].slice(-MAX_CUSTOM_PERSONAS))
     return newPersona
   }, [setCustomPersonas])
 

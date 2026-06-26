@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { Check, Copy } from "lucide-react"
 
 interface CodeBlockProps {
@@ -10,10 +10,12 @@ interface CodeBlockProps {
 
 export function CodeBlock({ children, className }: CodeBlockProps) {
   const [copied, setCopied] = useState(false)
+  const preRef = useRef<HTMLPreElement>(null)
 
   const handleCopy = async () => {
-    const codeElement = document.querySelector('pre code')
-    const code = codeElement?.textContent || ''
+    // Scope to THIS block's <pre> — a document-wide querySelector('pre code') copied
+    // the first code block on the page regardless of which button was clicked.
+    const code = preRef.current?.querySelector('code')?.textContent ?? preRef.current?.textContent ?? ''
 
     try {
       await navigator.clipboard.writeText(code)
@@ -37,7 +39,7 @@ export function CodeBlock({ children, className }: CodeBlockProps) {
           <Copy className="h-4 w-4 text-white/70" />
         )}
       </button>
-      <pre className={className}>
+      <pre ref={preRef} className={className}>
         {children}
       </pre>
     </div>

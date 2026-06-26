@@ -17,8 +17,16 @@ const defaultState: CollapseState = {
   projectChats: {},
 }
 
+// Guard a persisted value: must be an object whose `projectChats` is a plain object
+// (a legacy/primitive/array value would crash the spread + index access below).
+function isCollapseState(v: unknown): boolean {
+  if (!v || typeof v !== 'object') return false
+  const pc = (v as { projectChats?: unknown }).projectChats
+  return typeof pc === 'object' && pc !== null && !Array.isArray(pc)
+}
+
 export function useCollapseState() {
-  const [state, setState] = useLocalStorage<CollapseState>('sidebar-collapse-state', defaultState)
+  const [state, setState] = useLocalStorage<CollapseState>('sidebar-collapse-state', defaultState, isCollapseState)
 
   const toggleQuickChats = useCallback(() => {
     setState(prev => ({ ...prev, quickChats: !prev.quickChats }))

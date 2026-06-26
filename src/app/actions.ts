@@ -45,8 +45,15 @@ export async function getProjects() {
   return await db.select().from(projects)
 }
 
+// Defensive bounds for free-text persisted to NOT NULL columns. Single-user app, but
+// keep oversized/garbage values out of the DB regardless of the caller (the UI also
+// validates upstream).
+const MAX_NAME_LEN = 200
+const MAX_MESSAGE_LEN = 200_000
+const VALID_MESSAGE_ROLES = new Set(['user', 'assistant', 'system'])
+
 export async function createProject(name: string) {
-  return await db.insert(projects).values({ name }).returning()
+  return await db.insert(projects).values({ name: name.slice(0, MAX_NAME_LEN) }).returning()
 }
 
 export async function deleteProject(id: number) {
@@ -152,13 +159,13 @@ export async function getStandaloneChats() {
 }
 
 export async function createChat(projectId: number, title: string) {
-  const rows = await db.insert(chats).values({ projectId, title }).returning()
+  const rows = await db.insert(chats).values({ projectId, title: title.slice(0, MAX_NAME_LEN) }).returning()
   await touchProject(projectId)
   return rows
 }
 
 export async function createStandaloneChat(title: string) {
-  return await db.insert(chats).values({ projectId: null, title }).returning()
+  return await db.insert(chats).values({ projectId: null, title: title.slice(0, MAX_NAME_LEN) }).returning()
 }
 
 export async function deleteChat(id: number) {
@@ -171,7 +178,10 @@ export async function updateChatTitle(id: number, title: string) {
 }
 
 export async function saveMessage(chatId: number, role: string, content: string) {
-  const rows = await db.insert(messages).values({ chatId, role, content }).returning()
+  const safeRole = VALID_MESSAGE_ROLES.has(role) ? role : 'user'
+  const rows = await db.insert(messages)
+    .values({ chatId, role: safeRole, content: content.slice(0, MAX_MESSAGE_LEN) })
+    .returning()
   await touchProjectForChat(chatId)
   return rows
 }

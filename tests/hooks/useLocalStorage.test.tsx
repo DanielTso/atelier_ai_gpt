@@ -51,4 +51,19 @@ describe('useLocalStorage', () => {
     const { result } = renderHook(() => useLocalStorage('bad', 'fallback'))
     expect(result.current[0]).toBe('fallback')
   })
+
+  it('falls back to initial value when a stored value fails the validator', () => {
+    // Valid JSON, wrong shape (a legacy/hand-edited entry) → must not be adopted.
+    window.localStorage.setItem('shape', JSON.stringify('not-an-object'))
+    const isObj = (v: unknown) => typeof v === 'object' && v !== null
+    const { result } = renderHook(() => useLocalStorage('shape', { ok: true }, isObj))
+    expect(result.current[0]).toEqual({ ok: true })
+  })
+
+  it('adopts a stored value that passes the validator', () => {
+    window.localStorage.setItem('shape', JSON.stringify({ ok: false }))
+    const isObj = (v: unknown) => typeof v === 'object' && v !== null
+    const { result } = renderHook(() => useLocalStorage('shape', { ok: true }, isObj))
+    expect(result.current[0]).toEqual({ ok: false })
+  })
 })
