@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.31.1] - 2026-06-26 — Fix: persona selection sticks before a chat exists
+
+### Fixed
+
+- **Selecting a persona now works in the empty/compose state.** Since chats are created lazily on the first message (v4.30.2), the default app state has no active chat — and the persona-change handler early-returned in that case, so picking a named persona (Coding, Deep Analysis, …) silently did nothing and the chip stayed on **General Assistant**. The handler now updates the composer state locally when there's no chat yet, and the **standalone (quick-chat)** deferred-create persists the chosen persona prompt so it survives the post-create reload and applies to the first message (the project-chat path already did this). (`page.tsx`)
+
+### Notes
+
+- New regression test `e2e/persona-selection.spec.ts` (runs gate-off in CI). Gate: lint 0 errors, typecheck 0, build clean, 407 unit tests pass.
+
 ## [4.31.0] - 2026-06-26 — Code-review hardening: security, correctness & robustness
 
 A structured 7-dimension code review (9 module reviewers, every finding adversarially verified against the source) surfaced 34 confirmed issues. All are fixed here, batched and individually tested. No Critical issues were found.
