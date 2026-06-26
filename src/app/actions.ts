@@ -675,6 +675,18 @@ export async function getArtifactById(id: number) {
   return a ?? null
 }
 
+/**
+ * Raw Storage object paths for every version of an artifact (cleanup on delete).
+ * Unlike getArtifactVersions (which signs URLs for the UI), this returns the bare
+ * paths so the DELETE route can sweep superseded blobs before the version rows
+ * cascade away — mirroring the documents revision sweep.
+ */
+export async function getArtifactVersionPaths(artifactId: number): Promise<string[]> {
+  const rows = await db.select({ storagePath: artifactVersions.storagePath }).from(artifactVersions)
+    .where(eq(artifactVersions.artifactId, artifactId))
+  return rows.map(r => r.storagePath).filter((p): p is string => Boolean(p))
+}
+
 /** Versions for an artifact, newest first, each with a signed download URL. */
 export async function getArtifactVersions(artifactId: number) {
   const rows = await db.select().from(artifactVersions)

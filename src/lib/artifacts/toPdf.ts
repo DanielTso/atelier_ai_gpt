@@ -49,7 +49,9 @@ export async function toPdf(markdown: string): Promise<Buffer> {
   const text = (s: string, x: number, size: number, f: PDFFont, color: [number, number, number]) => {
     page.drawText(winAnsi(s), { x, y, size, font: f, color: rgb(color[0], color[1], color[2]) })
   }
-  const plain = (inlines: Inline[]) => inlines.map(i => i.text).join('')
+  // Surface link destinations as "text (url)" so the URL survives in the PDF (pdf-lib
+  // has no simple inline-link primitive here). Skip when the text already IS the URL.
+  const plain = (inlines: Inline[]) => inlines.map(i => (i.href && i.href !== i.text) ? `${i.text} (${i.href})` : i.text).join('')
 
   for (const b of blocks) {
     if (b.type === 'heading') {

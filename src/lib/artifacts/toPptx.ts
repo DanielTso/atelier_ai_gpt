@@ -19,7 +19,8 @@ function splitSlides(blocks: Block[]): Slide[] {
   return slides.length ? slides : [{ title: '', body: [] }]
 }
 
-const plain = (inlines: Inline[]) => inlines.map(i => i.text).join('')
+// Surface link destinations as "text (url)" so the URL survives in the slide text.
+const plain = (inlines: Inline[]) => inlines.map(i => (i.href && i.href !== i.text) ? `${i.text} (${i.href})` : i.text).join('')
 
 type Line = { text: string; options: Record<string, unknown> }
 

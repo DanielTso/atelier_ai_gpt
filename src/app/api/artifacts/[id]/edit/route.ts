@@ -26,6 +26,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const type = artifact.type as ArtifactType
     const title = body.data.title ?? artifact.title
     const content = body.data.content
+    // Guard the content shape against the artifact type. Without this, renderArtifact
+    // silently coerces a mismatch (a string for xlsx, or an array for docx/pdf/pptx/html)
+    // to EMPTY output and persists a blank version — silent data loss. Reject instead.
+    const needsArray = type === 'xlsx'
+    if (Array.isArray(content) !== needsArray) {
+      return NextResponse.json(
+        { error: `Invalid content shape for a ${type} artifact (expected ${needsArray ? 'an array of sheets' : 'a string'}).` },
+        { status: 422 }
+      )
+    }
     const format = artifact.format ?? (type === 'html' ? 'html' : typeof content === 'string' ? 'markdown' : 'sheets')
 
     const { buffer, contentType, ext } = await renderArtifact(type, title, content)

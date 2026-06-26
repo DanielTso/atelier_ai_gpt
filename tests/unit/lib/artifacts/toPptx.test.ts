@@ -41,4 +41,10 @@ describe('toPptx', () => {
     const buf = await toPptx('# Steps\n\n1. one\n2. two')
     expect(buf.subarray(0, 2).toString('latin1')).toBe('PK')
   })
+
+  it('renders a slide containing a markdown link without throwing', async () => {
+    const buf = await toPptx('# Links\n\nSee the [docs](https://example.com).')
+    expect(buf.subarray(0, 2).toString('latin1')).toBe('PK')
+    expect(buf.length).toBeGreaterThan(0)
+  })
 })

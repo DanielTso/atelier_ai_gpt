@@ -73,4 +73,21 @@ describe('POST /api/artifacts/[id]/edit', () => {
     const res = await POST(req({ content: '# x' }), ctx('1'))
     expect(res.status).toBe(503)
   })
+
+  it('422 when a string is sent for an xlsx artifact (no silent blank version)', async () => {
+    m.getArtifactById.mockResolvedValue({ id: 1, projectId: 5, type: 'xlsx', title: 'Sheet', format: 'sheets', content: '[]' })
+    const POST = await importRoute()
+    const res = await POST(req({ content: 'just a string' }), ctx('1'))
+    expect(res.status).toBe(422)
+    expect(m.renderArtifact).not.toHaveBeenCalled()
+    expect(m.addArtifactVersion).not.toHaveBeenCalled()
+  })
+
+  it('422 when an array is sent for a non-xlsx (e.g. pdf) artifact', async () => {
+    m.getArtifactById.mockResolvedValue({ id: 1, projectId: 5, type: 'pdf', title: 'Report', format: 'markdown', content: '# old' })
+    const POST = await importRoute()
+    const res = await POST(req({ content: [{ name: 'S', rows: [] }] }), ctx('1'))
+    expect(res.status).toBe(422)
+    expect(m.renderArtifact).not.toHaveBeenCalled()
+  })
 })

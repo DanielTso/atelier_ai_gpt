@@ -1,19 +1,24 @@
 // src/lib/artifacts/toDocx.ts
 import {
-  Document, Packer, Paragraph, TextRun, HeadingLevel, Table, TableRow, TableCell,
+  Document, Packer, Paragraph, TextRun, ExternalHyperlink, HeadingLevel, Table, TableRow, TableCell,
   WidthType, BorderStyle, AlignmentType, ShadingType, Header, Footer, PageNumber,
 } from 'docx'
 import { parseMarkdown, type Block, type Inline } from './markdown'
 import { BRAND, FONT, SIZE } from './style'
 
 const runs = (inlines: Inline[]) =>
-  inlines.map(i => new TextRun({
-    text: i.text,
-    bold: i.bold,
-    italics: i.italic,
-    font: i.code ? FONT.mono : FONT.office,
-    color: BRAND.ink,
-  }))
+  inlines.map(i => {
+    const run = new TextRun({
+      text: i.text,
+      bold: i.bold,
+      italics: i.italic,
+      font: i.code ? FONT.mono : FONT.office,
+      color: i.href ? BRAND.steelBlue : BRAND.ink,
+      underline: i.href ? {} : undefined,
+    })
+    // Emit a real, clickable hyperlink when the run carries a destination.
+    return i.href ? new ExternalHyperlink({ children: [run], link: i.href }) : run
+  })
 
 function headingPara(b: Extract<Block, { type: 'heading' }>): Paragraph {
   const level = b.level === 1 ? HeadingLevel.HEADING_1 : b.level === 2 ? HeadingLevel.HEADING_2 : HeadingLevel.HEADING_3

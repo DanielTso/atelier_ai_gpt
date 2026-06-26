@@ -1,7 +1,7 @@
 // src/lib/artifacts/markdown.ts
 import { marked, type Token, type Tokens } from 'marked'
 
-export type Inline = { text: string; bold?: boolean; italic?: boolean; code?: boolean }
+export type Inline = { text: string; bold?: boolean; italic?: boolean; code?: boolean; href?: string }
 export type Block =
   | { type: 'heading'; level: number; inlines: Inline[] }
   | { type: 'paragraph'; inlines: Inline[] }
@@ -17,7 +17,13 @@ function inlines(tokens: Token[] | undefined, ctx: { bold?: boolean; italic?: bo
       case 'strong': out.push(...inlines((t as Tokens.Strong).tokens, { ...ctx, bold: true })); break
       case 'em': out.push(...inlines((t as Tokens.Em).tokens, { ...ctx, italic: true })); break
       case 'codespan': out.push({ text: (t as Tokens.Codespan).text, code: true }); break
-      case 'link': out.push(...inlines((t as Tokens.Link).tokens, ctx)); break
+      case 'link': {
+        // Keep the destination on each emitted run so binary renderers (docx/pdf/pptx)
+        // can surface it — previously href was dropped and links became bare text.
+        const link = t as Tokens.Link
+        for (const child of inlines(link.tokens, ctx)) out.push({ ...child, href: child.href ?? link.href })
+        break
+      }
       case 'br': out.push({ text: '\n' }); break
       case 'escape': out.push({ text: (t as Tokens.Escape).text, ...ctx }); break
       default: {

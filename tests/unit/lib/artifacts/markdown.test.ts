@@ -46,6 +46,22 @@ describe('parseMarkdown', () => {
     expect(() => parseMarkdown('> quote\n\n---\n\n![x](y)')).not.toThrow()
     expect(parseMarkdown('')).toEqual([])
   })
+
+  it('keeps the href on link runs so renderers can surface the destination', () => {
+    const [p] = parseMarkdown('See the [docs](https://example.com/guide) here')
+    if (p.type !== 'paragraph') throw new Error('expected paragraph')
+    const link = p.inlines.find(i => i.href)
+    expect(link?.text).toBe('docs')
+    expect(link?.href).toBe('https://example.com/guide')
+  })
+
+  it('keeps href through inline formatting inside the link', () => {
+    const [p] = parseMarkdown('[**bold link**](https://x.test)')
+    if (p.type !== 'paragraph') throw new Error('expected paragraph')
+    const link = p.inlines.find(i => i.href)
+    expect(link?.href).toBe('https://x.test')
+    expect(link?.bold).toBe(true)
+  })
 })
 
 describe('mdToPlainText', () => {

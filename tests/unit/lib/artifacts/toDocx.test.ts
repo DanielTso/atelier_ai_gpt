@@ -27,6 +27,12 @@ describe('toDocx', () => {
     expect(buf.subarray(0, 2).toString('latin1')).toBe('PK')
   })
 
+  it('renders a markdown link as a hyperlink without throwing', async () => {
+    const buf = await toDocx('See the [docs](https://example.com) for details.')
+    expect(buf.subarray(0, 2).toString('latin1')).toBe('PK')
+    expect(buf.length).toBeGreaterThan(0)
+  })
+
   it('renders an ordered list without throwing', async () => {
     const buf = await toDocx('1. first\n2. second\n3. third')
     expect(buf.subarray(0, 2).toString('latin1')).toBe('PK')

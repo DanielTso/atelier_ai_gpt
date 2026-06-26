@@ -27,6 +27,15 @@ describe('toPdf', () => {
     expect(buf.subarray(0, 4).toString('latin1')).toBe('%PDF')
   })
 
+  it('renders a markdown link without throwing (URL surfaced as "text (url)")', async () => {
+    // The href→"text (url)" transform is asserted deterministically in markdown.test.ts
+    // (href capture). pdf-lib FlateDecode-compresses streams, so we can't grep the URL
+    // from raw bytes here; assert the renderer consumes the link and produces a valid PDF.
+    const buf = await toPdf('See the [docs](https://example.com/guide).')
+    expect(buf.subarray(0, 4).toString('latin1')).toBe('%PDF')
+    expect(buf.length).toBeGreaterThan(400)
+  })
+
   it('renders a wide table with long cells and many rows (wrap + page-break header repeat)', async () => {
     const header = '| Item | Description | Owner |'
     const sep = '| --- | --- | --- |'
