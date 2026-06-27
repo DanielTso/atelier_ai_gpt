@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.33.1] - 2026-06-27 — Fix: "Add from web" now reachable from the project Files panel
+
+### Fixed
+
+- **"Add from web" was effectively hidden.** It was wired only into the Documents *modal*, but a project's Files panel (`ProjectContextRail`) has its own upload and only links to that modal when the project has **zero** documents — so once a project had files, web ingestion was unreachable. The Files header now has an always-visible **"Web"** button (next to "+ File") that opens the same `AddFromWebDialog` (Single page / Crawl site), wired to the project and refreshing the file list on ingest. (`ProjectContextRail.tsx`)
+
 ## [4.33.0] - 2026-06-27 — Carryover cleanups: page.tsx decomposition + xlsx/CSP verification
 
 Behavior-preserving maintenance. No user-facing change.
