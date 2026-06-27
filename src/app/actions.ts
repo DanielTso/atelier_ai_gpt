@@ -39,7 +39,7 @@ async function removeAttachmentObjects(where: ReturnType<typeof eq>) {
   if (paths.length) await removeObjects(paths).catch(e => console.warn('[attachments] storage cleanup failed for paths:', paths, e instanceof Error ? e.message : e))
 }
 
-const SENSITIVE_KEYS = new Set(['gemini-api-key', 'anthropic-api-key'])
+const SENSITIVE_KEYS = new Set(['gemini-api-key', 'anthropic-api-key', 'tavily-api-key'])
 
 export async function getProjects() {
   return await db.select().from(projects)
@@ -653,10 +653,10 @@ export async function getChatAttachments(chatId: number) {
   }))
 }
 
-export async function getApiKeyStatus(): Promise<{ gemini: boolean; anthropic: boolean }> {
-  const { getGeminiApiKey, getAnthropicApiKey } = await import('@/lib/settings')
-  const [gemini, anthropic] = await Promise.all([getGeminiApiKey(), getAnthropicApiKey()])
-  return { gemini: Boolean(gemini), anthropic: Boolean(anthropic) }
+export async function getApiKeyStatus(): Promise<{ gemini: boolean; anthropic: boolean; tavily: boolean }> {
+  const { getGeminiApiKey, getAnthropicApiKey, getTavilyApiKey } = await import('@/lib/settings')
+  const [gemini, anthropic, tavily] = await Promise.all([getGeminiApiKey(), getAnthropicApiKey(), getTavilyApiKey()])
+  return { gemini: Boolean(gemini), anthropic: Boolean(anthropic), tavily: Boolean(tavily) }
 }
 
 // ── Artifact Actions ──

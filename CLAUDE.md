@@ -58,6 +58,13 @@ AUTH_SECRET=run_openssl_rand_hex_32                     # HMAC key for the auth 
 
 The two AI keys can also be configured at runtime via the **Settings dialog → API Keys tab** (stored in the `settings` table). DB values take priority over `.env.local`.
 
+**Web ingestion (Design B):** pull a URL/site into a project's RAG store via Tavily. Server-only; OFF unless set. Can also be set at runtime via Settings → API Keys.
+```
+TAVILY_API_KEY=your_tavily_key_here
+WEB_MAP_LIMIT=100          # optional; max URLs a site map returns (default 100)
+WEB_MAP_MAX_DEPTH=2        # optional; crawl depth for mapping (default 2)
+```
+
 **Note:** `.env*.local` files are gitignored. Never commit secrets.
 
 The app uses two AI providers with a clear split — **Claude is the brain, Gemini is the senses**:

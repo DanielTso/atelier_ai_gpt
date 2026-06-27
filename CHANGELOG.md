@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.32.0] - 2026-06-27 — Add from web (URL + site crawl → project RAG)
+
+Pull web content into a project's document store so the assistant can cite it — without downloading and re-uploading files. Powered by Tavily (`@tavily/core`); reuses the existing chunk → embed → pgvector pipeline. **No DB migration.**
+
+### Added
+
+- **"Add from web"** on a project's Documents dialog, with two modes:
+  - **Single page** — paste a URL; its clean text is extracted (Tavily Extract → markdown) and ingested as a project document.
+  - **Crawl site** — paste a site URL; we **Map** it (cheap, lists URLs without extracting), you **pick** which discovered pages to ingest, and each selected page is extracted + embedded as its own document with live status in the existing grid.
+- `POST /api/documents/web-map` (site → URL list) and `POST /api/documents/web-ingest` (one URL → a `text/markdown` document). Each ingested page records a `Source: <url>` header into its text so provenance carries into chunks/citations.
+- `useWebIngest` hook (map + bounded per-page ingest) and the `AddFromWebDialog` UI.
+- Settings → **API Keys** gains a write-only **Tavily** field (status-only, like the Gemini/Anthropic keys). Env: `TAVILY_API_KEY`, `WEB_MAP_LIMIT` (100), `WEB_MAP_MAX_DEPTH` (2).
+
+### Changed
+
+- The post-extraction tail of the file pipeline (chunk → save → embed → status) is factored into a shared `src/lib/ingest.ts` (`ingestText`) used by both `documents/process` and `documents/web-ingest` — one source of truth. The file-upload route is behavior-preserving (its existing tests pass unchanged).
+
+### Security
+
+- The Tavily key is **server-only**: read only via `getTavilyApiKey()`, added to `SENSITIVE_KEYS` (blocked from client reads), never logged, never returned in any response, and never exposed via `NEXT_PUBLIC_*`. `web-ingest` returns only fixed error strings (a test asserts no key string can appear in the response).
+
+### Notes
+
+- `web-ingest` distinguishes empty content (**422**) from an upstream Tavily failure (**502**); missing key / storage / embedding provider degrade to **503** with a friendly hint (no crash).
+- Gate: typecheck 0, lint 0 errors (26 baseline warnings), build clean, **436 unit tests pass** (+29). No migration to apply. Tavily free tier (1,000 credits/mo) covers normal use.
+
 ## [4.31.1] - 2026-06-26 — Fix: persona selection sticks before a chat exists
 
 ### Fixed

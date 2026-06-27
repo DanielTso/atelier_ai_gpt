@@ -46,3 +46,7 @@ export async function getGeminiApiKey(): Promise<string | null> {
 export async function getAnthropicApiKey(): Promise<string | null> {
   return getServerSetting('anthropic-api-key', 'ANTHROPIC_API_KEY')
 }
+
+export async function getTavilyApiKey(): Promise<string | null> {
+  return getServerSetting('tavily-api-key', 'TAVILY_API_KEY')
+}

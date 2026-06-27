@@ -91,3 +91,14 @@ export const processDocumentRequestSchema = z.object({
   mimeType: z.string().min(1).optional(),
   fileSize: z.number().int().positive().optional(),
 })
+
+export const webMapRequestSchema = z.object({
+  url: z.string().url(),
+  maxDepth: z.number().int().min(1).max(3).optional(),
+  limit: z.number().int().min(1).max(100).optional(),
+})
+
+export const webIngestRequestSchema = z.object({
+  url: z.string().url(),
+  projectId: z.number().int().positive(),
+})
