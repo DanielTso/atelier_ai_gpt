@@ -41,6 +41,7 @@ import { extractGeneratedImageOutputs } from "@/lib/generatedImages"
 import { useChatTitle } from "@/hooks/useChatTitle"
 import { useSummarization, SUMMARIZATION_THRESHOLD } from "@/hooks/useSummarization"
 import { useAutoCollapseSidebar } from "@/hooks/useAutoCollapseSidebar"
+import { useDialogs } from "@/hooks/useDialogs"
 
 // Types matching DB schema roughly
 type Project = { id: number; name: string; memory?: string | null; instructions?: string | null; createdAt?: Date | null; updatedAt?: Date | null }
@@ -115,29 +116,14 @@ export default function Home() {
   }, [])
   const maybeGenerateTitle = useChatTitle({ readChats: readTitleChats, modelRef: selectedModelRef, applyTitle: applyChatTitle })
 
-  // Command palette state
-  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
+  // Dialog state — centralised in useDialogs
+  const dialogs = useDialogs()
 
   // Archived chats state
   const [archivedChats, setArchivedChats] = useState<Chat[]>([])
 
-  // Dialog states
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-  const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null)
-  const [deleteProjectDialogOpen, setDeleteProjectDialogOpen] = useState(false)
-  const [deleteProjectTargetId, setDeleteProjectTargetId] = useState<number | null>(null)
-  const [renameProjectDialogOpen, setRenameProjectDialogOpen] = useState(false)
-  const [renameProjectTarget, setRenameProjectTarget] = useState<{ id: number; name: string } | null>(null)
-  const [renameDialogOpen, setRenameDialogOpen] = useState(false)
-  const [renameTarget, setRenameTarget] = useState<{ id: number; title: string } | null>(null)
-  const [systemPromptDialogOpen, setSystemPromptDialogOpen] = useState(false)
+  // Composer state (NOT in useDialogs — owned by the composer, not the dialog layer)
   const [currentSystemPrompt, setCurrentSystemPrompt] = useState<string | null>(null)
-  const [settingsDialogOpen, setSettingsDialogOpen] = useState(false)
-  const [projectDefaultsDialogOpen, setProjectDefaultsDialogOpen] = useState(false)
-  const [projectDefaultsTarget, setProjectDefaultsTarget] = useState<{ id: number; name: string } | null>(null)
-  const [projectDocumentsDialogOpen, setProjectDocumentsDialogOpen] = useState(false)
-  const [projectDocumentsTarget, setProjectDocumentsTarget] = useState<{ id: number; name: string } | null>(null)
-  const [createProjectDialogOpen, setCreateProjectDialogOpen] = useState(false)
 
   // Sidebar collapse
   const [sidebarCollapsed, setSidebarCollapsed] = useLocalStorage('sidebar-collapsed', false)
@@ -570,15 +556,15 @@ export default function Home() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault()
-        setCommandPaletteOpen(open => !open)
+        dialogs.commandPalette.toggle()
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [])
+  }, [dialogs.commandPalette])
 
   const handleCreateProject = async () => {
-    setCreateProjectDialogOpen(true)
+    dialogs.createProject.setOpen(true)
   }
 
   const handleConfirmCreateProject = async (name: string) => {
@@ -777,23 +763,23 @@ export default function Home() {
   }, [messages, activeChatId])
 
   const handleRequestDeleteProject = useCallback((id: number) => {
-    setDeleteProjectTargetId(id)
-    setDeleteProjectDialogOpen(true)
-  }, [])
+    dialogs.deleteProject.open(id)
+  }, [dialogs.deleteProject])
 
   const handleConfirmDeleteProject = useCallback(async () => {
-    if (deleteProjectTargetId == null) return
+    if (dialogs.deleteProject.target == null) return
+    const targetId = dialogs.deleteProject.target
     try {
-      await deleteProject(deleteProjectTargetId)
-      setProjects(prev => prev.filter(p => p.id !== deleteProjectTargetId))
-      if (activeProjectId === deleteProjectTargetId) setActiveProjectId(null)
-      setDeleteProjectTargetId(null)
+      await deleteProject(targetId)
+      setProjects(prev => prev.filter(p => p.id !== targetId))
+      if (activeProjectId === targetId) setActiveProjectId(null)
+      dialogs.deleteProject.close()
       toast.success("Project deleted")
     } catch (e) {
       console.error("Delete project failed:", e)
       toast.error("Failed to delete project")
     }
-  }, [deleteProjectTargetId, activeProjectId])
+  }, [dialogs.deleteProject, activeProjectId])
 
   const handleRenameProject = useCallback(async (id: number, name: string) => {
     try {
@@ -809,55 +795,54 @@ export default function Home() {
   const handleRequestRenameProject = useCallback((id: number) => {
     const project = projects.find(p => p.id === id)
     if (project) {
-      setRenameProjectTarget({ id: project.id, name: project.name })
-      setRenameProjectDialogOpen(true)
+      dialogs.renameProject.open({ id: project.id, name: project.name })
     }
-  }, [projects])
+  }, [projects, dialogs.renameProject])
 
   const handleConfirmRenameProject = useCallback((name: string) => {
-    if (renameProjectTarget) handleRenameProject(renameProjectTarget.id, name)
-  }, [renameProjectTarget, handleRenameProject])
+    if (dialogs.renameProject.target) handleRenameProject(dialogs.renameProject.target.id, name)
+  }, [dialogs.renameProject, handleRenameProject])
 
   const handleRequestDelete = useCallback((id: number) => {
-    setDeleteTargetId(id)
-    setDeleteDialogOpen(true)
-  }, [])
+    dialogs.deleteChat.open(id)
+  }, [dialogs.deleteChat])
 
   const handleConfirmDelete = useCallback(async () => {
-    if (!deleteTargetId) return
+    if (!dialogs.deleteChat.target) return
+    const targetId = dialogs.deleteChat.target
     try {
-      await deleteChat(deleteTargetId)
-      setChats(prev => prev.filter(c => c.id !== deleteTargetId))
-      setStandaloneChats(prev => prev.filter(c => c.id !== deleteTargetId))
-      setArchivedChats(prev => prev.filter(c => c.id !== deleteTargetId))
-      if (activeChatId === deleteTargetId) setActiveChatId(null)
-      setDeleteTargetId(null)
+      await deleteChat(targetId)
+      setChats(prev => prev.filter(c => c.id !== targetId))
+      setStandaloneChats(prev => prev.filter(c => c.id !== targetId))
+      setArchivedChats(prev => prev.filter(c => c.id !== targetId))
+      if (activeChatId === targetId) setActiveChatId(null)
+      dialogs.deleteChat.close()
       refreshChatPreviews()
       toast.success("Chat deleted")
     } catch (e) {
       console.error("Delete failed:", e)
       toast.error("Failed to delete chat")
     }
-  }, [deleteTargetId, activeChatId, refreshChatPreviews])
+  }, [dialogs.deleteChat, activeChatId, refreshChatPreviews])
 
   const handleRequestRename = useCallback((id: number) => {
     const chat = [...chats, ...standaloneChats, ...archivedChats].find(c => c.id === id)
     if (chat) {
-      setRenameTarget({ id: chat.id, title: chat.title })
-      setRenameDialogOpen(true)
+      dialogs.renameChat.open({ id: chat.id, title: chat.title })
     }
-  }, [chats, standaloneChats, archivedChats])
+  }, [chats, standaloneChats, archivedChats, dialogs.renameChat])
 
   const handleConfirmRename = useCallback(async (newTitle: string) => {
-    if (!renameTarget) return
-    await updateChatTitle(renameTarget.id, newTitle)
-    setChats(prev => prev.map(c => c.id === renameTarget.id ? { ...c, title: newTitle } : c))
-    setStandaloneChats(prev => prev.map(c => c.id === renameTarget.id ? { ...c, title: newTitle } : c))
-    setArchivedChats(prev => prev.map(c => c.id === renameTarget.id ? { ...c, title: newTitle } : c))
-    setRenameTarget(null)
+    if (!dialogs.renameChat.target) return
+    const target = dialogs.renameChat.target
+    await updateChatTitle(target.id, newTitle)
+    setChats(prev => prev.map(c => c.id === target.id ? { ...c, title: newTitle } : c))
+    setStandaloneChats(prev => prev.map(c => c.id === target.id ? { ...c, title: newTitle } : c))
+    setArchivedChats(prev => prev.map(c => c.id === target.id ? { ...c, title: newTitle } : c))
+    dialogs.renameChat.close()
     refreshChatPreviews()
     toast.success("Chat renamed")
-  }, [renameTarget, refreshChatPreviews])
+  }, [dialogs.renameChat, refreshChatPreviews])
 
   const handleMoveChat = useCallback(async (chatId: number, projectId: number | null) => {
     await moveChatToProject(chatId, projectId)
@@ -948,18 +933,16 @@ export default function Home() {
   const handleOpenProjectSettings = useCallback((projectId: number) => {
     const project = projects.find(p => p.id === projectId)
     if (project) {
-      setProjectDefaultsTarget({ id: project.id, name: project.name })
-      setProjectDefaultsDialogOpen(true)
+      dialogs.projectDefaults.open({ id: project.id, name: project.name })
     }
-  }, [projects])
+  }, [projects, dialogs.projectDefaults])
 
   const handleOpenProjectDocuments = useCallback((projectId: number) => {
     const project = projects.find(p => p.id === projectId)
     if (project) {
-      setProjectDocumentsTarget({ id: project.id, name: project.name })
-      setProjectDocumentsDialogOpen(true)
+      dialogs.projectDocuments.open({ id: project.id, name: project.name })
     }
-  }, [projects])
+  }, [projects, dialogs.projectDocuments])
 
   const handleApplySuggestion = useCallback(async () => {
     if (!suggestedPersona) return
@@ -1003,10 +986,10 @@ export default function Home() {
     deleteChat: handleRequestDelete,
     toggleTheme: () => setTheme(theme === "dark" ? "light" : "dark"),
     toggleCollapse: () => setSidebarCollapsed(prev => !prev),
-    openSettings: () => setSettingsDialogOpen(true),
+    openSettings: () => dialogs.settings.setOpen(true),
     selectView: (view: AppView) => { setActiveView(view); setActiveChatId(null); },
     activeView,
-  }), [handleCreateProject, handleRenameProject, handleRequestDeleteProject, handleSelectProject, handleOpenProjectDocuments, handleOpenProjectSettings, handleCreateChat, handleCreateStandaloneChat, handleCreateChatInProject, setActiveChatId, handleSelectStandaloneChat, handleMoveChat, handleRequestRename, handleArchiveChat, handleRestoreChat, handleRequestDelete, theme, activeView])
+  }), [handleCreateProject, handleRenameProject, handleRequestDeleteProject, handleSelectProject, handleOpenProjectDocuments, handleOpenProjectSettings, handleCreateChat, handleCreateStandaloneChat, handleCreateChatInProject, setActiveChatId, handleSelectStandaloneChat, handleMoveChat, handleRequestRename, handleArchiveChat, handleRestoreChat, handleRequestDelete, theme, activeView, dialogs.settings])
 
   // Get the current chat (and its project) from either chats or standaloneChats
   const currentChat = activeChatId
@@ -1127,7 +1110,7 @@ export default function Home() {
               activeProjectId={activeProjectId}
               systemPrompt={currentSystemPrompt}
               onSystemPromptChange={handleSaveSystemPrompt}
-              onSystemPromptClick={() => setSystemPromptDialogOpen(true)}
+              onSystemPromptClick={() => dialogs.systemPrompt.setOpen(true)}
               models={models}
               selectedModel={selectedModel}
               onModelChange={handleModelChange}
@@ -1184,7 +1167,7 @@ export default function Home() {
                 activeProjectId={activeProjectId}
                 systemPrompt={currentSystemPrompt}
                 onSystemPromptChange={handleSaveSystemPrompt}
-                onSystemPromptClick={() => setSystemPromptDialogOpen(true)}
+                onSystemPromptClick={() => dialogs.systemPrompt.setOpen(true)}
                 models={models}
                 selectedModel={selectedModel}
                 onModelChange={handleModelChange}
@@ -1208,8 +1191,8 @@ export default function Home() {
 
       {/* Command Palette */}
       <CommandPalette
-        open={commandPaletteOpen}
-        onOpenChange={setCommandPaletteOpen}
+        open={dialogs.commandPalette.isOpen}
+        onOpenChange={dialogs.commandPalette.setOpen}
         onNewChat={handleCreateStandaloneChat}
         onToggleTheme={() => setTheme(theme === "dark" ? "light" : "dark")}
         models={models}
@@ -1225,15 +1208,15 @@ export default function Home() {
 
       {/* Create Project Dialog */}
       <CreateProjectDialog
-        open={createProjectDialogOpen}
-        onOpenChange={setCreateProjectDialogOpen}
+        open={dialogs.createProject.isOpen}
+        onOpenChange={dialogs.createProject.setOpen}
         onCreate={handleConfirmCreateProject}
       />
 
       {/* Delete Confirmation Dialog */}
       <DeleteConfirmDialog
-        open={deleteDialogOpen}
-        onOpenChange={setDeleteDialogOpen}
+        open={dialogs.deleteChat.isOpen}
+        onOpenChange={dialogs.deleteChat.setOpen}
         title="Delete Chat"
         description="Are you sure you want to delete this chat? This action cannot be undone."
         onConfirm={handleConfirmDelete}
@@ -1241,18 +1224,18 @@ export default function Home() {
 
       {/* Delete Project Confirmation Dialog */}
       <DeleteConfirmDialog
-        open={deleteProjectDialogOpen}
-        onOpenChange={setDeleteProjectDialogOpen}
+        open={dialogs.deleteProject.isOpen}
+        onOpenChange={dialogs.deleteProject.setOpen}
         title="Delete Project"
-        description={`Delete "${projects.find(p => p.id === deleteProjectTargetId)?.name ?? "this project"}"? This permanently removes the project and all of its chats, messages, and documents. This cannot be undone.`}
+        description={`Delete "${projects.find(p => p.id === dialogs.deleteProject.target)?.name ?? "this project"}"? This permanently removes the project and all of its chats, messages, and documents. This cannot be undone.`}
         onConfirm={handleConfirmDeleteProject}
       />
 
       {/* Rename Project Dialog */}
       <RenameDialog
-        open={renameProjectDialogOpen}
-        onOpenChange={setRenameProjectDialogOpen}
-        currentTitle={renameProjectTarget?.name ?? ""}
+        open={dialogs.renameProject.isOpen}
+        onOpenChange={dialogs.renameProject.setOpen}
+        currentTitle={dialogs.renameProject.target?.name ?? ""}
         onRename={handleConfirmRenameProject}
         title="Rename Project"
         placeholder="Enter project name..."
@@ -1260,24 +1243,24 @@ export default function Home() {
 
       {/* Rename Dialog */}
       <RenameDialog
-        open={renameDialogOpen}
-        onOpenChange={setRenameDialogOpen}
-        currentTitle={renameTarget?.title ?? ""}
+        open={dialogs.renameChat.isOpen}
+        onOpenChange={dialogs.renameChat.setOpen}
+        currentTitle={dialogs.renameChat.target?.title ?? ""}
         onRename={handleConfirmRename}
       />
 
       {/* System Prompt Dialog */}
       <SystemPromptDialog
-        open={systemPromptDialogOpen}
-        onOpenChange={setSystemPromptDialogOpen}
+        open={dialogs.systemPrompt.isOpen}
+        onOpenChange={dialogs.systemPrompt.setOpen}
         currentPrompt={currentSystemPrompt}
         onSave={handleSaveSystemPrompt}
       />
 
       {/* Settings Dialog */}
       <SettingsDialog
-        open={settingsDialogOpen}
-        onOpenChange={setSettingsDialogOpen}
+        open={dialogs.settings.isOpen}
+        onOpenChange={dialogs.settings.setOpen}
         models={models}
         onSettingsChanged={fetchModels}
         fontSize={fontSize}
@@ -1289,23 +1272,23 @@ export default function Home() {
       />
 
       {/* Project Defaults Dialog */}
-      {projectDefaultsTarget && (
+      {dialogs.projectDefaults.target && (
         <ProjectDefaultsDialog
-          open={projectDefaultsDialogOpen}
-          onOpenChange={setProjectDefaultsDialogOpen}
-          projectId={projectDefaultsTarget.id}
-          projectName={projectDefaultsTarget.name}
+          open={dialogs.projectDefaults.isOpen}
+          onOpenChange={dialogs.projectDefaults.setOpen}
+          projectId={dialogs.projectDefaults.target.id}
+          projectName={dialogs.projectDefaults.target.name}
           models={models}
         />
       )}
 
       {/* Project Documents Dialog */}
-      {projectDocumentsTarget && (
+      {dialogs.projectDocuments.target && (
         <ProjectDocumentsDialog
-          open={projectDocumentsDialogOpen}
-          onOpenChange={setProjectDocumentsDialogOpen}
-          projectId={projectDocumentsTarget.id}
-          projectName={projectDocumentsTarget.name}
+          open={dialogs.projectDocuments.isOpen}
+          onOpenChange={dialogs.projectDocuments.setOpen}
+          projectId={dialogs.projectDocuments.target.id}
+          projectName={dialogs.projectDocuments.target.name}
         />
       )}
     </div>
