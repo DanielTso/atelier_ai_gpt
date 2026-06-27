@@ -23,9 +23,15 @@ const imgFrame = supabaseOrigin || "https:";
 // single-user and password-gated (no untrusted authors), and (b) the one surface that
 // runs untrusted/model-generated HTML — the artifact preview — is isolated in an
 // iframe with sandbox="allow-scripts" and NO allow-same-origin, so it executes on an
-// opaque origin and cannot reach app cookies/storage (see ArtifactPreview.tsx). If the
-// trust model changes, the hardening path is a Next 16 nonce pipeline (middleware
-// nonce + script-src 'nonce-…' 'strict-dynamic') to drop 'unsafe-inline' in prod.
+// opaque origin and cannot reach app cookies/storage (see ArtifactPreview.tsx).
+//
+// NONCE PIPELINE ATTEMPTED & REVERTED (2026-06-27): the standard Next 16 middleware
+// nonce + script-src 'nonce-…' 'strict-dynamic' was implemented and browser-verified
+// against a prod build — Next did NOT stamp the nonce onto its bootstrap/chunk inline
+// scripts (Turbopack build nonce-propagation gap), so 'strict-dynamic' blocked all JS
+// and the page failed to hydrate. Dropping 'unsafe-inline' here needs either a
+// non-Turbopack build or a hash-based CSP — out of scope for a cleanup. Keeping
+// 'unsafe-inline' (the tradeoff above) until then.
 const csp = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
