@@ -35,7 +35,7 @@ Web content flows through the **same** `chunk → embed → pgvector` pipeline a
 
 The Tavily key follows the app's `SENSITIVE_KEYS` discipline and stays **fully server-side** (Tavily has no browser-side use at all — unlike Supabase Storage's anon key):
 
-1. **Server-only access.** `getTavilyApiKey()` in `src/lib/settings.ts`; `src/lib/tavily.ts` is a server-only module (`import 'server-only'`) — never imported by any client component. The key is read only inside the route handlers.
+1. **Server-only access.** `getTavilyApiKey()` in `src/lib/settings.ts`; `src/lib/tavily.ts` is server-only **by convention** — never imported by any client component, exactly like `src/lib/storage.ts` (the `server-only` npm package isn't used in this repo). The key is read only inside the route handlers.
 2. **Blocked from client reads.** `'tavily-api-key'` is added to `SENSITIVE_KEYS` (`src/app/actions.ts`) so `getSetting()` / `getSettings()` refuse to return it to client code.
 3. **Status, not value.** The Settings → API Keys field is write-only; the UI shows only a configured/not boolean via `getApiKeyStatus()`. The stored value is never returned to the browser.
 4. **Never on the wire / in the bundle.** The browser sends only URLs to our routes. No `NEXT_PUBLIC_*` for this key; it never appears in responses, the DOM, or client JS.
@@ -115,7 +115,7 @@ Request `{ url: string(url), projectId: number }`.
 - **`AddFromWebDialog`** (`src/components/ui/AddFromWebDialog.tsx`) — URL input + mode toggle:
   - **Single page** → `ingestUrls([url], projectId)`, close.
   - **Crawl site** → `mapSite(url)` → checklist of discovered URLs (select-all, count, capped) → **Ingest selected** → `ingestUrls(selected, projectId)`. Shows a credit-aware hint ("~N pages"). No-key state shows the "Set a Tavily API key in Settings" hint.
-- **"Add from web"** button beside the upload zone in both `ProjectDocumentsDialog` and `ProjectLandingPage`. Ingested docs appear in the same `DocumentCard` grid; the dialog refreshes the grid on completion (same as upload).
+- **"Add from web"** button beside the upload zone in `ProjectDocumentsDialog` (the project landing page routes document management through this dialog via `onAddFiles`, so one integration point covers both surfaces). Ingested docs appear in the same `DocumentCard` grid; the dialog refreshes the grid on completion (same as upload).
 
 ## File layout (new / changed)
 ```
@@ -133,8 +133,7 @@ src/
 ├─ hooks/useWebIngest.ts                  # NEW — map + per-URL ingest loop (mirrors useDocumentUpload)
 ├─ components/
 │  ├─ ui/AddFromWebDialog.tsx             # NEW — URL / crawl-pick dialog
-│  ├─ ui/ProjectDocumentsDialog.tsx       # + "Add from web" entry
-│  ├─ chat/ProjectLandingPage.tsx         # + "Add from web" entry
+│  ├─ ui/ProjectDocumentsDialog.tsx       # + "Add from web" entry (covers landing page too via onAddFiles)
 │  └─ settings/ApiKeysSettingsTab.tsx     # + Tavily write-only field + status
 package.json                              # + @tavily/core
 ```
