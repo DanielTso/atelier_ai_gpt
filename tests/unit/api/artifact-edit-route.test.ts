@@ -90,4 +90,18 @@ describe('POST /api/artifacts/[id]/edit', () => {
     expect(res.status).toBe(422)
     expect(m.renderArtifact).not.toHaveBeenCalled()
   })
+
+  it('xlsx edit stores the sheets array verbatim as JSON with format sheets', async () => {
+    m.getArtifactById.mockResolvedValue({ id: 1, projectId: 5, type: 'xlsx', title: 'Budget', format: 'sheets', content: '[]' })
+    m.renderArtifact.mockResolvedValue({ buffer: Buffer.from('xlsxbytes'), contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', ext: 'xlsx' })
+    const sheets = [{ name: 'Q1', rows: [['Item', 'Cost'], ['Steel', 1200]] }]
+    const POST = await importRoute()
+    const res = await POST(req({ content: sheets }), ctx('1'))
+    expect(res.status).toBe(200)
+    expect(m.renderArtifact).toHaveBeenCalledWith('xlsx', 'Budget', sheets)
+    // content round-trips through the route as the exact SheetSpec[] JSON (no loss)
+    expect(m.addArtifactVersion).toHaveBeenCalledWith(1, expect.objectContaining({
+      type: 'xlsx', format: 'sheets', content: JSON.stringify(sheets),
+    }))
+  })
 })
