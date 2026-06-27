@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.34.1] - 2026-06-27 — Sidebar Recents shows only quick chats
+
+### Changed
+
+- **The sidebar "Recents" list now shows only quick chats** (chats with no project). Project chats no longer appear in Recents — they live solely in their project (Projects view → select a project → its chat list). They remain fully reachable; this just declutters Recents. (`sidebar/Sidebar.tsx`)
+
 ## [4.34.0] - 2026-06-27 — Resizable + collapsible project context rail
 
 ### Added
