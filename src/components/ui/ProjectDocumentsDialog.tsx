@@ -2,13 +2,14 @@
 
 import { memo, useState, useEffect, useRef, useCallback } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
-import { X, FileText, Upload, Loader2 } from 'lucide-react'
+import { X, FileText, Upload, Loader2, Globe } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import type { DocumentSummary } from '@/types'
 import { useDocumentUpload } from '@/hooks/useDocumentUpload'
 import { DocumentCard } from '@/components/chat/DocumentCard'
 import { DocumentPreviewDialog } from '@/components/ui/DocumentPreviewDialog'
+import { AddFromWebDialog } from '@/components/ui/AddFromWebDialog'
 
 interface ProjectDocumentsDialogProps {
   open: boolean
@@ -28,6 +29,7 @@ export const ProjectDocumentsDialog = memo(function ProjectDocumentsDialog({
   const [previewDoc, setPreviewDoc] = useState<DocumentSummary | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [dragOver, setDragOver] = useState(false)
+  const [webOpen, setWebOpen] = useState(false)
 
   const loadDocuments = useCallback(async () => {
     try {
@@ -151,6 +153,13 @@ export const ProjectDocumentsDialog = memo(function ProjectDocumentsDialog({
             )}
           </div>
 
+          <button
+            onClick={() => setWebOpen(true)}
+            className="mb-4 -mt-1 self-start flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <Globe className="h-4 w-4" /> Add from web
+          </button>
+
           {/* Document list */}
           <div className="flex-1 overflow-y-auto min-h-0 space-y-2">
             {loading ? (
@@ -184,6 +193,12 @@ export const ProjectDocumentsDialog = memo(function ProjectDocumentsDialog({
             open={previewDoc !== null}
             onOpenChange={(o) => { if (!o) setPreviewDoc(null) }}
             document={previewDoc}
+          />
+          <AddFromWebDialog
+            open={webOpen}
+            onOpenChange={setWebOpen}
+            projectId={projectId}
+            onIngested={loadDocuments}
           />
         </Dialog.Content>
       </Dialog.Portal>
