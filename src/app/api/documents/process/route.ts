@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDocumentById, updateDocumentStatus, saveDocumentChunks, updateChunkEmbedding, createDocumentRevision, commitDocumentReplacement } from '@/app/actions'
+import { getDocumentById, updateDocumentStatus, createDocumentRevision, commitDocumentReplacement } from '@/app/actions'
 import { generateEmbedding, ensureEmbeddingModel } from '@/lib/embeddings'
 import { chunkText } from '@/lib/chunking'
+import { ingestText } from '@/lib/ingest'
 import { MAX_FILE_SIZE, MAX_TEXT_LENGTH, getExtension, isImageExtension, isSupported, extractTextFromBuffer } from '@/lib/fileExtraction'
 import { extractViaVision, extractViaVisionImage } from '@/lib/visionExtraction'
 import { downloadToBuffer, uploadBuffer, sanitizeStorageName } from '@/lib/storage'
@@ -111,9 +112,8 @@ export async function POST(request: NextRequest) {
       thumbnailPath = undefined
     }
 
-    const textChunks = chunkText(textContent)
-
     if (isReplace) {
+      const textChunks = chunkText(textContent)
       // Replace: embed FIRST (no destructive writes yet), then snapshot the old
       // revision and atomically swap (delete old chunks + insert new + update row).
       // If embedding/commit fails the prior revision stays fully intact.
@@ -143,22 +143,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ documentId: doc.id, status, revision: nextRevision, chunkCount: chunkRows.length, charCount: textContent.length })
     }
 
-    // New upload: save chunks then embed in place.
-    const saved = await saveDocumentChunks(textChunks.map(c => ({
-      documentId: doc.id, projectId: doc.projectId, chunkIndex: c.index, content: c.content,
-    })))
-    const results = await Promise.allSettled(saved.map(async (chunk) => {
-      const embedding = await generateEmbedding(chunk.content, 'document')
-      await updateChunkEmbedding(chunk.id, embedding)
-    }))
-    const embedded = results.filter(r => r.status === 'fulfilled').length
-    if (results.length - embedded > 0) {
-      console.warn(`[documents/process] ${results.length - embedded}/${saved.length} chunks failed to embed`)
-    }
-    const status = embedded === 0 && saved.length > 0 ? 'error' : 'ready'
-    await updateDocumentStatus(doc.id, status, { chunkCount: saved.length, charCount: textContent.length, thumbnailPath, extractionMethod })
-
-    return NextResponse.json({ documentId: doc.id, status, revision: doc.revision, chunkCount: saved.length, charCount: textContent.length })
+    // New upload: chunk → save → embed → status via the shared ingestion tail.
+    const { status, chunkCount } = await ingestText({ id: doc.id, projectId: doc.projectId }, textContent, { extractionMethod, thumbnailPath })
+    return NextResponse.json({ documentId: doc.id, status, revision: doc.revision, chunkCount, charCount: textContent.length })
   } catch (error) {
     return apiError(error, 'Failed to process document', 500)
   }
