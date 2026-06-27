@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { FileText, Plus, Upload, Loader2, Check, X, Pencil, Sparkles } from 'lucide-react'
+import { FileText, Plus, Upload, Loader2, Check, X, Pencil, Sparkles, Globe } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import type { DocumentSummary, MemorySuggestion } from '@/types'
@@ -9,6 +9,7 @@ import { getPendingSuggestions, acceptSuggestion, dismissSuggestion } from '@/ap
 import { useDocumentUpload } from '@/hooks/useDocumentUpload'
 import { DocumentCard } from '@/components/chat/DocumentCard'
 import { DocumentPreviewDialog } from '@/components/ui/DocumentPreviewDialog'
+import { AddFromWebDialog } from '@/components/ui/AddFromWebDialog'
 import { CapacityBar } from '@/components/chat/CapacityBar'
 import { PROJECT_CAPACITY_BYTES } from '@/lib/projectCapacity'
 
@@ -34,6 +35,7 @@ export function ProjectContextRail({ project, onSaveContext, onAddFiles }: Proje
   const [documents, setDocuments] = useState<DocumentSummary[]>([])
   const [previewDoc, setPreviewDoc] = useState<DocumentSummary | null>(null)
   const [dragOver, setDragOver] = useState(false)
+  const [webOpen, setWebOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { save: saveMemory, cancel: cancelMemorySave } = useDebouncedSave(project.id, onSaveContext)
   const { save: saveInstructions } = useDebouncedSave(project.id, onSaveContext)
@@ -180,12 +182,20 @@ export function ProjectContextRail({ project, onSaveContext, onAddFiles }: Proje
           <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
             <FileText className="h-4 w-4 text-muted-foreground" /> Files
           </h2>
-          <button
-            onClick={() => !uploading && fileInputRef.current?.click()} disabled={uploading}
-            className={cn('flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors', uploading && 'opacity-50 cursor-not-allowed')}
-          >
-            {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} File
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setWebOpen(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            >
+              <Globe className="h-3.5 w-3.5" /> Web
+            </button>
+            <button
+              onClick={() => !uploading && fileInputRef.current?.click()} disabled={uploading}
+              className={cn('flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors', uploading && 'opacity-50 cursor-not-allowed')}
+            >
+              {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} File
+            </button>
+          </div>
         </div>
         <input
           ref={fileInputRef} type="file" multiple className="hidden"
@@ -209,6 +219,7 @@ export function ProjectContextRail({ project, onSaveContext, onAddFiles }: Proje
       </section>
 
       <DocumentPreviewDialog open={previewDoc !== null} onOpenChange={(o) => { if (!o) setPreviewDoc(null) }} document={previewDoc} />
+      <AddFromWebDialog open={webOpen} onOpenChange={setWebOpen} projectId={project.id} onIngested={loadDocuments} />
     </aside>
   )
 }
