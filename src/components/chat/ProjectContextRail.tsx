@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { FileText, Plus, Upload, Loader2, Check, X, Pencil, Sparkles, Globe } from 'lucide-react'
+import { FileText, Plus, Upload, Loader2, Check, X, Pencil, Sparkles, Globe, PanelRightClose, PanelRightOpen } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import type { DocumentSummary, MemorySuggestion } from '@/types'
@@ -12,6 +12,12 @@ import { DocumentPreviewDialog } from '@/components/ui/DocumentPreviewDialog'
 import { AddFromWebDialog } from '@/components/ui/AddFromWebDialog'
 import { CapacityBar } from '@/components/chat/CapacityBar'
 import { PROJECT_CAPACITY_BYTES } from '@/lib/projectCapacity'
+import { useLocalStorage } from '@/hooks/useLocalStorage'
+
+// Resizable context rail: drag the left edge to resize, double-click to reset,
+// collapse to a thin strip. Width + collapsed state persist in localStorage.
+const DEFAULT_RAIL_WIDTH = 320
+const MIN_RAIL_WIDTH = 280
 
 interface ProjectContextRailProps {
   project: { id: number; name: string; memory?: string | null; instructions?: string | null }
@@ -36,6 +42,8 @@ export function ProjectContextRail({ project, onSaveContext, onAddFiles }: Proje
   const [previewDoc, setPreviewDoc] = useState<DocumentSummary | null>(null)
   const [dragOver, setDragOver] = useState(false)
   const [webOpen, setWebOpen] = useState(false)
+  const [railWidth, setRailWidth] = useLocalStorage('project-rail-width', DEFAULT_RAIL_WIDTH, (v) => typeof v === 'number' && v >= 240 && v <= 1000)
+  const [collapsed, setCollapsed] = useLocalStorage('project-rail-collapsed', false, (v) => typeof v === 'boolean')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { save: saveMemory, cancel: cancelMemorySave } = useDebouncedSave(project.id, onSaveContext)
   const { save: saveInstructions } = useDebouncedSave(project.id, onSaveContext)
@@ -113,8 +121,56 @@ export function ProjectContextRail({ project, onSaveContext, onAddFiles }: Proje
   }
   const usedBytes = documents.reduce((sum, d) => sum + (d.fileSize ?? 0), 0)
 
+  // Drag the left edge to resize; width is clamped (min..50vw, capped 640) and persisted.
+  const startResize = (e: React.PointerEvent) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startW = railWidth
+    const maxW = Math.min(640, Math.round(window.innerWidth * 0.5))
+    const onMove = (ev: PointerEvent) =>
+      setRailWidth(Math.min(Math.max(startW - (ev.clientX - startX), MIN_RAIL_WIDTH), maxW))
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
+
+  if (collapsed) {
+    return (
+      <aside className="w-10 shrink-0 flex flex-col items-center gap-2 border-l border-border/40 py-3">
+        <button
+          onClick={() => setCollapsed(false)}
+          title="Expand panel" aria-label="Expand project panel"
+          className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+        >
+          <PanelRightOpen className="h-4 w-4" />
+        </button>
+        <FileText className="h-4 w-4 text-muted-foreground/40" />
+      </aside>
+    )
+  }
+
   return (
-    <aside className="w-(--rail-width) shrink-0 flex flex-col gap-4 overflow-y-auto border-l border-border/40 p-4">
+    <aside style={{ width: railWidth }} className="relative shrink-0 border-l border-border/40">
+      {/* Drag-to-resize handle on the left edge */}
+      <div
+        onPointerDown={startResize}
+        onDoubleClick={() => setRailWidth(DEFAULT_RAIL_WIDTH)}
+        title="Drag to resize · double-click to reset"
+        className="absolute inset-y-0 left-0 z-20 w-1.5 cursor-col-resize bg-transparent transition-colors hover:bg-primary/40"
+      />
+      <div className="h-full flex flex-col gap-4 overflow-y-auto p-4">
+        <div className="flex justify-end -mb-2 -mt-1">
+          <button
+            onClick={() => setCollapsed(true)}
+            title="Collapse panel" aria-label="Collapse project panel"
+            className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+          >
+            <PanelRightClose className="h-4 w-4" />
+          </button>
+        </div>
       {/* Memory */}
       <section>
         <label htmlFor="rail-memory" className="text-sm font-semibold text-foreground">Memory</label>
@@ -220,6 +276,7 @@ export function ProjectContextRail({ project, onSaveContext, onAddFiles }: Proje
 
       <DocumentPreviewDialog open={previewDoc !== null} onOpenChange={(o) => { if (!o) setPreviewDoc(null) }} document={previewDoc} />
       <AddFromWebDialog open={webOpen} onOpenChange={setWebOpen} projectId={project.id} onIngested={loadDocuments} />
+      </div>
     </aside>
   )
 }
