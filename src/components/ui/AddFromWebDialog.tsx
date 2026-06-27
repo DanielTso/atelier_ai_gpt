@@ -90,7 +90,7 @@ export function AddFromWebDialog({ open, onOpenChange, projectId, onIngested }: 
           </div>
 
           {/* Mode tabs */}
-          <div className="flex gap-1 p-1 mb-4 bg-muted rounded-lg" role="tablist">
+          <div className="flex gap-1 p-1 mb-4 bg-muted rounded-lg" role="tablist" aria-label="Add from web mode">
             <button role="tab" aria-selected={mode === 'single'} onClick={() => { setMode('single'); reset() }}
               className={cn('flex-1 text-sm py-1.5 rounded-md transition-colors', mode === 'single' ? 'bg-card shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground')}>
               Single page
