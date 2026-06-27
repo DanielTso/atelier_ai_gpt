@@ -52,11 +52,35 @@ describe('POST /api/documents/web-ingest', () => {
     expect(m.createUploadingDocument).not.toHaveBeenCalled()
   })
 
+  it('503 when storage is not configured', async () => {
+    m.isStorageConfigured.mockReturnValue(false)
+    const POST = await importRoute()
+    const res = await POST(req({ url: 'https://x.com/a', projectId: 1 }) as never)
+    expect(res.status).toBe(503)
+    expect(m.createUploadingDocument).not.toHaveBeenCalled()
+  })
+
+  it('503 when embedding provider is unavailable', async () => {
+    m.ensureEmbeddingModel.mockResolvedValue({ available: false })
+    const POST = await importRoute()
+    const res = await POST(req({ url: 'https://x.com/a', projectId: 1 }) as never)
+    expect(res.status).toBe(503)
+    expect(m.createUploadingDocument).not.toHaveBeenCalled()
+  })
+
   it('422 when extraction is empty (no row created)', async () => {
     m.extractUrl.mockRejectedValue(new Error('No content extracted'))
     const POST = await importRoute()
     const res = await POST(req({ url: 'https://x.com/a', projectId: 1 }) as never)
     expect(res.status).toBe(422)
+    expect(m.createUploadingDocument).not.toHaveBeenCalled()
+  })
+
+  it('502 when extractUrl throws a non-empty error', async () => {
+    m.extractUrl.mockRejectedValue(new Error('network down'))
+    const POST = await importRoute()
+    const res = await POST(req({ url: 'https://x.com/a', projectId: 1 }) as never)
+    expect(res.status).toBe(502)
     expect(m.createUploadingDocument).not.toHaveBeenCalled()
   })
 

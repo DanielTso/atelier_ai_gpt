@@ -23,8 +23,12 @@ export async function POST(request: NextRequest) {
     let markdown: string
     try {
       ({ title, markdown } = await extractUrl(url))
-    } catch {
-      return NextResponse.json({ error: 'No content could be extracted from that URL.' }, { status: 422 })
+    } catch (e) {
+      const empty = e instanceof Error && e.message === 'No content extracted'
+      return NextResponse.json(
+        { error: empty ? 'No content could be extracted from that URL.' : 'Failed to fetch that URL.' },
+        { status: empty ? 422 : 502 },
+      )
     }
 
     let text = `Source: ${url}\n\n${markdown}`
