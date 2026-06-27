@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.33.0] - 2026-06-27 — Carryover cleanups: page.tsx decomposition + xlsx/CSP verification
+
+Behavior-preserving maintenance. No user-facing change.
+
+### Changed
+
+- **`page.tsx` decomposition** — the 1,313-line single-page component is ~265 lines lighter. Extracted two cohesive hooks following the existing `src/hooks/` pattern:
+  - **`useDialogs`** — the 10 dialog open/close flags + their 6 coupled "target" values behind a small per-dialog controller API (`open(target)` / `close()` / `setOpen` / `isOpen` / `target`). Closing a target dialog still clears its target on both the programmatic and UI-dismiss paths.
+  - **`useChatPersistence`** — the `useChat` `onFinish` pipeline (save assistant message, generated images, attachments, embed, persona usage, summarize, auto-memory, title, artifact re-fetch). Wired via a stable `onFinishRef` (resolves the `useChat`↔`setMessages` circular dependency). The pipeline is now **unit-tested** (it never was) — dedup, the single `getMessageCount` reuse, the monotonic memory gate, and the media-only-turn save are all covered.
+
+### Tests / internal
+
+- **xlsx artifact edit round-trip verified** — a real `toXlsx` render → exceljs read-back proves cell values (numbers, multi-sheet, markdown-strip, formula-guard) survive; plus an edit-route happy-path asserting the sheets array is stored verbatim. No production change (the path was already safe).
+- **CSP nonce pipeline investigated and documented** — the Next 16 middleware nonce + `'strict-dynamic'` was implemented and browser-verified against a prod build; Next's Turbopack build does not stamp the nonce onto its scripts, so it blocked all JS. Reverted; the finding is recorded in `next.config.ts`. The `'unsafe-inline'` tradeoff (single-user + gated + sandboxed artifact iframe) stays.
+
+### Notes
+
+- Gate: typecheck 0, lint 0 errors (26 baseline warnings), build clean, **454 unit tests pass** (+18). No migration, no dependency changes.
+
 ## [4.32.0] - 2026-06-27 — Add from web (URL + site crawl → project RAG)
 
 Pull web content into a project's document store so the assistant can cite it — without downloading and re-uploading files. Powered by Tavily (`@tavily/core`); reuses the existing chunk → embed → pgvector pipeline. **No DB migration.**
