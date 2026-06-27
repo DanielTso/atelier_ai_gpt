@@ -1,32 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-vi.mock('@/lib/settings')
-vi.mock('@tavily/core')
+// vi.mock factories are hoisted above the module, so the mock fns must be
+// created via vi.hoisted to be referencable inside them (and to avoid an
+// `as any` cast on a partial Tavily client).
+const { getKey, mapMock, extractMock } = vi.hoisted(() => ({
+  getKey: vi.fn(),
+  mapMock: vi.fn(),
+  extractMock: vi.fn(),
+}))
+
+vi.mock('@/lib/settings', () => ({ getTavilyApiKey: getKey }))
+vi.mock('@tavily/core', () => ({ tavily: () => ({ map: mapMock, extract: extractMock }) }))
 
 import { isTavilyConfigured, mapSite, extractUrl } from '@/lib/tavily'
-import * as settingsModule from '@/lib/settings'
-import * as tavilyModule from '@tavily/core'
-
-const settings = vi.mocked(settingsModule)
-const tavily = vi.mocked(tavilyModule)
-
-const getKey = vi.fn()
-const mapMock = vi.fn()
-const extractMock = vi.fn()
-
-settings.getTavilyApiKey.mockImplementation(getKey)
-tavily.tavily.mockImplementation(
-  () =>
-    ({
-      map: mapMock,
-      extract: extractMock,
-      search: vi.fn(),
-      searchQNA: vi.fn(),
-      searchContext: vi.fn(),
-      crawl: vi.fn(),
-      news: vi.fn(),
-    }) as any
-)
 
 describe('tavily wrapper', () => {
   beforeEach(() => {
