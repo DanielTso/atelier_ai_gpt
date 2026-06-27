@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.34.0] - 2026-06-27 — Resizable + collapsible project context rail
+
+### Added
+
+- **The project context rail (Memory / Instructions / Files) is now resizable and collapsible.** Drag the handle on its left edge to resize (clamped 280px → min(640px, 50vw) so the chat list isn't crushed); double-click the handle to reset to 320px; a chevron collapses it to a thin strip and expands it back. Width and collapsed state persist in `localStorage` (`project-rail-width` / `project-rail-collapsed`) across reloads and project switches. Mirrors the existing artifact-workspace resize UX. (`ProjectContextRail.tsx`)
+
 ## [4.33.1] - 2026-06-27 — Fix: "Add from web" now reachable from the project Files panel
 
 ### Fixed
