@@ -33,11 +33,14 @@ export const Sidebar = memo(function Sidebar({
     [projects]
   )
 
-  // Flat Recents: all chats (standalone + project) by recency. The page passes
-  // chats already newest-first; combine with standaloneChats, de-duped by id.
+  // Recents shows ONLY quick chats (no project) by recency — project chats live
+  // in their project (reached via the Projects view). The page passes chats
+  // already newest-first; combine with standaloneChats, de-duped, project chats filtered out.
   const recents = useMemo(() => {
     const byId = new Map<number, Chat>()
-    for (const c of [...standaloneChats, ...chats]) byId.set(c.id, c)
+    for (const c of [...standaloneChats, ...chats]) {
+      if (c.projectId === null) byId.set(c.id, c)
+    }
     return Array.from(byId.values())
   }, [chats, standaloneChats])
 
