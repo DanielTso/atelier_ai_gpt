@@ -74,7 +74,8 @@ export function ImagesView({ projects }: ImagesViewProps) {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-8">
+    <div className="flex-1 overflow-y-auto">
+      <div className="max-w-5xl mx-auto w-full p-8">
       {/* Header */}
       <div className="mb-6">
         <h2 className="text-2xl font-serif font-medium text-foreground">Images</h2>
@@ -183,6 +184,7 @@ export function ImagesView({ projects }: ImagesViewProps) {
         onClose={() => setLightboxImage(null)}
         onDownload={lightboxImage?.url ? () => downloadFile(lightboxImage.url!, `atelier-image-${lightboxImage.id}.${imageExt(lightboxImage.mediaType)}`) : undefined}
       />
+      </div>
     </div>
   )
 }
