@@ -8,12 +8,18 @@ export function SidebarHeader() {
 
   return (
     <div className="flex items-center justify-between px-4 pt-4 pb-3 mb-2 border-b border-border">
-      <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={actions.createStandaloneChat}
+        title="Home"
+        aria-label="Home"
+        className="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer rounded-md px-1 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      >
         <img src="/logo.svg" alt="Atelier Studio" className="h-6 w-6" />
         <h1 className="text-xl font-bold text-foreground">
           Atelier Studio
         </h1>
-      </div>
+      </button>
       <div className="flex items-center gap-1">
         <button
           onClick={actions.toggleTheme}
