@@ -312,8 +312,9 @@ export default function Home() {
       // clobber the chat the user switched to (or a freshly-created chat's live state).
       if (activeChatIdRef.current !== cid) return
 
-      // Apply artifacts result (best-effort — null means the fetch failed or returned non-ok)
-      if (artifactsData?.artifacts) setArtifacts(artifactsData.artifacts)
+      // Apply artifacts result (best-effort — null means the fetch failed or returned non-ok;
+      // on success always set to the list or [] so a chat with no artifacts clears stale cards)
+      if (artifactsData !== null) setArtifacts(artifactsData.artifacts ?? [])
 
       // Group attachments by messageId
       const attachmentsByMessageId = new Map<number, typeof attachments>()
