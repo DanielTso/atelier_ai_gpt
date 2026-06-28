@@ -15,6 +15,7 @@ import { HomeGreeting } from "@/components/chat/HomeGreeting"
 import { QuickActions } from "@/components/chat/QuickActions"
 import { ProjectsView } from "@/components/chat/ProjectsView"
 import { ArtifactsView } from "@/components/chat/ArtifactsView"
+import { ImagesView } from "@/components/chat/ImagesView"
 import { ArtifactWorkspace } from "@/components/chat/ArtifactWorkspace"
 import { ChatHeader } from "@/components/chat/ChatHeader"
 import { ChatInputArea } from "@/components/chat/ChatInputArea"
@@ -936,7 +937,9 @@ export default function Home() {
         >
           <Menu className="h-5 w-5" />
         </button>
-        {activeView === 'projects' ? (
+        {activeView === 'images' ? (
+          <ImagesView projects={projects} />
+        ) : activeView === 'projects' ? (
           <ProjectsView
             projects={projects}
             fileCounts={projectFileCounts}
