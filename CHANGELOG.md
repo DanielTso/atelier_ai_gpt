@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.35.0] - 2026-06-28 — UI polish: boxier project cards + tighter Recents
+
+### Added
+
+- **Project cards now show a file count, a Memory snippet, and an Instructions snippet.** A new `getProjectFileCounts()` action (one grouped count query) feeds a "N files" badge; Memory and Instructions render as labeled 2-line clamps. Project search also matches instructions now. (`ProjectsView.tsx`, `actions.ts`, `page.tsx`)
+
+### Changed
+
+- **Project cards are boxier.** The grid goes up to 3 columns (1 / sm:2 / lg:3) and cards carry more content, so they read as boxes instead of wide elongated strips. (`ProjectsView.tsx`)
+- **Tighter sidebar Recents spacing** — items go from `p-2`/`space-y-1` to `py-1.5`/`space-y-0.5` for a denser list. (`sidebar/RecentsSection.tsx`, `sidebar/ChatItem.tsx`)
+
 ## [4.34.1] - 2026-06-27 — Sidebar Recents shows only quick chats
 
 ### Changed
