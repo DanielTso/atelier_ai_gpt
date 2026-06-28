@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.40.0] - 2026-06-28 — Warm aesthetic pass + PDF preview fix
+
+A creative/visual pass leaning into the warm + Fraunces brand, plus a fix for PDF artifact previews. Verified on Vercel previews before release.
+
+### Added
+
+- **Images "Create images" hero** — a warm ambient glow behind the prompt, a gradient Fraunces heading, tinted starter **template tiles** (click to seed a prompt), gentle entrance motion + an idle float on the icon. The hero centers vertically when there are no images yet.
+- **Bolder home greeting** — gradient Fraunces greeting + an ambient warm glow, with a soft entrance.
+- **Characterful empty states** — the "no chat" / "start a conversation" / "no artifacts" / "no chats yet" states get a warm icon tile + a gentle fade-in.
+- **Project page motion** — chat-list rows stagger in; the composer shows a warm focus ring.
+
+### Fixed
+
+- **PDF artifact previews render again** (were showing "content is blocked, contact site owner"). PDFs now stream through a **same-origin proxy** (`GET /api/artifacts/:id/raw`) instead of a cross-origin Supabase iframe, which browsers increasingly refuse to render. The Download button still uses the direct signed URL.
+
+### Changed
+
+- **Framing headers relaxed from `DENY`/`frame-ancestors 'none'` to `SAMEORIGIN`/`frame-ancestors 'self'`** so the app can frame its own same-origin PDF proxy. Cross-origin framing of the app (clickjacking) remains blocked.
+
+### Notes
+
+- No DB migration. Gate: typecheck 0, lint 0 errors, build clean, **500 unit tests pass**.
+
 ## [4.39.0] - 2026-06-28 — Project & Images layout refresh + readability fixes
 
 A layout pass on the project landing page and the Images view (inspired by the Claude.ai project and Gemini "Create images" layouts), plus two readability/behavior fixes. Verified on a Vercel preview before release.
