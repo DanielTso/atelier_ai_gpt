@@ -1,6 +1,7 @@
 'use client'
 
 import { memo, type ReactNode } from "react"
+import { motion } from "framer-motion"
 import { ArrowLeft, MessageSquare, Pin, MoreVertical, Pencil, Trash2 } from "lucide-react"
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
 import { cn } from "@/lib/utils"
@@ -120,7 +121,7 @@ export const ProjectLandingPage = memo(function ProjectLandingPage({
         {/* LEFT: Chats */}
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Composer — start a new chat in this project (centered, max-width) */}
-          <div className="w-full max-w-3xl mx-auto px-4 mt-6">{composer}</div>
+          <div className="w-full max-w-3xl mx-auto px-4 mt-6 focus-within:ring-1 focus-within:ring-primary/30 rounded-2xl transition-shadow">{composer}</div>
 
           {/* Chat List — centered column matching the composer width */}
           <div className="flex-1 overflow-y-auto mt-3 w-full max-w-3xl mx-auto px-4 pb-4">
@@ -145,9 +146,12 @@ export const ProjectLandingPage = memo(function ProjectLandingPage({
             ) : (
               <div className="mt-1">
                 {chatPreviews.map((chat, idx) => (
-                  <button
+                  <motion.button
                     key={chat.id}
                     onClick={() => onSelectChat(chat.id)}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.25, delay: Math.min(idx * 0.03, 0.3) }}
                     className={cn(
                       "w-full text-left px-4 py-3.5 flex items-start gap-3 hover:bg-muted/40 transition-colors",
                       idx !== chatPreviews.length - 1 && "border-b border-border/30"
@@ -169,7 +173,7 @@ export const ProjectLandingPage = memo(function ProjectLandingPage({
                         </p>
                       )}
                     </div>
-                  </button>
+                  </motion.button>
                 ))}
               </div>
             )}
