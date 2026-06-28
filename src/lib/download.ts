@@ -18,7 +18,7 @@ export async function downloadFile(url: string, filename: string): Promise<void>
     a.remove()
     URL.revokeObjectURL(objectUrl)
   } catch {
-    window.open(url, '_blank', 'noopener')
+    window.open(url, '_blank', 'noopener,noreferrer')
   }
 }
 

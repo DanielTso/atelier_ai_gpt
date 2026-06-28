@@ -58,6 +58,7 @@ describe('downloadFile', () => {
     } as Response))
 
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined)
+    const createElementSpy = vi.spyOn(document, 'createElement')
 
     await downloadFile('https://example.com/img.webp', 'atelier-image-1.webp')
 
@@ -66,10 +67,19 @@ describe('downloadFile', () => {
     expect(clickSpy).toHaveBeenCalledTimes(1)
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:mock-url')
 
-    // Verify the anchor had the right download filename
-    // (We test this by checking the anchor was created and clicked — the attribute
-    //  was set inside the function before click.)
+    // Capture the anchor element that was created
+    const createElementCalls = createElementSpy.mock.calls.filter(call => call[0] === 'a')
+    expect(createElementCalls.length).toBeGreaterThan(0)
+    const capturedAnchor = createElementSpy.mock.results.find(
+      (result, idx) => createElementSpy.mock.calls[idx]?.[0] === 'a'
+    )?.value as HTMLAnchorElement
+
+    // Verify the anchor had the correct download filename and href
+    expect(capturedAnchor.download).toBe('atelier-image-1.webp')
+    expect(capturedAnchor.href).toBe('blob:mock-url')
+
     clickSpy.mockRestore()
+    createElementSpy.mockRestore()
   })
 
   it('falls back to window.open when fetch returns non-ok', async () => {
@@ -81,7 +91,7 @@ describe('downloadFile', () => {
 
     await downloadFile('https://example.com/img.webp', 'fallback.webp')
 
-    expect(window.open).toHaveBeenCalledWith('https://example.com/img.webp', '_blank', 'noopener')
+    expect(window.open).toHaveBeenCalledWith('https://example.com/img.webp', '_blank', 'noopener,noreferrer')
   })
 
   it('falls back to window.open when fetch throws', async () => {
@@ -89,6 +99,6 @@ describe('downloadFile', () => {
 
     await downloadFile('https://example.com/img.webp', 'fallback.webp')
 
-    expect(window.open).toHaveBeenCalledWith('https://example.com/img.webp', '_blank', 'noopener')
+    expect(window.open).toHaveBeenCalledWith('https://example.com/img.webp', '_blank', 'noopener,noreferrer')
   })
 })

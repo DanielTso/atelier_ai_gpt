@@ -135,7 +135,7 @@ describe('ImagesView', () => {
     await act(async () => { fireEvent.click(downloadButtons[0]!) })
     expect(mockedDownload).toHaveBeenCalledTimes(1)
     expect(mockedDownload.mock.calls[0]![0]).toBe('https://example.com/img1.webp')
-    expect(mockedDownload.mock.calls[0]![1]).toMatch(/^atelier-image-1\./)
+    expect(mockedDownload.mock.calls[0]![1]).toMatch(/^atelier-image-1\.webp$/)
   })
 
   it('re-calls getGeneratedImages with the right arg when filter changes', async () => {
