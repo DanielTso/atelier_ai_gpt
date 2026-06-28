@@ -43,6 +43,10 @@ yarn-error.log*
 .claude/
 .superpowers/
 
+# installed agent skills (machine-specific symlinks; reproducible via skills-lock.json)
+.agents/
+skills-lock.json
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
