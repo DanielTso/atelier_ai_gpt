@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.37.0] - 2026-06-28 — Brand-token migration: theme-correct overlays
+
+A code-hygiene + theming pass: ~110 hardcoded `white/X`·`black/X` opacity utilities across 24 components were replaced with the warm **semantic tokens**, so surfaces, borders, hover states, and muted text render correctly in both light and dark mode (a raw black/white wash didn't adapt to the warm palette). No behavior change; verified on a Vercel preview before release.
+
+### Changed
+
+- **Functional overlays → semantic tokens** — input/control fills → `bg-background`/`bg-muted`, hover states → `hover:bg-accent`, borders/dividers → `border-border`/`divide-border`, muted text → `text-muted-foreground`, focus rings → `ring-ring`. Spread across settings tabs, dialogs, command palette, chat surfaces, sidebar, and loading skeletons (which regained two-tone shimmer depth).
+- **Intentional dark scrims kept** — modal/lightbox backdrops (`bg-black/50`–`/80`) and the image-caption overlay stay as deliberate scrims.
+- **Brand guide softened** — `CLAUDE.md`'s "forbidden patterns" hard ban on opacity utilities is now a preference: prefer semantic tokens, but opacity utilities are fine for scrims/overlays and one-off effects.
+
+### Notes
+
+- Gate: typecheck 0, lint 0 errors (26 baseline warnings), build clean, **481 unit tests pass**. Pure className changes — no DB migration, no behavior change.
+
 ## [4.36.0] - 2026-06-28 — Images: a Nano Banana 2 image studio
 
 A dedicated **Images** surface (Gemini-style) — generate images from a prompt and browse them in a gallery — reusing the existing Nano Banana 2 (`gemini-3.1-flash-image`) model. Previously image generation only happened inline inside a chat.

@@ -68,7 +68,7 @@ export const ProjectDefaultsDialog = memo(function ProjectDefaultsDialog({
             <Dialog.Title className="text-lg font-semibold">
               Project Defaults: {projectName}
             </Dialog.Title>
-            <Dialog.Close className="p-1 rounded hover:bg-white/10 transition-colors">
+            <Dialog.Close className="p-1 rounded hover:bg-accent transition-colors">
               <X className="h-4 w-4" />
             </Dialog.Close>
           </div>
@@ -83,7 +83,7 @@ export const ProjectDefaultsDialog = memo(function ProjectDefaultsDialog({
                 <select
                   value={defaultPersonaId || ''}
                   onChange={(e) => setDefaultPersonaId(e.target.value || null)}
-                  className="w-full bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
                 >
                   <option value="">None (use global default)</option>
                   {personas.map(p => (
@@ -103,7 +103,7 @@ export const ProjectDefaultsDialog = memo(function ProjectDefaultsDialog({
                 <select
                   value={defaultModel || ''}
                   onChange={(e) => setDefaultModel(e.target.value || null)}
-                  className="w-full bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
                 >
                   <option value="">None (use global default)</option>
                   {models.map(m => (
@@ -133,7 +133,7 @@ export const ProjectDefaultsDialog = memo(function ProjectDefaultsDialog({
                           <span className="flex-1 truncate text-muted-foreground">
                             {persona?.name || s.personaId}
                           </span>
-                          <div className="w-20 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                          <div className="w-20 h-1.5 bg-muted rounded-full overflow-hidden">
                             <div
                               className="h-full bg-primary/50 rounded-full"
                               style={{ width: `${percent}%` }}
@@ -153,7 +153,7 @@ export const ProjectDefaultsDialog = memo(function ProjectDefaultsDialog({
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   onClick={() => onOpenChange(false)}
-                  className="px-4 py-2 text-sm rounded-lg hover:bg-white/10 transition-colors"
+                  className="px-4 py-2 text-sm rounded-lg hover:bg-accent transition-colors"
                 >
                   Cancel
                 </button>

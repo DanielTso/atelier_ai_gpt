@@ -30,13 +30,13 @@ export function CodeBlock({ children, className }: CodeBlockProps) {
     <div className="relative group">
       <button
         onClick={handleCopy}
-        className="absolute right-2 top-2 p-1.5 rounded-lg bg-white/10 hover:bg-white/20 opacity-0 group-hover:opacity-100 transition-all duration-200 z-10"
+        className="absolute right-2 top-2 p-1.5 rounded-lg bg-muted hover:bg-accent opacity-0 group-hover:opacity-100 transition-all duration-200 z-10"
         title={copied ? "Copied!" : "Copy code"}
       >
         {copied ? (
           <Check className="h-4 w-4 text-green-400" />
         ) : (
-          <Copy className="h-4 w-4 text-white/70" />
+          <Copy className="h-4 w-4 text-muted-foreground" />
         )}
       </button>
       <pre ref={preRef} className={className}>
@@ -53,7 +53,7 @@ interface InlineCodeProps {
 
 export function InlineCode({ children, className, ...props }: InlineCodeProps & React.HTMLAttributes<HTMLElement>) {
   return (
-    <code className={`bg-black/30 rounded px-1 py-0.5 text-sm font-mono ${className || ''}`} {...props}>
+    <code className={`bg-muted rounded px-1 py-0.5 text-sm font-mono ${className || ''}`} {...props}>
       {children}
     </code>
   )

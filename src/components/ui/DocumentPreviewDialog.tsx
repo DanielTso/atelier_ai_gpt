@@ -64,7 +64,7 @@ export const DocumentPreviewDialog = memo(function DocumentPreviewDialog({
                 {badge.label}
               </span>
             </Dialog.Title>
-            <Dialog.Close className="p-1 rounded hover:bg-white/10 transition-colors shrink-0 ml-2">
+            <Dialog.Close className="p-1 rounded hover:bg-accent transition-colors shrink-0 ml-2">
               <X className="h-4 w-4" />
             </Dialog.Close>
           </div>
@@ -91,7 +91,7 @@ export const DocumentPreviewDialog = memo(function DocumentPreviewDialog({
           </div>
 
           {/* Content panel */}
-          <div className="flex-1 overflow-y-auto min-h-0 rounded-lg bg-white/[0.03] border border-white/5">
+          <div className="flex-1 overflow-y-auto min-h-0 rounded-lg bg-muted border border-border">
             {hasVisual && activeTab === 'preview' ? (
               doc.mimeType.startsWith('image/')
                 // eslint-disable-next-line @next/next/no-img-element -- signed Supabase URL, not a static asset

@@ -49,7 +49,7 @@ export const PersonaSuggestionBanner = memo(function PersonaSuggestionBanner({
             </button>
             <button
               onClick={onDismiss}
-              className="p-1 rounded hover:bg-white/10 text-muted-foreground transition-colors"
+              className="p-1 rounded hover:bg-accent text-muted-foreground transition-colors"
               title="Dismiss"
             >
               <X className="h-3.5 w-3.5" />

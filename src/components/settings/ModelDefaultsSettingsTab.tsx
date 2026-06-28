@@ -99,7 +99,7 @@ export const ModelDefaultsSettingsTab = memo(function ModelDefaultsSettingsTab({
         <select
           value={defaultModel}
           onChange={(e) => setDefaultModel(e.target.value)}
-          className="w-full px-3 py-2 bg-black/20 border border-white/10 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all appearance-none"
+          className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all appearance-none"
         >
           <option value="">Use first available</option>
           {claudeModels.length > 0 && (
@@ -130,7 +130,7 @@ export const ModelDefaultsSettingsTab = memo(function ModelDefaultsSettingsTab({
           onChange={(e) => setDefaultSystemPrompt(e.target.value)}
           rows={4}
           placeholder="e.g., You are a helpful assistant..."
-          className="w-full px-3 py-2 bg-black/20 border border-white/10 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all resize-none"
+          className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all resize-none"
         />
       </div>
 
@@ -147,7 +147,7 @@ export const ModelDefaultsSettingsTab = memo(function ModelDefaultsSettingsTab({
       </div>
 
       {/* Divider */}
-      <div className="h-px bg-white/10" />
+      <div className="h-px bg-border" />
 
       {/* Personas */}
       <div className="space-y-3">
@@ -160,7 +160,7 @@ export const ModelDefaultsSettingsTab = memo(function ModelDefaultsSettingsTab({
           </div>
           <button
             onClick={() => setShowNewPersona(!showNewPersona)}
-            className="flex items-center gap-1 px-2 py-1 text-xs rounded-lg hover:bg-white/10 text-muted-foreground hover:text-foreground transition-colors"
+            className="flex items-center gap-1 px-2 py-1 text-xs rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
           >
             <Plus className="h-3 w-3" />
             Add
@@ -169,7 +169,7 @@ export const ModelDefaultsSettingsTab = memo(function ModelDefaultsSettingsTab({
 
         {/* New persona form */}
         {showNewPersona && (
-          <div className="p-3 border border-white/10 rounded-lg space-y-2">
+          <div className="p-3 border border-border rounded-lg space-y-2">
             <div className="flex gap-2">
               <input
                 type="text"
@@ -177,14 +177,14 @@ export const ModelDefaultsSettingsTab = memo(function ModelDefaultsSettingsTab({
                 onChange={(e) => setNewIcon(e.target.value)}
                 placeholder="Icon"
                 maxLength={2}
-                className="w-12 px-2 py-1.5 bg-black/20 border border-white/10 rounded-lg text-sm text-center focus:outline-none focus:ring-1 focus:ring-primary/50"
+                className="w-12 px-2 py-1.5 bg-background border border-border rounded-lg text-sm text-center focus:outline-none focus:ring-1 focus:ring-primary/50"
               />
               <input
                 type="text"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 placeholder="Persona name"
-                className="flex-1 px-2 py-1.5 bg-black/20 border border-white/10 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
+                className="flex-1 px-2 py-1.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
               />
             </div>
             <textarea
@@ -192,12 +192,12 @@ export const ModelDefaultsSettingsTab = memo(function ModelDefaultsSettingsTab({
               onChange={(e) => setNewPrompt(e.target.value)}
               placeholder="System prompt for this persona..."
               rows={3}
-              className="w-full px-2 py-1.5 bg-black/20 border border-white/10 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary/50 resize-none"
+              className="w-full px-2 py-1.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary/50 resize-none"
             />
             <div className="flex gap-2 justify-end">
               <button
                 onClick={() => setShowNewPersona(false)}
-                className="px-3 py-1.5 text-xs rounded-lg hover:bg-white/10 transition-colors"
+                className="px-3 py-1.5 text-xs rounded-lg hover:bg-accent transition-colors"
               >
                 Cancel
               </button>
@@ -219,13 +219,13 @@ export const ModelDefaultsSettingsTab = memo(function ModelDefaultsSettingsTab({
               key={persona.id}
               className={cn(
                 "flex items-center gap-2 px-3 py-2 rounded-lg text-sm",
-                persona.isDefault ? "opacity-70" : "border border-white/10"
+                persona.isDefault ? "opacity-70" : "border border-border"
               )}
             >
               <span className="text-base w-6 text-center shrink-0">{persona.icon}</span>
               <span className="flex-1 truncate">{persona.name}</span>
               {persona.isDefault ? (
-                <span className="text-[10px] px-1.5 py-0.5 bg-white/10 rounded text-muted-foreground shrink-0">
+                <span className="text-[10px] px-1.5 py-0.5 bg-muted rounded text-muted-foreground shrink-0">
                   built-in
                 </span>
               ) : (

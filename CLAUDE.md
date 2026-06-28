@@ -172,7 +172,7 @@ Brand tokens live in [src/app/globals.css](src/app/globals.css). **Token names a
 
 **Surfaces.** The legacy `.glass-panel` class is retained (16 consumers across dialogs/menus/sidebar) but **redefined** as a light modular card: Pure Surface bg, Muted Line border, soft layered shadow. Dark mode uses an elevated Ink variant. There is **no backdrop-blur, no bg/60 opacity, no dark translucent glass** anywhere in the system.
 
-**Forbidden patterns** (brand guide): blue→purple gradient text/CTAs, `bg-white/X` / `border-white/X` / `via-white/X` opacity utilities (replace with semantic tokens), oversaturated multi-accent gradients. Hover states use `hover:bg-accent`, not `hover:bg-white/10`.
+**Styling guidance** (brand guide — preferences, not hard rules): **prefer the semantic tokens** for surfaces, borders, hover, and text (`bg-card`/`bg-muted`/`bg-accent`, `border-border`, `hover:bg-accent`, `text-muted-foreground`) — they adapt to the warm palette and dark mode, whereas a raw `bg-white/X`·`bg-black/X` wash doesn't. **Opacity utilities are allowed where they're genuinely the right tool** — intentional scrims/overlays (modal & lightbox backdrops use `bg-black/60`–`/80`), gradients, and one-off effects. Avoid blue→purple gradient text/CTAs and oversaturated multi-accent gradients (off-brand for the warm palette).
 
 **Other styling infra**: Animations via Framer Motion, CSS keyframes, and `SmoothStreamingWrapper` (ResizeObserver). Radix UI primitives for accessibility. Fonts via `next/font/google`: **Fraunces** (serif, display headings) + **Geist Sans** (body/UI) + **Geist Mono** (code).
 

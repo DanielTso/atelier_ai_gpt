@@ -33,7 +33,7 @@ export function MessageActions({
         <button
           className={cn(
             "p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity",
-            "hover:bg-white/10 text-muted-foreground hover:text-foreground"
+            "hover:bg-accent text-muted-foreground hover:text-foreground"
           )}
         >
           <MoreHorizontal className="h-4 w-4" />
@@ -44,7 +44,7 @@ export function MessageActions({
         <DropdownMenu.Content
           className={cn(
             "z-50 min-w-[140px] overflow-hidden rounded-lg p-1",
-            "bg-popover border border-white/10 shadow-xl",
+            "bg-popover border border-border shadow-xl",
             "animate-in fade-in-0 zoom-in-95"
           )}
           sideOffset={5}
@@ -53,7 +53,7 @@ export function MessageActions({
           <DropdownMenu.Item
             className={cn(
               "flex items-center gap-2 px-3 py-2 text-sm rounded-md cursor-pointer outline-none",
-              "text-foreground/80 hover:bg-white/10 hover:text-foreground",
+              "text-foreground/80 hover:bg-accent hover:text-foreground",
               "transition-colors"
             )}
             onSelect={handleCopy}
@@ -66,7 +66,7 @@ export function MessageActions({
             <DropdownMenu.Item
               className={cn(
                 "flex items-center gap-2 px-3 py-2 text-sm rounded-md cursor-pointer outline-none",
-                "text-foreground/80 hover:bg-white/10 hover:text-foreground",
+                "text-foreground/80 hover:bg-accent hover:text-foreground",
                 "transition-colors"
               )}
               onSelect={onRegenerate}
@@ -78,7 +78,7 @@ export function MessageActions({
 
           {onDelete && (
             <>
-              <DropdownMenu.Separator className="h-px bg-white/10 my-1" />
+              <DropdownMenu.Separator className="h-px bg-border my-1" />
               <DropdownMenu.Item
                 className={cn(
                   "flex items-center gap-2 px-3 py-2 text-sm rounded-md cursor-pointer outline-none",

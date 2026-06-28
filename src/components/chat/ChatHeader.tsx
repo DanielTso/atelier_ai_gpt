@@ -56,7 +56,7 @@ export const ChatHeader = memo(function ChatHeader({
   }
 
   return (
-    <header className="h-16 border-b border-white/10 flex items-center justify-between px-6 bg-white/5">
+    <header className="h-16 border-b border-border flex items-center justify-between px-6 bg-muted">
       <div className="flex items-center gap-2 flex-1 min-w-0">
         {/* Breadcrumb root: project (clickable) or quick-chat marker */}
         {chatId && (
@@ -86,19 +86,19 @@ export const ChatHeader = memo(function ChatHeader({
               value={editedTitle}
               onChange={(e) => setEditedTitle(e.target.value)}
               onKeyDown={handleKeyDown}
-              className="flex-1 bg-white/10 border border-primary/50 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+              className="flex-1 bg-background border border-primary/50 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
               maxLength={50}
             />
             <button
               onClick={handleSave}
-              className="p-1 hover:bg-white/10 rounded transition-colors"
+              className="p-1 hover:bg-accent rounded transition-colors"
               title="Save"
             >
               <Check className="h-4 w-4 text-green-400" />
             </button>
             <button
               onClick={handleCancel}
-              className="p-1 hover:bg-white/10 rounded transition-colors"
+              className="p-1 hover:bg-accent rounded transition-colors"
               title="Cancel"
             >
               <X className="h-4 w-4 text-red-400" />
@@ -112,7 +112,7 @@ export const ChatHeader = memo(function ChatHeader({
             {chatId && onTitleChange && (
               <button
                 onClick={() => setIsEditing(true)}
-                className="opacity-0 group-hover:opacity-100 p-1 hover:bg-white/10 rounded transition-all"
+                className="opacity-0 group-hover:opacity-100 p-1 hover:bg-accent rounded transition-all"
                 title="Edit chat title"
               >
                 <Edit2 className="h-3 w-3 text-muted-foreground" />
