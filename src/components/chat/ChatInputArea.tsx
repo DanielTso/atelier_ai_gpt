@@ -368,12 +368,12 @@ export const ChatInputArea = memo(function ChatInputArea({
                   alt={img.name}
                   className="w-full h-full object-cover"
                 />
-                <div className="absolute inset-x-0 bottom-0 bg-background/80 px-1 py-0.5">
+                <div className="absolute inset-x-0 bottom-0 bg-black/60 px-1 py-0.5">
                   <span className="text-[10px] text-foreground truncate block">{img.name}</span>
                 </div>
                 <button
                   onClick={() => removeImage(index)}
-                  className="absolute top-0.5 right-0.5 p-0.5 rounded-full bg-background/80 text-foreground hover:text-foreground hover:bg-accent opacity-0 group-hover/thumb:opacity-100 transition-opacity"
+                  className="absolute top-0.5 right-0.5 p-0.5 rounded-full bg-black/60 text-foreground hover:text-foreground hover:bg-accent opacity-0 group-hover/thumb:opacity-100 transition-opacity"
                   title="Remove image"
                 >
                   <X className="h-3 w-3" />
