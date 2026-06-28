@@ -89,7 +89,7 @@ describe('ImagesView', () => {
     render(<ImagesView projects={PROJECTS} />)
     await waitFor(() => expect(screen.getByText('A red sunset over mountains')).toBeTruthy())
 
-    const textarea = screen.getByPlaceholderText('Describe the image you want to generate...')
+    const textarea = screen.getByPlaceholderText('Describe your image')
     fireEvent.change(textarea, { target: { value: 'New generated image' } })
     const generateButton = screen.getByRole('button', { name: /generate/i })
     await act(async () => { fireEvent.click(generateButton) })
@@ -110,7 +110,7 @@ describe('ImagesView', () => {
     render(<ImagesView projects={PROJECTS} />)
     await waitFor(() => expect(screen.getByText('A red sunset over mountains')).toBeTruthy())
 
-    fireEvent.change(screen.getByPlaceholderText('Describe the image you want to generate...'), { target: { value: 'test' } })
+    fireEvent.change(screen.getByPlaceholderText('Describe your image'), { target: { value: 'test' } })
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: /generate/i })) })
 
     await waitFor(() => expect(screen.getByText(/No Gemini API key configured/i)).toBeTruthy())
