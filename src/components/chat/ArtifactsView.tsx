@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { motion } from 'framer-motion'
 import { Boxes, Loader2, Search, ChevronDown, Plus } from 'lucide-react'
 import type { ArtifactSummary } from '@/types'
 import { ARTIFACT_TYPE_LABELS } from '@/types'
@@ -111,12 +112,19 @@ export function ArtifactsView({ onOpenChat, sidebarCollapsedRef, setSidebarColla
         </div>
 
         {visible.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
-            <Boxes className="h-10 w-10 text-muted-foreground/40" />
+          <motion.div
+            className="flex flex-col items-center justify-center gap-3 py-20 text-center"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, ease: 'easeOut' }}
+          >
+            <div className="w-14 h-14 rounded-2xl bg-linear-to-br from-primary/15 to-primary/5 ring-1 ring-primary/15 flex items-center justify-center">
+              <Boxes className="h-6 w-6 text-primary/70" />
+            </div>
             <p className="text-sm text-muted-foreground">
               {artifacts.length === 0 ? 'No artifacts yet. Generated files will appear here.' : 'No artifacts match your search.'}
             </p>
-          </div>
+          </motion.div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {visible.map(a => (
