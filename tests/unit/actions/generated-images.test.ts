@@ -94,6 +94,7 @@ describe('generated images actions (PGlite)', () => {
     const r1 = await createGeneratedImage(BASE_IMAGE)
     const r2 = await createGeneratedImage({ ...BASE_IMAGE, storagePath: 'images/standalone/def.png' })
     const imgs = await getGeneratedImages()
+    expect(imgs[0]!.id).toBe(r2!.id)
     const ids = imgs.map(i => i.id)
     expect(ids).toContain(r1!.id)
     expect(ids).toContain(r2!.id)

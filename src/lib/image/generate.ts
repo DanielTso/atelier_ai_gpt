@@ -40,12 +40,12 @@ export async function generateImageBytes(
     providerOptions: { google: { responseModalities: ['TEXT', 'IMAGE'] } },
   })
 
-  const img = result.files.find(f => f.mediaType?.startsWith('image/'))
+  const img = result.files.find(f => typeof f.mediaType === 'string' && f.mediaType.startsWith('image/'))
   if (!img) {
     throw new Error('No image was returned by the model — try rephrasing the prompt.')
   }
 
-  const mediaType = img.mediaType
+  const mediaType = img.mediaType as string
   const ext = extFromMediaType(mediaType)
   const bytes = Buffer.from(img.uint8Array)
 

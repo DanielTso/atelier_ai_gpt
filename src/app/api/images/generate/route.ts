@@ -62,7 +62,10 @@ export async function POST(req: Request) {
     })
     if (!row) return apiError(null, 'Failed to save image record', 500)
 
-    const url = await createSignedDownloadUrl(storagePath, IMAGE_URL_TTL_SECONDS).catch(() => null)
+    const url = await createSignedDownloadUrl(storagePath, IMAGE_URL_TTL_SECONDS).catch(e => {
+      console.warn('[images/generate] signed url failed:', e instanceof Error ? e.message : e)
+      return null
+    })
 
     return Response.json({
       image: {
