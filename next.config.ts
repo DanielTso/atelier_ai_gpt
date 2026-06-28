@@ -40,7 +40,10 @@ const csp = [
   "font-src 'self' data:",
   "connect-src 'self' https:",
   `frame-src 'self' ${imgFrame}`,
-  "frame-ancestors 'none'",
+  // 'self' (not 'none') so the app can frame its OWN same-origin routes — the PDF
+  // artifact preview embeds /api/artifacts/:id/raw. Cross-origin framing of the app
+  // (clickjacking) is still blocked. Pairs with X-Frame-Options: SAMEORIGIN below.
+  "frame-ancestors 'self'",
   "base-uri 'self'",
   "object-src 'none'",
   "form-action 'self'",
@@ -49,7 +52,7 @@ const csp = [
 const securityHeaders = [
   { key: "Content-Security-Policy", value: csp },
   { key: "X-Content-Type-Options", value: "nosniff" },
-  { key: "X-Frame-Options", value: "DENY" },
+  { key: "X-Frame-Options", value: "SAMEORIGIN" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
   { key: "X-DNS-Prefetch-Control", value: "off" },
