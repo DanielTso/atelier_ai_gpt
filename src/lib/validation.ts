@@ -92,6 +92,12 @@ export const processDocumentRequestSchema = z.object({
   fileSize: z.number().int().positive().optional(),
 })
 
+export const imageGenerateRequestSchema = z.object({
+  prompt: z.string().min(1).max(1500),
+  aspectRatio: z.enum(['1:1', '16:9', '9:16', '4:3', '3:4']).optional(),
+  projectId: z.number().int().positive().optional(),
+})
+
 export const webMapRequestSchema = z.object({
   url: z.string().url(),
   maxDepth: z.number().int().min(1).max(3).optional(),

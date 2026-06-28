@@ -1,14 +1,8 @@
-import { tool, generateText } from 'ai'
+import { tool } from 'ai'
 import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
-import { createGoogleGenerativeAI } from '@ai-sdk/google'
-import { getGeminiApiKey } from '@/lib/settings'
 import { isStorageConfigured, uploadBuffer, createSignedDownloadUrl, ARTIFACT_URL_TTL_SECONDS } from '@/lib/storage'
-
-// Nano Banana 2 — the same Gemini image model exposed in the model picker, here as a
-// tool Claude can call mid-conversation. It returns an image as a `file` in the
-// generateText result (the proven path, identical to selecting the image model directly).
-const IMAGE_MODEL = 'gemini-3.1-flash-image'
+import { generateImageBytes } from '@/lib/image/generate'
 
 /**
  * `generate_image` tool: generate an image from a prompt with Nano Banana, upload it to
@@ -29,25 +23,13 @@ export function createGenerateImageTool(ctx: { chatId: number; projectId: number
     execute: async ({ prompt, aspectRatio }) => {
       try {
         if (!isStorageConfigured()) return { error: 'Image storage is not configured.' }
-        const apiKey = await getGeminiApiKey()
-        if (!apiKey) return { error: 'Image generation is unavailable (no Gemini key configured).' }
 
-        const google = createGoogleGenerativeAI({ apiKey })
-        const fullPrompt = aspectRatio ? `${prompt}\n\n(Aspect ratio: ${aspectRatio})` : prompt
-        const result = await generateText({
-          model: google(IMAGE_MODEL),
-          prompt: fullPrompt,
-          providerOptions: { google: { responseModalities: ['TEXT', 'IMAGE'] } },
-        })
+        const { bytes, mediaType, ext } = await generateImageBytes(prompt, aspectRatio)
 
-        const img = result.files.find(f => f.mediaType?.startsWith('image/'))
-        if (!img) return { error: 'No image was generated — try rephrasing the prompt.' }
-
-        const ext = img.mediaType.includes('jpeg') ? 'jpg' : img.mediaType.includes('webp') ? 'webp' : 'png'
         const path = `attachments/${ctx.chatId}/generated/${randomUUID()}.${ext}`
-        await uploadBuffer(path, Buffer.from(img.uint8Array), img.mediaType)
+        await uploadBuffer(path, bytes, mediaType)
         const url = await createSignedDownloadUrl(path, ARTIFACT_URL_TTL_SECONDS)
-        return { storagePath: path, url, mediaType: img.mediaType, filename: `generated-image.${ext}`, fileSize: img.uint8Array.byteLength }
+        return { storagePath: path, url, mediaType, filename: `generated-image.${ext}`, fileSize: bytes.byteLength }
       } catch (e) {
         console.warn('[generate_image] failed:', e instanceof Error ? e.message : e)
         return { error: 'Image generation failed.' }

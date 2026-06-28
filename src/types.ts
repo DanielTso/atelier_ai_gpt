@@ -56,6 +56,18 @@ export interface ArtifactVersionSummary {
   createdAt: Date | string | null
 }
 
+/** A generated image row as the Images gallery consumes it (row + short-lived signed url). */
+export interface GeneratedImageSummary {
+  id: number
+  projectId: number | null
+  prompt: string
+  aspectRatio: string | null
+  mediaType: string
+  url: string | null
+  fileSize: number
+  createdAt: Date | null
+}
+
 /** A pending auto-memory suggestion as the rail consumes it. */
 export interface MemorySuggestion {
   id: number
