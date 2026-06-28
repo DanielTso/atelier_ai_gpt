@@ -39,9 +39,11 @@ describe('ArtifactPreview', () => {
     expect(screen.getByText('2')).toBeTruthy()
   })
 
-  it('renders a pdf via iframe of the signed url', () => {
-    const { container } = render(<ArtifactPreview artifact={artifact({ type: 'pdf', downloadUrl: 'signed:plan.pdf' })} />)
-    expect(container.querySelector('iframe')?.getAttribute('src')).toBe('signed:plan.pdf')
+  it('renders a pdf via the same-origin proxy iframe', () => {
+    // PDFs embed through the same-origin proxy (/api/artifacts/:id/raw), not the
+    // cross-origin signed URL — browsers block cross-origin PDFs in an iframe.
+    const { container } = render(<ArtifactPreview artifact={artifact({ id: 7, type: 'pdf', downloadUrl: 'signed:plan.pdf' })} />)
+    expect(container.querySelector('iframe')?.getAttribute('src')).toBe('/api/artifacts/7/raw')
   })
 })
 
