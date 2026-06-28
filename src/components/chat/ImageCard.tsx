@@ -2,10 +2,11 @@
 import { memo } from 'react'
 import { Download, Trash2 } from 'lucide-react'
 import type { GeneratedImageSummary } from '@/types'
+import { downloadFile, imageExt } from '@/lib/download'
 
 interface ImageCardProps {
   image: GeneratedImageSummary
-  onOpen: (url: string) => void
+  onOpen: (image: GeneratedImageSummary) => void
   onDelete: (id: number) => void
 }
 
@@ -17,10 +18,15 @@ export const ImageCard = memo(function ImageCard({ image, onOpen, onDelete }: Im
     onDelete(image.id)
   }
 
+  function handleDownload(e: React.MouseEvent) {
+    e.stopPropagation()
+    void downloadFile(url, `atelier-image-${image.id}.${imageExt(image.mediaType)}`)
+  }
+
   return (
     <div
       className="group relative rounded-xl border border-border/30 overflow-hidden cursor-pointer hover:border-border/60 transition-colors bg-card"
-      onClick={() => url && onOpen(url)}
+      onClick={() => url && onOpen(image)}
     >
       <div className="aspect-square bg-muted/40 overflow-hidden">
         {url ? (
@@ -37,15 +43,14 @@ export const ImageCard = memo(function ImageCard({ image, onOpen, onDelete }: Im
       {/* Hover actions */}
       <div className="absolute top-1.5 right-1.5 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
         {url && (
-          <a
-            href={url}
-            download
-            onClick={e => e.stopPropagation()}
+          <button
+            type="button"
+            onClick={handleDownload}
             className="p-1 rounded bg-background/80 text-muted-foreground hover:text-foreground"
             aria-label="Download image"
           >
             <Download className="h-3.5 w-3.5" />
-          </a>
+          </button>
         )}
         <button
           onClick={handleDelete}

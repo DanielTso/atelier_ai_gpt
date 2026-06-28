@@ -4,6 +4,15 @@ import { render, screen, cleanup, waitFor, fireEvent, act } from '@testing-libra
 
 // --- Mocks (must be before any imports that use them) ---
 
+vi.mock('@/lib/download', () => ({
+  downloadFile: vi.fn(async () => {}),
+  imageExt: vi.fn((mediaType: string | null | undefined) => {
+    const sub = (mediaType ?? '').split('/')[1]?.toLowerCase()
+    if (!sub) return 'png'
+    return sub === 'jpeg' ? 'jpg' : sub
+  }),
+}))
+
 vi.mock('@/app/actions', () => ({
   getGeneratedImages: vi.fn(async () => ([
     {
@@ -34,6 +43,7 @@ afterEach(cleanup)
 
 import { ImagesView } from '@/components/chat/ImagesView'
 import { getGeneratedImages } from '@/app/actions'
+import { downloadFile } from '@/lib/download'
 
 const PROJECTS = [
   { id: 3, name: 'Drover_HUB' },
@@ -104,6 +114,28 @@ describe('ImagesView', () => {
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: /generate/i })) })
 
     await waitFor(() => expect(screen.getByText(/No Gemini API key configured/i)).toBeTruthy())
+  })
+
+  it('download button is a <button> (not <a download>) and calls downloadFile', async () => {
+    render(<ImagesView projects={PROJECTS} />)
+    await waitFor(() => expect(screen.getByText('A red sunset over mountains')).toBeTruthy())
+
+    // Download buttons are rendered by ImageCard (aria-label="Download image")
+    const downloadButtons = screen.getAllByRole('button', { name: /download image/i })
+    expect(downloadButtons.length).toBeGreaterThan(0)
+
+    // Ensure none are anchor elements
+    downloadButtons.forEach(btn => {
+      expect(btn.tagName).toBe('BUTTON')
+    })
+
+    // Click the first download button and verify downloadFile was called
+    const mockedDownload = vi.mocked(downloadFile)
+    mockedDownload.mockClear()
+    await act(async () => { fireEvent.click(downloadButtons[0]!) })
+    expect(mockedDownload).toHaveBeenCalledTimes(1)
+    expect(mockedDownload.mock.calls[0]![0]).toBe('https://example.com/img1.webp')
+    expect(mockedDownload.mock.calls[0]![1]).toMatch(/^atelier-image-1\./)
   })
 
   it('re-calls getGeneratedImages with the right arg when filter changes', async () => {

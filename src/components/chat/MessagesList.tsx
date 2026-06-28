@@ -17,6 +17,7 @@ import { parseFileMetadata, stripFilePrefix, getFileTypeLabel, type FileMetadata
 import { formatFileSize } from "@/lib/fileUtils"
 import type { ArtifactSummary } from "@/types"
 import { ArtifactCard } from "./ArtifactCard"
+import { Lightbox } from "@/components/ui/Lightbox"
 
 export type ChatMessage = UIMessage & { createdAt?: Date }
 
@@ -408,28 +409,7 @@ export const MessagesList = memo(function MessagesList({
         </AnimatePresence>
       </div>
 
-      {/* Image Lightbox */}
-      <AnimatePresence>
-        {lightboxUrl && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm cursor-zoom-out"
-            onClick={closeLightbox}
-            role="dialog"
-            aria-label="Image preview"
-            tabIndex={0}
-          >
-            <img
-              src={lightboxUrl}
-              alt="Full size preview"
-              className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <Lightbox url={lightboxUrl} onClose={closeLightbox} />
     </Tooltip.Provider>
   )
 })
