@@ -45,6 +45,18 @@ export async function getProjects() {
   return await db.select().from(projects)
 }
 
+// Document count per project (for the Projects view cards). Returns a map keyed by
+// projectId; projects with no documents are simply absent (callers default to 0).
+export async function getProjectFileCounts(): Promise<Record<number, number>> {
+  const rows = await db
+    .select({ projectId: documents.projectId, n: count() })
+    .from(documents)
+    .groupBy(documents.projectId)
+  const map: Record<number, number> = {}
+  for (const r of rows) map[r.projectId] = Number(r.n)
+  return map
+}
+
 // Defensive bounds for free-text persisted to NOT NULL columns. Single-user app, but
 // keep oversized/garbage values out of the DB regardless of the caller (the UI also
 // validates upstream).

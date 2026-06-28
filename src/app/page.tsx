@@ -8,7 +8,7 @@ import { useEffect, useState, useRef, useCallback, useMemo } from "react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { extractText } from "@/lib/messageParts"
-import { getProjects, createProject, getAllProjectChats, createChat, getChatMessages, saveMessage, deleteProject, updateProjectName, updateProjectContext, updateChatTitle, getStandaloneChats, createStandaloneChat, deleteChat, moveChatToProject, archiveChat, restoreChat, getArchivedChats, getChatWithContext, updateChatSystemPrompt, getProjectDefaults, recordPersonaUsage, getProjectChatPreviews, saveMessageAttachments, getChatAttachments, getSetting, setSetting } from "./actions"
+import { getProjects, getProjectFileCounts, createProject, getAllProjectChats, createChat, getChatMessages, saveMessage, deleteProject, updateProjectName, updateProjectContext, updateChatTitle, getStandaloneChats, createStandaloneChat, deleteChat, moveChatToProject, archiveChat, restoreChat, getArchivedChats, getChatWithContext, updateChatSystemPrompt, getProjectDefaults, recordPersonaUsage, getProjectChatPreviews, saveMessageAttachments, getChatAttachments, getSetting, setSetting } from "./actions"
 import { Sidebar } from "@/components/chat/sidebar"
 import type { SidebarActions, AppView } from "@/components/chat/sidebar"
 import { HomeGreeting } from "@/components/chat/HomeGreeting"
@@ -74,6 +74,7 @@ export default function Home() {
 
   // Data State
   const [projects, setProjects] = useState<Project[]>([])
+  const [projectFileCounts, setProjectFileCounts] = useState<Record<number, number>>({})
   // Not persisted: the app should start on Home each launch, not reopen the last project/chat.
   const [activeProjectId, setActiveProjectId] = useState<number | null>(null)
   const [chats, setChats] = useState<Chat[]>([])
@@ -258,8 +259,9 @@ export default function Home() {
 
   const loadProjects = useCallback(async () => {
     try {
-      const p = await getProjects()
+      const [p, counts] = await Promise.all([getProjects(), getProjectFileCounts().catch(() => ({}))])
       setProjects(p)
+      setProjectFileCounts(counts)
     } catch (e) {
       console.error(e)
       setError("Failed to load projects.")
@@ -937,6 +939,7 @@ export default function Home() {
         {activeView === 'projects' ? (
           <ProjectsView
             projects={projects}
+            fileCounts={projectFileCounts}
             onSelectProject={(id) => { setActiveView('home'); handleSelectProject(id); }}
             onDeleteProject={handleRequestDeleteProject}
             onRenameProject={handleRequestRenameProject}

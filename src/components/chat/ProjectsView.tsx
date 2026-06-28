@@ -1,19 +1,21 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Search, Plus, MoreVertical, Pencil, Trash2, ChevronDown, FolderPlus } from 'lucide-react'
+import { Search, Plus, MoreVertical, Pencil, Trash2, ChevronDown, FolderPlus, FileText } from 'lucide-react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 
 interface ProjectCard {
   id: number
   name: string
   memory?: string | null
+  instructions?: string | null
   createdAt?: Date | null
   updatedAt?: Date | null
 }
 
 interface ProjectsViewProps {
   projects: ProjectCard[]
+  fileCounts?: Record<number, number>
   onSelectProject: (id: number) => void
   onDeleteProject: (id: number) => void
   onRenameProject: (id: number) => void
@@ -36,6 +38,7 @@ function formatDate(date: Date | null | undefined): string | null {
 
 export function ProjectsView({
   projects,
+  fileCounts,
   onSelectProject,
   onDeleteProject,
   onRenameProject,
@@ -50,7 +53,8 @@ export function ProjectsView({
       ? projects.filter(
           p =>
             p.name.toLowerCase().includes(q) ||
-            (p.memory ?? '').toLowerCase().includes(q)
+            (p.memory ?? '').toLowerCase().includes(q) ||
+            (p.instructions ?? '').toLowerCase().includes(q)
         )
       : projects
     const sorted = [...filtered]
@@ -137,9 +141,10 @@ export function ProjectsView({
       ) : visible.length === 0 ? (
         <p className="text-sm text-muted-foreground">No projects match “{query}”.</p>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {visible.map(p => {
             const updated = formatDate(p.updatedAt ?? p.createdAt)
+            const fileCount = fileCounts?.[p.id] ?? 0
             return (
               <div
                 key={p.id}
@@ -147,14 +152,29 @@ export function ProjectsView({
               >
                 <button
                   onClick={() => onSelectProject(p.id)}
-                  className="flex flex-col gap-2 w-full text-left p-5 min-h-[150px]"
+                  className="flex flex-col gap-3 w-full text-left p-5 min-h-52"
                 >
                   <span className="font-semibold text-foreground truncate pr-8">{p.name}</span>
-                  {p.memory ? (
-                    <p className="text-sm text-muted-foreground line-clamp-3 flex-1">{p.memory}</p>
-                  ) : (
-                    <p className="text-sm text-muted-foreground/40 italic flex-1">No description</p>
-                  )}
+                  <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <FileText className="h-3.5 w-3.5 shrink-0" />
+                    {fileCount} {fileCount === 1 ? 'file' : 'files'}
+                  </span>
+                  <div className="space-y-0.5">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">Memory</p>
+                    {p.memory ? (
+                      <p className="text-sm text-muted-foreground line-clamp-2">{p.memory}</p>
+                    ) : (
+                      <p className="text-sm text-muted-foreground/40 italic">None</p>
+                    )}
+                  </div>
+                  <div className="space-y-0.5">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">Instructions</p>
+                    {p.instructions ? (
+                      <p className="text-sm text-muted-foreground line-clamp-2">{p.instructions}</p>
+                    ) : (
+                      <p className="text-sm text-muted-foreground/40 italic">None</p>
+                    )}
+                  </div>
                   {updated && (
                     <span className="text-xs text-muted-foreground/70 mt-auto">Updated {updated}</span>
                   )}
