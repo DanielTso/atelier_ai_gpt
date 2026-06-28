@@ -119,11 +119,11 @@ export const ProjectLandingPage = memo(function ProjectLandingPage({
       <div className="flex-1 flex overflow-hidden">
         {/* LEFT: Chats */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Composer — start a new chat in this project */}
-          <div className="mx-4 mt-4">{composer}</div>
+          {/* Composer — start a new chat in this project (centered, max-width) */}
+          <div className="w-full max-w-3xl mx-auto px-4 mt-6">{composer}</div>
 
-          {/* Chat List */}
-          <div className="flex-1 overflow-y-auto mt-2 px-4 pb-4">
+          {/* Chat List — centered column matching the composer width */}
+          <div className="flex-1 overflow-y-auto mt-3 w-full max-w-3xl mx-auto px-4 pb-4">
             {loading ? (
               <div className="space-y-3 mt-3">
                 {[1, 2, 3].map((i) => (

@@ -139,7 +139,7 @@ export function ProjectContextRail({ project, onSaveContext, onAddFiles }: Proje
 
   if (collapsed) {
     return (
-      <aside className="w-10 shrink-0 flex flex-col items-center gap-2 border-l border-border/40 py-3">
+      <aside className="w-10 shrink-0 my-3 mr-3 flex flex-col items-center gap-2 rounded-xl border border-border/60 bg-card/40 py-3">
         <button
           onClick={() => setCollapsed(false)}
           title="Expand panel" aria-label="Expand project panel"
@@ -153,7 +153,7 @@ export function ProjectContextRail({ project, onSaveContext, onAddFiles }: Proje
   }
 
   return (
-    <aside style={{ width: railWidth }} className="relative shrink-0 border-l border-border/40">
+    <aside style={{ width: railWidth }} className="relative shrink-0 my-3 mr-3 overflow-hidden rounded-xl border border-border/60 bg-card/40">
       {/* Drag-to-resize handle on the left edge */}
       <div
         onPointerDown={startResize}
