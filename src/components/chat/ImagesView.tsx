@@ -60,6 +60,7 @@ export function ImagesView({ projects }: ImagesViewProps) {
       const { image } = await res.json() as { image: GeneratedImageSummary }
       setImages(prev => [image, ...prev])
       setPrompt('')
+      setNoKey(false)
       toast.success('Image generated.')
     } catch {
       toast.error('Image generation failed.')

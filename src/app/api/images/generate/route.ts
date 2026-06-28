@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { NextResponse } from 'next/server'
 import { imageGenerateRequestSchema } from '@/lib/validation'
 import { apiError } from '@/lib/errors'
 import { generateImageBytes } from '@/lib/image/generate'
@@ -19,27 +20,18 @@ export async function POST(req: Request) {
 
     const parsed = imageGenerateRequestSchema.safeParse(body)
     if (!parsed.success) {
-      return new Response(
-        JSON.stringify({ error: 'Invalid request', details: parsed.error.flatten() }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } },
-      )
+      return NextResponse.json({ error: 'Invalid request', details: parsed.error.flatten() }, { status: 400 })
     }
 
     const { prompt, aspectRatio, projectId } = parsed.data
 
     const apiKey = await getGeminiApiKey()
     if (!apiKey) {
-      return new Response(
-        JSON.stringify({ error: 'Set a Gemini API key in Settings.' }),
-        { status: 503, headers: { 'Content-Type': 'application/json' } },
-      )
+      return NextResponse.json({ error: 'Set a Gemini API key in Settings.' }, { status: 503 })
     }
 
     if (!isStorageConfigured()) {
-      return new Response(
-        JSON.stringify({ error: 'Image storage is not configured.' }),
-        { status: 503, headers: { 'Content-Type': 'application/json' } },
-      )
+      return NextResponse.json({ error: 'Image storage is not configured.' }, { status: 503 })
     }
 
     let bytes: Buffer, mediaType: string, ext: string
