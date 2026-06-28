@@ -1164,7 +1164,7 @@ export default function Home() {
             onAddFiles={() => handleOpenProjectDocuments(activeProjectId)}
             onSaveContext={handleSaveProjectContext}
             onDeleteProject={handleRequestDeleteProject}
-            onBack={() => { setActiveView('projects'); setActiveChatId(null) }}
+            onBack={() => { setActiveView('projects'); setActiveChatId(null); setActiveProjectId(null) }}
             onRename={() => handleRequestRenameProject(activeProjectId)}
           />
         ) : (
