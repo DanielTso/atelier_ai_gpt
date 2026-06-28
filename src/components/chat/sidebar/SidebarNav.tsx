@@ -1,6 +1,6 @@
 'use client'
 
-import { Plus, FolderOpen, Boxes, SlidersHorizontal } from 'lucide-react'
+import { Plus, FolderOpen, Boxes, SlidersHorizontal, ImageIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSidebarActions } from './SidebarActionsContext'
 
@@ -10,6 +10,7 @@ export function SidebarNav() {
     { label: 'New chat', icon: Plus, onClick: actions.createStandaloneChat, active: false },
     { label: 'Projects', icon: FolderOpen, onClick: () => actions.selectView('projects'), active: actions.activeView === 'projects' },
     { label: 'Artifacts', icon: Boxes, onClick: () => actions.selectView('artifacts'), active: actions.activeView === 'artifacts' },
+    { label: 'Images', icon: ImageIcon, onClick: () => actions.selectView('images'), active: actions.activeView === 'images' },
     { label: 'Customize', icon: SlidersHorizontal, onClick: actions.openSettings, active: false },
   ]
   return (

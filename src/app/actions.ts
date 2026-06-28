@@ -1,7 +1,7 @@
 'use server'
 
 import { db } from '@/db'
-import { projects, chats, messages, settings, messageEmbeddings, personaUsage, chatTopics, documents, documentChunks, documentRevisions, messageAttachments, artifacts, artifactVersions, memorySuggestions } from '@/db/schema'
+import { projects, chats, messages, settings, messageEmbeddings, personaUsage, chatTopics, documents, documentChunks, documentRevisions, messageAttachments, artifacts, artifactVersions, memorySuggestions, generatedImages } from '@/db/schema'
 import { eq, desc, isNull, isNotNull, and, lte, asc, count, inArray, sql } from 'drizzle-orm'
 import { isStorageConfigured, uploadBuffer, createSignedDownloadUrl, removeObjects, signedArtifactUrl } from '@/lib/storage'
 import { blankArtifactTemplate } from '@/lib/artifacts/templates'
@@ -890,4 +890,75 @@ export async function acceptSuggestion(id: number, overrideText?: string) {
 
 export async function dismissSuggestion(id: number) {
   return await db.update(memorySuggestions).set({ status: 'dismissed' }).where(eq(memorySuggestions.id, id))
+}
+
+// ── Generated Images Actions (Images gallery) ──
+
+const IMAGE_URL_TTL_SECONDS = 60 * 60 // 1h — generous enough for a browsing session
+
+export async function createGeneratedImage(data: {
+  projectId: number | null
+  prompt: string
+  aspectRatio?: string | null
+  mediaType: string
+  storagePath: string
+  fileSize: number
+}) {
+  const [row] = await db.insert(generatedImages).values({
+    projectId: data.projectId ?? null,
+    prompt: data.prompt,
+    aspectRatio: data.aspectRatio ?? null,
+    mediaType: data.mediaType,
+    storagePath: data.storagePath,
+    fileSize: data.fileSize,
+  }).returning()
+  return row ?? null
+}
+
+/**
+ * List generated images, optionally filtered by project, newest-first.
+ * - `projectId` = number → filter to that project
+ * - `projectId` = null    → standalone images only (projectId IS NULL)
+ * - `projectId` = undefined → all images (no filter)
+ */
+export async function getGeneratedImages(
+  projectId?: number | null,
+): Promise<import('@/types').GeneratedImageSummary[]> {
+  const where =
+    projectId === undefined
+      ? undefined
+      : projectId === null
+        ? isNull(generatedImages.projectId)
+        : eq(generatedImages.projectId, projectId)
+
+  const rows = await db.select().from(generatedImages)
+    .where(where)
+    .orderBy(desc(generatedImages.createdAt))
+
+  return await Promise.all(
+    rows.map(async (r) => ({
+      id: r.id,
+      projectId: r.projectId,
+      prompt: r.prompt,
+      aspectRatio: r.aspectRatio,
+      mediaType: r.mediaType,
+      fileSize: r.fileSize,
+      createdAt: r.createdAt,
+      url: isStorageConfigured()
+        ? await createSignedDownloadUrl(r.storagePath, IMAGE_URL_TTL_SECONDS).catch(() => null)
+        : null,
+    })),
+  )
+}
+
+export async function deleteGeneratedImage(id: number) {
+  const [row] = await db.select({ storagePath: generatedImages.storagePath })
+    .from(generatedImages)
+    .where(eq(generatedImages.id, id))
+  if (!row) return
+  // Best-effort storage cleanup before row deletion so Storage and DB stay consistent.
+  await removeObjects([row.storagePath]).catch(e =>
+    console.warn('[deleteGeneratedImage] storage cleanup failed for:', row.storagePath, e instanceof Error ? e.message : e)
+  )
+  await db.delete(generatedImages).where(eq(generatedImages.id, id))
 }

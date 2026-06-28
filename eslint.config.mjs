@@ -21,6 +21,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Vendored agent skills (installed via `npx skills add`) and SDD scratch —
+    // third-party/local files, not part of the app; don't lint them.
+    ".agents/**",
+    ".superpowers/**",
   ]),
 ]);
 

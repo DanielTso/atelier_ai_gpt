@@ -10,7 +10,7 @@ export interface Chat {
   archived?: boolean | null
 }
 
-export type AppView = 'home' | 'projects' | 'artifacts'
+export type AppView = 'home' | 'projects' | 'artifacts' | 'images'
 
 export interface SidebarActions {
   // Project actions

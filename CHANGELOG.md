@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.36.0] - 2026-06-28 — Images: a Nano Banana 2 image studio
+
+A dedicated **Images** surface (Gemini-style) — generate images from a prompt and browse them in a gallery — reusing the existing Nano Banana 2 (`gemini-3.1-flash-image`) model. Previously image generation only happened inline inside a chat.
+
+### Added
+
+- **Images sidebar view** — a prompt box (prompt, aspect ratio, optional target project) that generates via Nano Banana 2 with a direct path (no chat turn), plus a gallery grid; click to expand (lightbox), download, delete. Degrades with a friendly hint when no Gemini key is set.
+- **Per-project images** — images can belong to a project; the gallery filters by All / Standalone / a specific project, and you pick a target project when generating.
+- `POST /api/images/generate`, the `generatedImages` table (migration **`0012`**), `getGeneratedImages`/`deleteGeneratedImage` actions, and a shared `src/lib/image/generate.ts` (the chat `generate_image` tool now shares this one Nano Banana call).
+
+### Notes
+
+- **Migration `0012` must be applied to Supabase** before the feature works in prod (the `generated_images` table). No other migration.
+- Chat-generated images are **not** mirrored into the gallery in v1 (a shared storage object would make a gallery delete break the chat's inline image) — deferred as a future enhancement.
+- Gate: typecheck 0, lint 0 errors (26 baseline warnings), build clean, **481 unit tests pass** (+27).
+
 ## [4.35.0] - 2026-06-28 — UI polish: boxier project cards + tighter Recents
 
 ### Added
