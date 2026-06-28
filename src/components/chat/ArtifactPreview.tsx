@@ -58,9 +58,12 @@ export function ArtifactPreview({ artifact }: { artifact: ArtifactSummary }) {
   }
 
   if (artifact.type === 'pdf' && artifact.downloadUrl) {
+    // Embed via our SAME-ORIGIN proxy, not the cross-origin Supabase signed URL —
+    // browsers increasingly block cross-origin PDFs in an <iframe>. (The Download
+    // button still uses the signed downloadUrl.)
     return (
       <iframe
-        src={artifact.downloadUrl}
+        src={`/api/artifacts/${artifact.id}/raw`}
         title={artifact.title}
         className="h-full min-h-[60vh] w-full rounded-lg border border-border"
       />
