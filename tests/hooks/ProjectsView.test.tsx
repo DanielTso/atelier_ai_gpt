@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest'
-import { render, screen, fireEvent, cleanup } from '@testing-library/react'
+import { describe, it, expect, vi, afterEach, beforeAll, beforeEach } from 'vitest'
+import { render, screen, fireEvent, cleanup, within } from '@testing-library/react'
 import { ProjectsView } from '@/components/chat/ProjectsView'
 
 // Radix DropdownMenu needs these pointer APIs which jsdom does not implement.
@@ -11,6 +11,8 @@ beforeAll(() => {
   Element.prototype.scrollIntoView = vi.fn()
 })
 
+// Pin state persists to localStorage — clear it so tests don't leak pins into each other.
+beforeEach(() => window.localStorage.clear())
 afterEach(cleanup)
 
 const PROJECTS = [
@@ -81,5 +83,41 @@ describe('ProjectsView', () => {
     const buttons = screen.getAllByRole('button', { name: /new project/i })
     fireEvent.click(buttons[buttons.length - 1]!)
     expect(onNewProject).toHaveBeenCalled()
+  })
+
+  // Read the rendered order of project names from the kebab triggers (one per card,
+  // labelled with the project name) — robust to the card markup.
+  function renderedOrder(): string[] {
+    return screen
+      .getAllByRole('button', { name: /^Project options for / })
+      .map(b => b.getAttribute('aria-label')!.replace('Project options for ', ''))
+  }
+
+  it('floats a pinned project to the top of the grid regardless of sort', () => {
+    // Default sort is "recent": Drover (updated 2026-05-20) precedes CapRock (2026-04-30).
+    renderView()
+    expect(renderedOrder()).toEqual(['Drover_HUB', 'CapRock_HUB'])
+
+    // Pin the lower one — it should jump to the top.
+    openMenu('CapRock_HUB')
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Pin' }))
+    expect(renderedOrder()).toEqual(['CapRock_HUB', 'Drover_HUB'])
+  })
+
+  it('toggles pin/unpin from the kebab menu', () => {
+    renderView()
+    // Pin CapRock.
+    openMenu('CapRock_HUB')
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Pin' }))
+    expect(renderedOrder()).toEqual(['CapRock_HUB', 'Drover_HUB'])
+
+    // The pinned card shows a pin indicator near its title.
+    const pinnedCard = screen.getByRole('button', { name: 'Project options for CapRock_HUB' }).closest('.group')!
+    expect(within(pinnedCard as HTMLElement).getByText('CapRock_HUB')).toBeTruthy()
+
+    // The same menu item now reads "Unpin"; clicking it restores the default order.
+    openMenu('CapRock_HUB')
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Unpin' }))
+    expect(renderedOrder()).toEqual(['Drover_HUB', 'CapRock_HUB'])
   })
 })
