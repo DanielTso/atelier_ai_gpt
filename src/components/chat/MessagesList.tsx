@@ -1,6 +1,6 @@
 "use client"
 
-import { memo, useState, useCallback, useEffect } from "react"
+import { memo, useState, useCallback } from "react"
 import { Folder, MessageSquare, ExternalLink, Globe, Paperclip, Sparkles, ChevronRight } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
@@ -17,6 +17,7 @@ import { parseFileMetadata, stripFilePrefix, getFileTypeLabel, type FileMetadata
 import { formatFileSize } from "@/lib/fileUtils"
 import type { ArtifactSummary } from "@/types"
 import { ArtifactCard } from "./ArtifactCard"
+import { Lightbox } from "@/components/ui/Lightbox"
 
 export type ChatMessage = UIMessage & { createdAt?: Date }
 
@@ -268,15 +269,6 @@ export const MessagesList = memo(function MessagesList({
   const onImageClick = useCallback((url: string) => setLightboxUrl(url), [])
   const closeLightbox = useCallback(() => setLightboxUrl(null), [])
 
-  useEffect(() => {
-    if (!lightboxUrl) return
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeLightbox()
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [lightboxUrl, closeLightbox])
-
   if (!activeChatId) {
     return (
       <div className="h-full flex flex-col items-center justify-center text-muted-foreground px-4 animate-in fade-in duration-500">
@@ -408,28 +400,7 @@ export const MessagesList = memo(function MessagesList({
         </AnimatePresence>
       </div>
 
-      {/* Image Lightbox */}
-      <AnimatePresence>
-        {lightboxUrl && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm cursor-zoom-out"
-            onClick={closeLightbox}
-            role="dialog"
-            aria-label="Image preview"
-            tabIndex={0}
-          >
-            <img
-              src={lightboxUrl}
-              alt="Full size preview"
-              className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <Lightbox url={lightboxUrl} onClose={closeLightbox} />
     </Tooltip.Provider>
   )
 })

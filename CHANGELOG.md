@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.38.1] - 2026-06-28 — Images: lightbox pop-out + working download
+
+### Fixed
+
+- **Clicking an image in the Images gallery now opens a full-screen lightbox.** The lightbox is rendered through a React portal to `document.body` (new shared `src/components/ui/Lightbox.tsx`), so an ancestor stacking/overflow context inside `<main>` can no longer hide it. The chat image lightbox now uses the same shared component.
+- **The download button now downloads the file and stays on the page** (it previously opened a new tab). The HTML `download` attribute is ignored for cross-origin URLs (signed Supabase Storage URLs), so the new `downloadFile` helper (`src/lib/download.ts`) fetches the bytes and saves a same-origin blob, falling back to a new tab only if the fetch is CORS-blocked. A download button is also available inside the lightbox.
+
+### Notes
+
+- No DB migration. Gate: typecheck 0, lint 0 errors, build clean, **498 unit tests pass** (+10). Verified on a Vercel preview.
+
 ## [4.38.0] - 2026-06-28 — Faster gallery loads + a Home button
 
 The Artifacts, Images, and document views loaded slowly because each made **one Supabase Storage signed-URL request per item**. They now batch — one request signs all paths — and there's an intuitive way back to the landing screen.

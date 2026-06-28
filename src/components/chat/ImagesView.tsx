@@ -6,6 +6,8 @@ import { cn } from '@/lib/utils'
 import type { GeneratedImageSummary } from '@/types'
 import { getGeneratedImages, deleteGeneratedImage } from '@/app/actions'
 import { ImageCard } from '@/components/chat/ImageCard'
+import { Lightbox } from '@/components/ui/Lightbox'
+import { downloadFile, imageExt } from '@/lib/download'
 
 interface ImagesViewProps {
   projects: { id: number; name: string }[]
@@ -19,7 +21,7 @@ export function ImagesView({ projects }: ImagesViewProps) {
   const [aspectRatio, setAspectRatio] = useState('1:1')
   const [genProjectId, setGenProjectId] = useState<number | null>(null)
   const [filter, setFilter] = useState<'all' | 'standalone' | number>('all')
-  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
+  const [lightboxImage, setLightboxImage] = useState<GeneratedImageSummary | null>(null)
   const [noKey, setNoKey] = useState(false)
 
   useEffect(() => {
@@ -30,13 +32,6 @@ export function ImagesView({ projects }: ImagesViewProps) {
       .catch(() => setImages([]))
       .finally(() => setLoading(false))
   }, [filter])
-
-  useEffect(() => {
-    if (!lightboxUrl) return
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setLightboxUrl(null) }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [lightboxUrl])
 
   async function handleGenerate() {
     if (!prompt.trim() || generating) return
@@ -176,30 +171,18 @@ export function ImagesView({ projects }: ImagesViewProps) {
             <ImageCard
               key={img.id}
               image={img}
-              onOpen={setLightboxUrl}
+              onOpen={setLightboxImage}
               onDelete={handleDelete}
             />
           ))}
         </div>
       )}
 
-      {/* Lightbox */}
-      {lightboxUrl && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm cursor-zoom-out"
-          onClick={() => setLightboxUrl(null)}
-          role="dialog"
-          aria-label="Image preview"
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element -- signed Supabase URL */}
-          <img
-            src={lightboxUrl}
-            alt="Full size preview"
-            className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg shadow-2xl"
-            onClick={e => e.stopPropagation()}
-          />
-        </div>
-      )}
+      <Lightbox
+        url={lightboxImage?.url ?? null}
+        onClose={() => setLightboxImage(null)}
+        onDownload={lightboxImage?.url ? () => downloadFile(lightboxImage.url!, `atelier-image-${lightboxImage.id}.${imageExt(lightboxImage.mediaType)}`) : undefined}
+      />
     </div>
   )
 }

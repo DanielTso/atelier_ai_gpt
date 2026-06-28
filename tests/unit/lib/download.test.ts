@@ -1,0 +1,104 @@
+// @vitest-environment jsdom
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { downloadFile, imageExt } from '@/lib/download'
+
+describe('imageExt', () => {
+  it('returns jpg for image/jpeg', () => {
+    expect(imageExt('image/jpeg')).toBe('jpg')
+  })
+
+  it('returns png for image/png', () => {
+    expect(imageExt('image/png')).toBe('png')
+  })
+
+  it('returns webp for image/webp', () => {
+    expect(imageExt('image/webp')).toBe('webp')
+  })
+
+  it('returns png for null', () => {
+    expect(imageExt(null)).toBe('png')
+  })
+
+  it('returns png for undefined', () => {
+    expect(imageExt(undefined)).toBe('png')
+  })
+
+  it('returns png for empty string', () => {
+    expect(imageExt('')).toBe('png')
+  })
+})
+
+describe('downloadFile', () => {
+  let originalCreateObjectURL: typeof URL.createObjectURL
+  let originalRevokeObjectURL: typeof URL.revokeObjectURL
+  let originalOpen: typeof window.open
+
+  beforeEach(() => {
+    originalCreateObjectURL = URL.createObjectURL
+    originalRevokeObjectURL = URL.revokeObjectURL
+    originalOpen = window.open
+
+    URL.createObjectURL = vi.fn(() => 'blob:mock-url')
+    URL.revokeObjectURL = vi.fn()
+    window.open = vi.fn()
+  })
+
+  afterEach(() => {
+    URL.createObjectURL = originalCreateObjectURL
+    URL.revokeObjectURL = originalRevokeObjectURL
+    window.open = originalOpen
+    vi.restoreAllMocks()
+  })
+
+  it('fetches blob and clicks anchor with correct filename on success', async () => {
+    const mockBlob = new Blob(['fake-image-bytes'], { type: 'image/webp' })
+    global.fetch = vi.fn(async () => ({
+      ok: true,
+      blob: async () => mockBlob,
+    } as Response))
+
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined)
+    const createElementSpy = vi.spyOn(document, 'createElement')
+
+    await downloadFile('https://example.com/img.webp', 'atelier-image-1.webp')
+
+    expect(global.fetch).toHaveBeenCalledWith('https://example.com/img.webp')
+    expect(URL.createObjectURL).toHaveBeenCalledWith(mockBlob)
+    expect(clickSpy).toHaveBeenCalledTimes(1)
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:mock-url')
+
+    // Capture the anchor element that was created
+    const createElementCalls = createElementSpy.mock.calls.filter(call => call[0] === 'a')
+    expect(createElementCalls.length).toBeGreaterThan(0)
+    const capturedAnchor = createElementSpy.mock.results.find(
+      (result, idx) => createElementSpy.mock.calls[idx]?.[0] === 'a'
+    )?.value as HTMLAnchorElement
+
+    // Verify the anchor had the correct download filename and href
+    expect(capturedAnchor.download).toBe('atelier-image-1.webp')
+    expect(capturedAnchor.href).toBe('blob:mock-url')
+
+    clickSpy.mockRestore()
+    createElementSpy.mockRestore()
+  })
+
+  it('falls back to window.open when fetch returns non-ok', async () => {
+    global.fetch = vi.fn(async () => ({
+      ok: false,
+      status: 403,
+      blob: async () => new Blob(),
+    } as Response))
+
+    await downloadFile('https://example.com/img.webp', 'fallback.webp')
+
+    expect(window.open).toHaveBeenCalledWith('https://example.com/img.webp', '_blank', 'noopener,noreferrer')
+  })
+
+  it('falls back to window.open when fetch throws', async () => {
+    global.fetch = vi.fn(async () => { throw new Error('network error') })
+
+    await downloadFile('https://example.com/img.webp', 'fallback.webp')
+
+    expect(window.open).toHaveBeenCalledWith('https://example.com/img.webp', '_blank', 'noopener,noreferrer')
+  })
+})
