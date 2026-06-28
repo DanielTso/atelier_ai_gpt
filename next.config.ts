@@ -40,7 +40,10 @@ const csp = [
   "font-src 'self' data:",
   "connect-src 'self' https:",
   `frame-src 'self' ${imgFrame}`,
-  "frame-ancestors 'none'",
+  // 'self' (not 'none') so the app can frame its OWN same-origin routes — the PDF
+  // artifact preview embeds /api/artifacts/:id/raw. Cross-origin framing of the app
+  // (clickjacking) is still blocked. Pairs with X-Frame-Options: SAMEORIGIN below.
+  "frame-ancestors 'self'",
   "base-uri 'self'",
   "object-src 'none'",
   "form-action 'self'",
@@ -49,7 +52,7 @@ const csp = [
 const securityHeaders = [
   { key: "Content-Security-Policy", value: csp },
   { key: "X-Content-Type-Options", value: "nosniff" },
-  { key: "X-Frame-Options", value: "DENY" },
+  { key: "X-Frame-Options", value: "SAMEORIGIN" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
   { key: "X-DNS-Prefetch-Control", value: "off" },
@@ -69,24 +72,7 @@ const nextConfig: NextConfig = {
     },
   },
   async headers() {
-    return [
-      // The artifact file proxy (/api/artifacts/:id/raw) serves a PDF that the in-app
-      // preview embeds in a same-origin <iframe>. It therefore must NOT carry the global
-      // X-Frame-Options: DENY (which blocks even same-origin framing) — it gets SAMEORIGIN
-      // + frame-ancestors 'self' instead. It serves bytes only (never app HTML).
-      {
-        source: "/api/artifacts/:id/raw",
-        headers: [
-          { key: "X-Content-Type-Options", value: "nosniff" },
-          { key: "X-Frame-Options", value: "SAMEORIGIN" },
-          { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
-          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-        ],
-      },
-      // Everything else gets the strict security headers (excludes the proxy above so
-      // its SAMEORIGIN isn't overridden by the global DENY).
-      { source: "/((?!api/artifacts/[^/]+/raw).*)", headers: securityHeaders },
-    ];
+    return [{ source: "/:path*", headers: securityHeaders }];
   },
 };
 
