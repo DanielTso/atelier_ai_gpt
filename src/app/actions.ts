@@ -3,7 +3,7 @@
 import { db } from '@/db'
 import { projects, chats, messages, settings, messageEmbeddings, personaUsage, chatTopics, documents, documentChunks, documentRevisions, messageAttachments, artifacts, artifactVersions, memorySuggestions, generatedImages } from '@/db/schema'
 import { eq, desc, isNull, isNotNull, and, lte, asc, count, inArray, sql } from 'drizzle-orm'
-import { isStorageConfigured, uploadBuffer, createSignedDownloadUrl, removeObjects, signedArtifactUrl } from '@/lib/storage'
+import { isStorageConfigured, uploadBuffer, createSignedDownloadUrls, removeObjects, signedArtifactUrl, signedArtifactUrls } from '@/lib/storage'
 import { blankArtifactTemplate } from '@/lib/artifacts/templates'
 import { renderArtifact } from '@/lib/artifacts/render'
 import { artifactStoragePath } from '@/lib/artifacts/path'
@@ -656,12 +656,13 @@ export async function saveGeneratedImage(
 
 export async function getChatAttachments(chatId: number) {
   const rows = await db.select().from(messageAttachments).where(eq(messageAttachments.chatId, chatId))
-  return await Promise.all(rows.map(async (r) => {
-    let url = r.dataUrl ?? ''
-    if (r.storagePath) {
-      url = await createSignedDownloadUrl(r.storagePath, ATTACHMENT_URL_TTL_SECONDS).catch(() => '')
-    }
-    return { messageId: r.messageId, mediaType: r.mediaType, filename: r.filename, url }
+  const storagePaths = rows.map(r => r.storagePath).filter((p): p is string => Boolean(p))
+  const urlMap = await createSignedDownloadUrls(storagePaths, ATTACHMENT_URL_TTL_SECONDS)
+  return rows.map(r => ({
+    messageId: r.messageId,
+    mediaType: r.mediaType,
+    filename: r.filename,
+    url: r.storagePath ? (urlMap.get(r.storagePath) ?? '') : (r.dataUrl ?? ''),
   }))
 }
 
@@ -802,13 +803,14 @@ export async function getAllArtifacts(limit = 60) {
     .orderBy(desc(artifacts.createdAt))
     .limit(limit)
 
-  return await Promise.all(rows.map(async (r) => ({
+  const urlMap = await signedArtifactUrls(rows.map(r => r.storagePath))
+  return rows.map(r => ({
     id: r.id, chatId: r.chatId, type: r.type, title: r.title, status: r.status,
     createdAt: r.createdAt, format: r.format, content: r.content, version: r.version,
     chatTitle: r.chatTitle, projectName: r.projectName,
     editedAt: r.editedAt ?? r.createdAt,
-    downloadUrl: await signedArtifactUrl(r.storagePath),
-  })))
+    downloadUrl: r.storagePath ? (urlMap.get(r.storagePath) ?? null) : null,
+  }))
 }
 
 // New-artifact authoring: create a standalone host chat (chat_id is NOT NULL) + a blank
@@ -895,6 +897,7 @@ export async function dismissSuggestion(id: number) {
 // ── Generated Images Actions (Images gallery) ──
 
 const IMAGE_URL_TTL_SECONDS = 60 * 60 // 1h — generous enough for a browsing session
+const IMAGE_LIST_LIMIT = 60
 
 export async function createGeneratedImage(data: {
   projectId: number | null
@@ -934,21 +937,21 @@ export async function getGeneratedImages(
   const rows = await db.select().from(generatedImages)
     .where(where)
     .orderBy(desc(generatedImages.createdAt))
+    .limit(IMAGE_LIST_LIMIT)
 
-  return await Promise.all(
-    rows.map(async (r) => ({
-      id: r.id,
-      projectId: r.projectId,
-      prompt: r.prompt,
-      aspectRatio: r.aspectRatio,
-      mediaType: r.mediaType,
-      fileSize: r.fileSize,
-      createdAt: r.createdAt,
-      url: isStorageConfigured()
-        ? await createSignedDownloadUrl(r.storagePath, IMAGE_URL_TTL_SECONDS).catch(() => null)
-        : null,
-    })),
-  )
+  if (!isStorageConfigured()) {
+    return rows.map(r => ({
+      id: r.id, projectId: r.projectId, prompt: r.prompt, aspectRatio: r.aspectRatio,
+      mediaType: r.mediaType, fileSize: r.fileSize, createdAt: r.createdAt, url: null,
+    }))
+  }
+
+  const urlMap = await createSignedDownloadUrls(rows.map(r => r.storagePath), IMAGE_URL_TTL_SECONDS)
+  return rows.map(r => ({
+    id: r.id, projectId: r.projectId, prompt: r.prompt, aspectRatio: r.aspectRatio,
+    mediaType: r.mediaType, fileSize: r.fileSize, createdAt: r.createdAt,
+    url: urlMap.get(r.storagePath) ?? null,
+  }))
 }
 
 export async function deleteGeneratedImage(id: number) {

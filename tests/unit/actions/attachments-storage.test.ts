@@ -10,12 +10,14 @@ vi.mock('@/db', () => ({
 const mockIsStorageConfigured = vi.fn(() => true)
 const mockUploadBuffer = vi.fn(async () => {})
 const mockCreateSignedDownloadUrl = vi.fn(async (p: string) => `signed:${p}`)
+const mockCreateSignedDownloadUrls = vi.fn(async (paths: string[]) => new Map(paths.map((p: string) => [p, `signed:${p}`])))
 const mockRemoveObjects = vi.fn(async () => {})
 
 vi.mock('@/lib/storage', () => ({
   get isStorageConfigured() { return mockIsStorageConfigured },
   get uploadBuffer() { return mockUploadBuffer },
   get createSignedDownloadUrl() { return mockCreateSignedDownloadUrl },
+  get createSignedDownloadUrls() { return mockCreateSignedDownloadUrls },
   get removeObjects() { return mockRemoveObjects },
 }))
 
@@ -40,6 +42,8 @@ describe('attachment storage lifecycle', () => {
     mockUploadBuffer.mockResolvedValue(undefined)
     mockCreateSignedDownloadUrl.mockReset()
     mockCreateSignedDownloadUrl.mockImplementation(async (p: string) => `signed:${p}`)
+    mockCreateSignedDownloadUrls.mockReset()
+    mockCreateSignedDownloadUrls.mockImplementation(async (paths: string[]) => new Map(paths.map((p: string) => [p, `signed:${p}`])))
     mockRemoveObjects.mockReset()
     mockRemoveObjects.mockResolvedValue(undefined)
 

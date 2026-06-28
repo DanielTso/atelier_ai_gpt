@@ -51,7 +51,14 @@ export function CollapsedSidebar({ sortedProjects }: CollapsedSidebarProps) {
       <Tooltip.Provider delayDuration={200}>
         <Tooltip.Root>
           <Tooltip.Trigger asChild>
-            <img src="/logo.svg" alt="Atelier Studio" className="h-5 w-5" />
+            <button
+              type="button"
+              onClick={actions.createStandaloneChat}
+              className="p-2 rounded-lg hover:bg-accent transition-colors"
+              aria-label="Home"
+            >
+              <img src="/logo.svg" alt="Atelier Studio" className="h-5 w-5" />
+            </button>
           </Tooltip.Trigger>
           <Tooltip.Portal>
             <Tooltip.Content
@@ -59,7 +66,7 @@ export function CollapsedSidebar({ sortedProjects }: CollapsedSidebarProps) {
               sideOffset={8}
               className="px-2 py-1 text-xs rounded bg-popover border border-border shadow-lg z-50"
             >
-              Atelier Studio
+              Home
               <Tooltip.Arrow className="fill-popover" />
             </Tooltip.Content>
           </Tooltip.Portal>

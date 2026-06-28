@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getProjectDocuments, getDocumentById, deleteDocument, getDocumentRevisions } from '@/app/actions'
-import { createSignedDownloadUrl, removeObjects, DOCUMENT_URL_TTL_SECONDS } from '@/lib/storage'
+import { createSignedDownloadUrls, removeObjects, DOCUMENT_URL_TTL_SECONDS } from '@/lib/storage'
 import { apiError } from '@/lib/errors'
 
 export async function GET(request: NextRequest) {
@@ -11,12 +11,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid projectId' }, { status: 400 })
     }
     const docs = await getProjectDocuments(projectId)
-    const withUrls = await Promise.all(docs.map(async (d) => {
-      const [url, thumbnailUrl] = await Promise.all([
-        d.storagePath ? createSignedDownloadUrl(d.storagePath, DOCUMENT_URL_TTL_SECONDS).catch((e) => { console.warn('[documents] signed url failed:', e instanceof Error ? e.message : e); return null }) : Promise.resolve(null),
-        d.thumbnailPath ? createSignedDownloadUrl(d.thumbnailPath, DOCUMENT_URL_TTL_SECONDS).catch(() => null) : Promise.resolve(null),
-      ])
-      return { ...d, url, thumbnailUrl }
+    const originalPaths = docs.map(d => d.storagePath).filter((p): p is string => Boolean(p))
+    const thumbnailPaths = docs.map(d => d.thumbnailPath).filter((p): p is string => Boolean(p))
+    const [originalUrls, thumbnailUrls] = await Promise.all([
+      createSignedDownloadUrls(originalPaths, DOCUMENT_URL_TTL_SECONDS),
+      createSignedDownloadUrls(thumbnailPaths, DOCUMENT_URL_TTL_SECONDS),
+    ])
+    const withUrls = docs.map(d => ({
+      ...d,
+      url: d.storagePath ? (originalUrls.get(d.storagePath) ?? null) : null,
+      thumbnailUrl: d.thumbnailPath ? (thumbnailUrls.get(d.thumbnailPath) ?? null) : null,
     }))
     return NextResponse.json({ documents: withUrls })
   } catch (error) {

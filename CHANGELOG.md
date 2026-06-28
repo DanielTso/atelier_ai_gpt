@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.38.0] - 2026-06-28 — Faster gallery loads + a Home button
+
+The Artifacts, Images, and document views loaded slowly because each made **one Supabase Storage signed-URL request per item**. They now batch — one request signs all paths — and there's an intuitive way back to the landing screen.
+
+### Changed
+
+- **Batched signed URLs** — `getAllArtifacts`, `getGeneratedImages`, chat attachments, and the documents grid now sign all paths in a single Supabase `createSignedUrls` request instead of N round-trips. HTML artifacts keep their secure download-disposition via a separate batch. New `createSignedDownloadUrls` / `signedArtifactUrls` helpers in `src/lib/storage.ts`.
+- **Bounded the Images query** to the 60 most recent (was unbounded — every image was signed on each open).
+- **Parallelized chat open** — messages, attachments, and artifacts now fetch concurrently (was a waterfall).
+
+### Added
+
+- **Clickable brand logo → Home** in the sidebar (expanded and collapsed), returning to the landing screen. Previously only "+ New chat" got you there.
+
+### Notes
+
+- No DB migration, no behavior change to return shapes. Gate: typecheck 0, lint 0 errors, build clean, **488 unit tests pass** (+7). Verified on a Vercel preview before release.
+- Known follow-up: the per-chat artifact list (`GET /api/artifacts`) isn't batched yet (usually few items); candidate for a future cross-switch caching pass.
+
 ## [4.37.0] - 2026-06-28 — Brand-token migration: theme-correct overlays
 
 A code-hygiene + theming pass: ~110 hardcoded `white/X`·`black/X` opacity utilities across 24 components were replaced with the warm **semantic tokens**, so surfaces, borders, hover states, and muted text render correctly in both light and dark mode (a raw black/white wash didn't adapt to the warm palette). No behavior change; verified on a Vercel preview before release.
