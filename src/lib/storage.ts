@@ -83,6 +83,43 @@ export async function signedArtifactUrl(path: string | null | undefined): Promis
   return createSignedDownloadUrl(path, ARTIFACT_URL_TTL_SECONDS).catch(() => null)
 }
 
+/**
+ * Batch-sign many storage paths in ONE Supabase request (vs N round-trips).
+ * Returns a Map<path, signedUrl>; paths that fail/return no URL are simply absent
+ * (callers default to null). Empty input short-circuits with no network call.
+ */
+export async function createSignedDownloadUrls(
+  paths: string[],
+  ttlSeconds = 300,
+  opts?: { download?: boolean },
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>()
+  const valid = [...new Set(paths.filter(Boolean))]
+  if (valid.length === 0) return out
+  const { data, error } = await bucket().createSignedUrls(valid, ttlSeconds, opts?.download ? { download: true } : undefined)
+  if (error || !data) return out
+  for (const item of data) {
+    if (item?.path && item.signedUrl && !item.error) out.set(item.path, item.signedUrl)
+  }
+  return out
+}
+
+/**
+ * Batch variant of signedArtifactUrl: signs many artifact paths with the artifact TTL,
+ * splitting HTML (forced download disposition — security: never render model HTML inline
+ * on the supabase origin) from the rest into two batch calls. Returns Map<path, url>.
+ */
+export async function signedArtifactUrls(paths: (string | null | undefined)[]): Promise<Map<string, string>> {
+  const valid = paths.filter((p): p is string => Boolean(p))
+  const html = valid.filter(p => p.toLowerCase().endsWith('.html'))
+  const other = valid.filter(p => !p.toLowerCase().endsWith('.html'))
+  const [htmlMap, otherMap] = await Promise.all([
+    createSignedDownloadUrls(html, ARTIFACT_URL_TTL_SECONDS, { download: true }),
+    createSignedDownloadUrls(other, ARTIFACT_URL_TTL_SECONDS),
+  ])
+  return new Map([...htmlMap, ...otherMap])
+}
+
 export async function removeObjects(paths: string[]): Promise<void> {
   const valid = paths.filter(Boolean)
   if (valid.length === 0) return

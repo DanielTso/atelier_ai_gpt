@@ -19,6 +19,8 @@ vi.mock('@/lib/storage', () => ({
   get createSignedDownloadUrl() { return mockCreateSignedDownloadUrl },
   get signedArtifactUrl() { return mockSignedArtifactUrl },
   get removeObjects() { return mockRemoveObjects },
+  createSignedDownloadUrls: vi.fn(async (paths: string[]) => new Map(paths.map((p: string) => [p, `signed:${p}`]))),
+  signedArtifactUrls: vi.fn(async (paths: (string | null | undefined)[]) => new Map(paths.filter(Boolean).map((p) => [p as string, `signed:${p}`]))),
   ARTIFACT_URL_TTL_SECONDS: 86400,
 }))
 

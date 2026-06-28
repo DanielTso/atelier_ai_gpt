@@ -4,7 +4,9 @@ import { createTestDb, testDb } from '../../helpers/test-db'
 vi.mock('@/db', () => ({ get db() { return testDb } }))
 vi.mock('@/lib/storage', () => ({
   createSignedDownloadUrl: vi.fn(async (p: string) => `signed:${p}`),
+  createSignedDownloadUrls: vi.fn(async (paths: string[]) => new Map(paths.map((p: string) => [p, `signed:${p}`]))),
   signedArtifactUrl: vi.fn(async (p: string | null) => (p ? `signed:${p}` : null)),
+  signedArtifactUrls: vi.fn(async (paths: (string | null | undefined)[]) => new Map(paths.filter(Boolean).map((p) => [p as string, `signed:${p}`]))),
   isStorageConfigured: () => true,
   ARTIFACT_URL_TTL_SECONDS: 86400,
 }))

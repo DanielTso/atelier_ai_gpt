@@ -5,19 +5,22 @@ import { createTestDb, testDb } from '../../helpers/test-db'
 vi.mock('@/db', () => ({ get db() { return testDb } }))
 
 // Storage mocks — use vi.hoisted so they're available when vi.mock factory runs
-const { mockRemoveObjects, mockCreateSignedDownloadUrl, mockIsStorageConfigured } = vi.hoisted(() => ({
+const { mockRemoveObjects, mockCreateSignedDownloadUrl, mockCreateSignedDownloadUrls, mockIsStorageConfigured } = vi.hoisted(() => ({
   mockRemoveObjects: vi.fn(),
   mockCreateSignedDownloadUrl: vi.fn(),
+  mockCreateSignedDownloadUrls: vi.fn(),
   mockIsStorageConfigured: vi.fn(),
 }))
 
 vi.mock('@/lib/storage', () => ({
   removeObjects: mockRemoveObjects,
   createSignedDownloadUrl: mockCreateSignedDownloadUrl,
+  createSignedDownloadUrls: mockCreateSignedDownloadUrls,
   isStorageConfigured: mockIsStorageConfigured,
   // actions.ts also imports these from storage; provide stubs so module loads
   uploadBuffer: vi.fn(),
   signedArtifactUrl: vi.fn().mockResolvedValue(null),
+  signedArtifactUrls: vi.fn(async (paths: (string | null | undefined)[]) => new Map(paths.filter(Boolean).map((p) => [p as string, `signed:${p}`]))),
   ARTIFACT_URL_TTL_SECONDS: 86400,
   DOCUMENT_URL_TTL_SECONDS: 3600,
 }))
@@ -38,10 +41,14 @@ describe('generated images actions (PGlite)', () => {
     await createTestDb()
     mockRemoveObjects.mockReset()
     mockCreateSignedDownloadUrl.mockReset()
+    mockCreateSignedDownloadUrls.mockReset()
     mockIsStorageConfigured.mockReset()
     // Default: storage configured, signs urls
     mockIsStorageConfigured.mockReturnValue(true)
     mockCreateSignedDownloadUrl.mockResolvedValue('https://storage.example.com/signed')
+    mockCreateSignedDownloadUrls.mockImplementation(async (paths: string[]) =>
+      new Map(paths.map((p: string) => [p, 'https://storage.example.com/signed']))
+    )
     mockRemoveObjects.mockResolvedValue(undefined)
   })
 
@@ -103,7 +110,7 @@ describe('generated images actions (PGlite)', () => {
   it('adds a signed url when storage is configured', async () => {
     await createGeneratedImage(BASE_IMAGE)
     const imgs = await getGeneratedImages()
-    expect(mockCreateSignedDownloadUrl).toHaveBeenCalled()
+    expect(mockCreateSignedDownloadUrls).toHaveBeenCalled()
     expect(imgs[0]!.url).toBe('https://storage.example.com/signed')
   })
 

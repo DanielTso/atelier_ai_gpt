@@ -301,24 +301,19 @@ export default function Home() {
 
   const loadMessages = useCallback(async (cid: number) => {
     try {
-      const [msgs, attachments] = await Promise.all([
+      const [msgs, attachments, artifactsData] = await Promise.all([
         getChatMessages(cid),
         getChatAttachments(cid),
+        fetch(`/api/artifacts?chatId=${cid}`)
+          .then(r => r.ok ? r.json() : null)
+          .catch(() => null),
       ])
       // Bail if the active chat changed while we were awaiting — a stale load must not
       // clobber the chat the user switched to (or a freshly-created chat's live state).
       if (activeChatIdRef.current !== cid) return
 
-      // Best-effort: fetch artifacts for this chat
-      try {
-        const artifactsRes = await fetch(`/api/artifacts?chatId=${cid}`)
-        if (artifactsRes.ok) {
-          const artifactsData = await artifactsRes.json()
-          if (activeChatIdRef.current === cid) setArtifacts(artifactsData.artifacts ?? [])
-        }
-      } catch {
-        // Artifact fetch failure must not break message loading
-      }
+      // Apply artifacts result (best-effort — null means the fetch failed or returned non-ok)
+      if (artifactsData?.artifacts) setArtifacts(artifactsData.artifacts)
 
       // Group attachments by messageId
       const attachmentsByMessageId = new Map<number, typeof attachments>()

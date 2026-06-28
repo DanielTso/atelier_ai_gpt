@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 const mockGetProjectDocuments = vi.fn()
 const mockGetDocumentById = vi.fn()
 const mockDeleteDocument = vi.fn()
-const mockCreateSignedDownloadUrl = vi.fn()
+const mockCreateSignedDownloadUrls = vi.fn()
 const mockRemoveObjects = vi.fn()
 
 async function importRoute() {
@@ -15,7 +15,7 @@ async function importRoute() {
     getDocumentRevisions: vi.fn(async () => []),
   }))
   vi.doMock('@/lib/storage', () => ({
-    createSignedDownloadUrl: mockCreateSignedDownloadUrl,
+    createSignedDownloadUrls: mockCreateSignedDownloadUrls,
     removeObjects: mockRemoveObjects,
     DOCUMENT_URL_TTL_SECONDS: 3600,
   }))
@@ -24,8 +24,10 @@ async function importRoute() {
 
 describe('GET /api/documents', () => {
   beforeEach(() => {
-    [mockGetProjectDocuments, mockGetDocumentById, mockDeleteDocument, mockCreateSignedDownloadUrl, mockRemoveObjects].forEach(f => f.mockReset())
-    mockCreateSignedDownloadUrl.mockImplementation((p: string) => Promise.resolve(`signed:${p}`))
+    [mockGetProjectDocuments, mockGetDocumentById, mockDeleteDocument, mockCreateSignedDownloadUrls, mockRemoveObjects].forEach(f => f.mockReset())
+    mockCreateSignedDownloadUrls.mockImplementation(async (paths: string[]) =>
+      new Map(paths.map((p: string) => [`${p}`, `signed:${p}`]))
+    )
   })
 
   it('returns docs with signed original + thumbnail URLs', async () => {
@@ -41,14 +43,14 @@ describe('GET /api/documents', () => {
     expect(data.documents[0].thumbnailUrl).toBe('signed:documents/1/1/thumb.webp')
     expect(data.documents[1].url).toBeNull()
     // originals/thumbnails get the generous document TTL (not the 300s default that expires before a click)
-    expect(mockCreateSignedDownloadUrl).toHaveBeenCalledWith('documents/1/1/a.pdf', 3600)
-    expect(mockCreateSignedDownloadUrl).toHaveBeenCalledWith('documents/1/1/thumb.webp', 3600)
+    expect(mockCreateSignedDownloadUrls).toHaveBeenCalledWith(['documents/1/1/a.pdf'], 3600)
+    expect(mockCreateSignedDownloadUrls).toHaveBeenCalledWith(['documents/1/1/thumb.webp'], 3600)
   })
 })
 
 describe('DELETE /api/documents', () => {
   beforeEach(() => {
-    [mockGetProjectDocuments, mockGetDocumentById, mockDeleteDocument, mockCreateSignedDownloadUrl, mockRemoveObjects].forEach(f => f.mockReset())
+    [mockGetProjectDocuments, mockGetDocumentById, mockDeleteDocument, mockCreateSignedDownloadUrls, mockRemoveObjects].forEach(f => f.mockReset())
   })
 
   it('removes storage objects then deletes the row', async () => {
