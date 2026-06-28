@@ -40,7 +40,7 @@ export const ChatItem = memo(function ChatItem({
       onClick={isProjectChat ? undefined : handleClick}
       className={cn(
         "flex items-center gap-2 cursor-pointer text-sm transition-colors group",
-        isProjectChat ? "p-1.5 rounded" : "p-2 rounded-lg",
+        isProjectChat ? "p-1.5 rounded" : "px-2 py-1.5 rounded-lg",
         isArchived && "opacity-60 hover:opacity-100",
         isActive
           ? cn("text-primary font-medium", isProjectChat ? "bg-primary/5" : "bg-primary/10")

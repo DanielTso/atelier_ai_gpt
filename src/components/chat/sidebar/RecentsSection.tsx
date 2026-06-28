@@ -15,7 +15,7 @@ export function RecentsSection({ chats, activeChatId, projects }: RecentsSection
       <p className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
         Recents
       </p>
-      <div className="mt-1 space-y-1">
+      <div className="mt-1 space-y-0.5">
         {chats.length === 0 ? (
           <p className="text-xs text-muted-foreground/60 px-2 py-1">No recent chats yet</p>
         ) : (
