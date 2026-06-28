@@ -1,6 +1,6 @@
 'use client'
-import { useEffect, useState } from 'react'
-import { ImageIcon, Loader2 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { ImageIcon, Loader2, Camera, PenTool, Sparkles, Network } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import type { GeneratedImageSummary } from '@/types'
@@ -13,6 +13,15 @@ interface ImagesViewProps {
   projects: { id: number; name: string }[]
 }
 
+// Starter "templates" shown as tiles under the prompt (Gemini-style). Clicking one
+// seeds the prompt box so you can fill in the rest — no stock images required.
+const TEMPLATES: { label: string; seed: string; icon: typeof Camera; tint: string; color: string }[] = [
+  { label: 'Photoreal', seed: 'A photorealistic photo of ', icon: Camera, tint: 'bg-primary/10', color: 'text-primary' },
+  { label: 'Logo', seed: 'A minimal flat vector logo of ', icon: PenTool, tint: 'bg-success/10', color: 'text-success' },
+  { label: 'Concept art', seed: 'Cinematic concept art of ', icon: Sparkles, tint: 'bg-warning/10', color: 'text-warning' },
+  { label: 'Diagram', seed: 'A clean labeled diagram of ', icon: Network, tint: 'bg-primary/10', color: 'text-primary' },
+]
+
 export function ImagesView({ projects }: ImagesViewProps) {
   const [images, setImages] = useState<GeneratedImageSummary[]>([])
   const [loading, setLoading] = useState(true)
@@ -23,6 +32,7 @@ export function ImagesView({ projects }: ImagesViewProps) {
   const [filter, setFilter] = useState<'all' | 'standalone' | number>('all')
   const [lightboxImage, setLightboxImage] = useState<GeneratedImageSummary | null>(null)
   const [noKey, setNoKey] = useState(false)
+  const promptRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     setLoading(true)
@@ -32,6 +42,11 @@ export function ImagesView({ projects }: ImagesViewProps) {
       .catch(() => setImages([]))
       .finally(() => setLoading(false))
   }, [filter])
+
+  function seedPrompt(seed: string) {
+    setPrompt(seed)
+    promptRef.current?.focus()
+  }
 
   async function handleGenerate() {
     if (!prompt.trim() || generating) return
@@ -73,16 +88,24 @@ export function ImagesView({ projects }: ImagesViewProps) {
       .catch(() => toast.error('Delete failed.'))
   }
 
+  const heroOnly = images.length === 0 && !loading
+
   return (
     <div className="flex-1 overflow-y-auto">
-      {/* Hero — centered "Create images" prompt (Gemini-style) */}
-      <div className="max-w-3xl mx-auto w-full px-6 pt-12 flex flex-col items-center text-center">
+      {/* Hero — centered "Create images" prompt (Gemini-style). When there are no
+          images yet, the hero floats to the vertical center of the view. */}
+      <div
+        className={cn(
+          'max-w-3xl mx-auto w-full px-6 flex flex-col items-center text-center',
+          heroOnly ? 'min-h-full justify-center pt-6 pb-12' : 'pt-12',
+        )}
+      >
         <div className="flex items-center justify-center w-12 h-12 rounded-2xl bg-primary/10">
           <ImageIcon className="h-6 w-6 text-primary" />
         </div>
         <h2 className="mt-3 text-3xl font-serif font-medium text-foreground">Create images</h2>
         <p className="mt-1.5 text-sm text-muted-foreground">
-          Describe an idea and generate it with Nano Banana 2.
+          Try a template or describe an idea. Created with Nano Banana 2.
         </p>
 
         {/* no-key hint */}
@@ -96,6 +119,7 @@ export function ImagesView({ projects }: ImagesViewProps) {
         {/* Prompt bar */}
         <div className="mt-6 w-full rounded-2xl border border-border bg-card p-3 text-left shadow-sm">
           <textarea
+            ref={promptRef}
             value={prompt}
             onChange={e => setPrompt(e.target.value)}
             placeholder="Describe your image"
@@ -134,56 +158,67 @@ export function ImagesView({ projects }: ImagesViewProps) {
             </button>
           </div>
         </div>
-        <p className="mt-2 text-xs text-muted-foreground/70">⌘/Ctrl + Enter to generate</p>
-      </div>
 
-      {/* Gallery */}
-      <div className="max-w-5xl mx-auto w-full px-6 pb-12 pt-8">
-        {/* Filter row */}
-        <div className="mb-5 flex items-center justify-center gap-2 flex-wrap">
-          {(['all', 'standalone'] as const).map(val => (
+        {/* Template tiles */}
+        <div className="mt-5 flex gap-3 overflow-x-auto pb-1 max-w-full justify-center">
+          {TEMPLATES.map(t => (
             <button
-              key={val}
-              onClick={() => setFilter(val)}
-              className={cn(
-                'rounded-full px-3 py-1 text-sm transition-colors',
-                filter === val ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-accent hover:text-foreground',
-              )}
-            >{val === 'all' ? 'All' : 'Standalone'}</button>
-          ))}
-          {projects.map(p => (
-            <button
-              key={p.id}
-              onClick={() => setFilter(p.id)}
-              className={cn(
-                'rounded-full px-3 py-1 text-sm transition-colors',
-                filter === p.id ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-accent hover:text-foreground',
-              )}
-            >{p.name}</button>
+              key={t.label}
+              onClick={() => seedPrompt(t.seed)}
+              className="group shrink-0 w-32 h-24 rounded-2xl border border-border bg-card p-3 flex flex-col justify-between text-left transition-colors hover:bg-accent"
+            >
+              <div className={cn('flex items-center justify-center w-8 h-8 rounded-lg', t.tint)}>
+                <t.icon className={cn('h-4 w-4', t.color)} />
+              </div>
+              <span className="text-xs font-medium text-foreground">{t.label}</span>
+            </button>
           ))}
         </div>
+      </div>
 
-        {/* Gallery grid */}
-        {loading ? (
-          <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
-        ) : images.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
-            <ImageIcon className="h-10 w-10 text-muted-foreground/40" />
-            <p className="text-sm text-muted-foreground">No images yet. Describe one above to get started.</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-            {images.map(img => (
-              <ImageCard
-                key={img.id}
-                image={img}
-                onOpen={setLightboxImage}
-                onDelete={handleDelete}
-              />
+      {/* Gallery — your generated images (hidden in the empty hero state) */}
+      {(loading || images.length > 0) && (
+        <div className="max-w-5xl mx-auto w-full px-6 pb-12 pt-8">
+          {/* Filter row */}
+          <div className="mb-5 flex items-center justify-center gap-2 flex-wrap">
+            {(['all', 'standalone'] as const).map(val => (
+              <button
+                key={val}
+                onClick={() => setFilter(val)}
+                className={cn(
+                  'rounded-full px-3 py-1 text-sm transition-colors',
+                  filter === val ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-accent hover:text-foreground',
+                )}
+              >{val === 'all' ? 'All' : 'Standalone'}</button>
+            ))}
+            {projects.map(p => (
+              <button
+                key={p.id}
+                onClick={() => setFilter(p.id)}
+                className={cn(
+                  'rounded-full px-3 py-1 text-sm transition-colors',
+                  filter === p.id ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-accent hover:text-foreground',
+                )}
+              >{p.name}</button>
             ))}
           </div>
-        )}
-      </div>
+
+          {loading ? (
+            <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+          ) : (
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+              {images.map(img => (
+                <ImageCard
+                  key={img.id}
+                  image={img}
+                  onOpen={setLightboxImage}
+                  onDelete={handleDelete}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <Lightbox
         url={lightboxImage?.url ?? null}
