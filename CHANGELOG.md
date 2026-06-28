@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.39.0] - 2026-06-28 — Project & Images layout refresh + readability fixes
+
+A layout pass on the project landing page and the Images view (inspired by the Claude.ai project and Gemini "Create images" layouts), plus two readability/behavior fixes. Verified on a Vercel preview before release.
+
+### Added
+
+- **Project landing composer** — a "How can I help you today?" box on top of the project page (model/effort picker inline); type + send creates a new chat *in that project* (with the project's persona/model defaults) and opens it.
+- **Lighter project header** — "← All projects" back-link, a ⋮ menu (Rename / Delete), and a 📌 pin toggle.
+- **Project pinning** — pin projects to the top of the Projects grid (client-side, per-browser; no DB).
+- **Images "Create images" hero** — centered icon + serif heading + subtitle + a prominent rounded prompt bar, with a row of starter **template tiles** (click to seed the prompt). The hero centers vertically when you have no images yet.
+
+### Changed
+
+- **Contained layouts** — the project chat column and the Images generate box + gallery are now centered in a max-width column instead of stretching edge-to-edge; the project context rail is a detached rounded card with margin (was flush to the screen edge).
+
+### Fixed
+
+- **Code blocks are readable in light mode** — the typography plugin colored code text light (for its dark default code bg) while our blocks use a light `bg-muted`, leaving code light-on-light. Code now renders foreground-on-muted in both themes.
+- **Full web pages now become artifacts** — asking Claude to build a landing page / website / HTML page now reliably produces an HTML artifact (live preview + download) instead of an inline code dump.
+
+### Notes
+
+- No DB migration. Gate: typecheck 0, lint 0 errors, build clean, **500 unit tests pass**.
+
 ## [4.38.1] - 2026-06-28 — Images: lightbox pop-out + working download
 
 ### Fixed
