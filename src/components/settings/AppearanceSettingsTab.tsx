@@ -70,7 +70,7 @@ export const AppearanceSettingsTab = memo(function AppearanceSettingsTab({
                   "flex flex-col items-center gap-2 p-3 rounded-lg border transition-all",
                   theme === t.id
                     ? "border-primary bg-primary/10 text-primary"
-                    : "border-white/10 hover:border-white/20 hover:bg-white/5 text-muted-foreground"
+                    : "border-border hover:border-border hover:bg-accent text-muted-foreground"
                 )}
               >
                 <Icon className="h-5 w-5" />
@@ -84,7 +84,7 @@ export const AppearanceSettingsTab = memo(function AppearanceSettingsTab({
       {/* Font Size */}
       <div className="space-y-2">
         <label className="text-sm font-medium">Font Size</label>
-        <div className="flex rounded-lg border border-white/10 overflow-hidden">
+        <div className="flex rounded-lg border border-border overflow-hidden">
           {fontSizes.map((s) => (
             <button
               key={s.id}
@@ -93,7 +93,7 @@ export const AppearanceSettingsTab = memo(function AppearanceSettingsTab({
                 "flex-1 px-3 py-2 text-sm transition-colors",
                 fontSize === s.id
                   ? "bg-primary/20 text-primary font-medium"
-                  : "hover:bg-white/5 text-muted-foreground"
+                  : "hover:bg-accent text-muted-foreground"
               )}
             >
               {s.label}
@@ -105,7 +105,7 @@ export const AppearanceSettingsTab = memo(function AppearanceSettingsTab({
       {/* Message Density */}
       <div className="space-y-2">
         <label className="text-sm font-medium">Message Density</label>
-        <div className="flex rounded-lg border border-white/10 overflow-hidden">
+        <div className="flex rounded-lg border border-border overflow-hidden">
           {densities.map((d) => (
             <button
               key={d.id}
@@ -114,7 +114,7 @@ export const AppearanceSettingsTab = memo(function AppearanceSettingsTab({
                 "flex-1 px-3 py-2 text-sm transition-colors",
                 messageDensity === d.id
                   ? "bg-primary/20 text-primary font-medium"
-                  : "hover:bg-white/5 text-muted-foreground"
+                  : "hover:bg-accent text-muted-foreground"
               )}
             >
               {d.label}

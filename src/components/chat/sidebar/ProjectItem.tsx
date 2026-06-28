@@ -59,7 +59,7 @@ export function ProjectItem({ project, projectChats, isActive, activeChatId, pro
       <div
         className={cn(
           "flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors group",
-          isActive ? "bg-white/10 text-foreground" : "text-muted-foreground hover:bg-white/5"
+          isActive ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent"
         )}
       >
         {isEditing ? (
@@ -72,13 +72,13 @@ export function ProjectItem({ project, projectChats, isActive, activeChatId, pro
               onChange={(e) => setEditedName(e.target.value)}
               onKeyDown={handleKeyDown}
               onBlur={saveName}
-              className="flex-1 bg-white/10 border border-primary/50 rounded px-1.5 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary min-w-0"
+              className="flex-1 bg-accent border border-primary/50 rounded px-1.5 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary min-w-0"
               maxLength={30}
             />
-            <button onClick={saveName} className="p-0.5 hover:bg-white/10 rounded transition-colors">
+            <button onClick={saveName} className="p-0.5 hover:bg-accent rounded transition-colors">
               <Check className="h-3 w-3 text-green-400" />
             </button>
-            <button onClick={cancelEditing} className="p-0.5 hover:bg-white/10 rounded transition-colors">
+            <button onClick={cancelEditing} className="p-0.5 hover:bg-accent rounded transition-colors">
               <X className="h-3 w-3 text-red-400" />
             </button>
           </div>
@@ -93,7 +93,7 @@ export function ProjectItem({ project, projectChats, isActive, activeChatId, pro
                   e.stopPropagation()
                   toggleProjectChats(project.id)
                 }}
-                className="hover:bg-white/10 rounded p-0.5 transition-colors"
+                className="hover:bg-accent rounded p-0.5 transition-colors"
               >
                 <ChevronDown className={cn("h-3 w-3 transition-transform", collapsed && "-rotate-90")} />
               </button>
@@ -146,7 +146,7 @@ export function ProjectItem({ project, projectChats, isActive, activeChatId, pro
       </div>
 
       {!collapsed && (
-        <div className="ml-4 pl-2 border-l border-white/10 space-y-1">
+        <div className="ml-4 pl-2 border-l border-border space-y-1">
           <button
             onClick={() => {
               actions.selectProject(project.id)

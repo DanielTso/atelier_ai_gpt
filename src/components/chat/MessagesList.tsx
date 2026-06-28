@@ -140,7 +140,7 @@ function SourcesList({ sources }: { sources: SourceUrl[] }) {
   const [open, setOpen] = useState(false)
   if (sources.length === 0) return null
   return (
-    <div className="mt-2 pt-2 border-t border-white/5">
+    <div className="mt-2 pt-2 border-t border-border">
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
@@ -161,7 +161,7 @@ function SourcesList({ sources }: { sources: SourceUrl[] }) {
               href={src.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs bg-white/5 border border-white/10 text-muted-foreground hover:text-foreground hover:bg-white/10 hover:border-white/20 transition-colors"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs bg-muted border border-border text-muted-foreground hover:text-foreground hover:bg-accent hover:border-border transition-colors"
               title={src.title || src.url}
             >
               <ExternalLink className="h-2.5 w-2.5 shrink-0" />
@@ -178,7 +178,7 @@ function SourcesList({ sources }: { sources: SourceUrl[] }) {
 // Move markdown components outside to prevent recreation on every render
 const MARKDOWN_COMPONENTS = {
   pre: ({children, ...props}: React.HTMLAttributes<HTMLPreElement>) => (
-    <CodeBlock className="overflow-x-auto max-w-full my-2 bg-black/50 p-3 rounded-lg [&_code]:whitespace-pre-wrap [&_code]:wrap-break-word [&_code]:break-all" {...props}>
+    <CodeBlock className="overflow-x-auto max-w-full my-2 bg-muted p-3 rounded-lg [&_code]:whitespace-pre-wrap [&_code]:wrap-break-word [&_code]:break-all" {...props}>
       {children}
     </CodeBlock>
   ),
@@ -212,10 +212,10 @@ const MessageBody = memo(function MessageBody({
   const answerText = getMessageText(m)
   return (
     <div className={cn(
-      "p-4 rounded-2xl border transition-all hover:border-white/20 relative",
+      "p-4 rounded-2xl border transition-all hover:border-border relative",
       m.role === 'user'
         ? "bg-primary/20 border-primary/10 rounded-tr-none"
-        : "bg-white/5 border-white/10 rounded-tl-none"
+        : "bg-muted border-border rounded-tl-none"
     )}>
       {images.length > 0 && (
         <div className="flex flex-wrap gap-3 mb-2">
@@ -225,7 +225,7 @@ const MessageBody = memo(function MessageBody({
               type="button"
               onClick={() => onImageClick(img.url)}
               className={cn(
-                "block rounded-lg overflow-hidden border border-white/10 hover:border-white/20 transition-colors cursor-zoom-in",
+                "block rounded-lg overflow-hidden border border-border hover:border-border transition-colors cursor-zoom-in",
                 isGenerated && "shadow-lg"
               )}
             >
@@ -361,7 +361,7 @@ export const MessagesList = memo(function MessagesList({
                     </Tooltip.Trigger>
                     <Tooltip.Portal>
                       <Tooltip.Content
-                        className="z-50 px-3 py-1.5 text-xs bg-popover border border-white/10 rounded-lg shadow-lg animate-in fade-in-0 zoom-in-95"
+                        className="z-50 px-3 py-1.5 text-xs bg-popover border border-border rounded-lg shadow-lg animate-in fade-in-0 zoom-in-95"
                         sideOffset={5}
                       >
                         {formatFullTime(m.createdAt ?? new Date())}
@@ -400,7 +400,7 @@ export const MessagesList = memo(function MessagesList({
               <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center shrink-0 text-xs font-semibold text-primary">
                 AI
               </div>
-              <div className="bg-white/5 p-4 rounded-2xl rounded-tl-none border border-white/10 flex items-center">
+              <div className="bg-muted p-4 rounded-2xl rounded-tl-none border border-border flex items-center">
                 <TypingIndicator />
               </div>
             </motion.div>

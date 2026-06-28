@@ -65,7 +65,7 @@ export const ApiKeysSettingsTab = memo(function ApiKeysSettingsTab({
           value={anthropicInput}
           onChange={(e) => setAnthropicInput(e.target.value)}
           placeholder={status.anthropic ? 'Enter a new key to replace' : 'sk-ant-...'}
-          className="w-full px-3 py-2 bg-black/20 border border-white/10 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
+          className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-ring"
         />
       </div>
 
@@ -84,7 +84,7 @@ export const ApiKeysSettingsTab = memo(function ApiKeysSettingsTab({
           value={geminiInput}
           onChange={(e) => setGeminiInput(e.target.value)}
           placeholder={status.gemini ? 'Enter a new key to replace' : 'AIza...'}
-          className="w-full px-3 py-2 bg-black/20 border border-white/10 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
+          className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-ring"
         />
       </div>
 

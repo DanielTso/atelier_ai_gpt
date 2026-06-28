@@ -59,10 +59,10 @@ export const CommandPalette = memo(function CommandPalette({
       {/* Command Dialog */}
       <div className="absolute left-1/2 top-[20%] -translate-x-1/2 w-full max-w-lg animate-in fade-in slide-in-from-bottom-4 duration-200">
         <Command
-          className="bg-popover border border-white/10 rounded-xl shadow-2xl overflow-hidden"
+          className="bg-popover border border-border rounded-xl shadow-2xl overflow-hidden"
           shouldFilter={true}
         >
-          <div className="flex items-center gap-2 px-4 py-3 border-b border-white/10">
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
             <Search className="h-4 w-4 text-muted-foreground" />
             <Command.Input
               value={search}
@@ -71,7 +71,7 @@ export const CommandPalette = memo(function CommandPalette({
               className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
               autoFocus
             />
-            <kbd className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-xs text-muted-foreground bg-white/5 rounded border border-white/10">
+            <kbd className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-xs text-muted-foreground bg-muted rounded border border-border">
               esc
             </kbd>
           </div>
@@ -183,17 +183,17 @@ export const CommandPalette = memo(function CommandPalette({
             )}
           </Command.List>
 
-          <div className="px-4 py-2 border-t border-white/10 flex items-center gap-4 text-xs text-muted-foreground">
+          <div className="px-4 py-2 border-t border-border flex items-center gap-4 text-xs text-muted-foreground">
             <div className="flex items-center gap-1">
-              <kbd className="px-1.5 py-0.5 bg-white/5 rounded border border-white/10">up/down</kbd>
+              <kbd className="px-1.5 py-0.5 bg-muted rounded border border-border">up/down</kbd>
               <span>Navigate</span>
             </div>
             <div className="flex items-center gap-1">
-              <kbd className="px-1.5 py-0.5 bg-white/5 rounded border border-white/10">enter</kbd>
+              <kbd className="px-1.5 py-0.5 bg-muted rounded border border-border">enter</kbd>
               <span>Select</span>
             </div>
             <div className="flex items-center gap-1">
-              <kbd className="px-1.5 py-0.5 bg-white/5 rounded border border-white/10">esc</kbd>
+              <kbd className="px-1.5 py-0.5 bg-muted rounded border border-border">esc</kbd>
               <span>Close</span>
             </div>
           </div>
@@ -216,7 +216,7 @@ function CommandItem({
       className={cn(
         "flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer text-sm",
         "text-foreground/80 hover:text-foreground",
-        "data-[selected=true]:bg-white/10 data-[selected=true]:text-foreground",
+        "data-[selected=true]:bg-accent data-[selected=true]:text-foreground",
         "transition-colors"
       )}
     >

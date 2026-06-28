@@ -34,7 +34,7 @@ export const ChatContextMenu = memo(function ChatContextMenu({
       <DropdownMenu.Trigger asChild>
         <button
           onClick={(e) => e.stopPropagation()}
-          className="opacity-0 group-hover:opacity-100 p-1 hover:bg-white/10 rounded transition-all"
+          className="opacity-0 group-hover:opacity-100 p-1 hover:bg-accent rounded transition-all"
         >
           <MoreHorizontal className="h-3.5 w-3.5" />
         </button>
@@ -51,13 +51,13 @@ export const ChatContextMenu = memo(function ChatContextMenu({
             // Archived chat menu
             <>
               <DropdownMenu.Item
-                className="flex items-center gap-2 px-2 py-1.5 text-sm rounded cursor-pointer outline-none hover:bg-white/10 transition-colors"
+                className="flex items-center gap-2 px-2 py-1.5 text-sm rounded cursor-pointer outline-none hover:bg-accent transition-colors"
                 onSelect={() => onRestore?.(chatId)}
               >
                 <ArchiveRestore className="h-3.5 w-3.5" />
                 Restore
               </DropdownMenu.Item>
-              <DropdownMenu.Separator className="h-px bg-white/10 my-1" />
+              <DropdownMenu.Separator className="h-px bg-border my-1" />
               <DropdownMenu.Item
                 className="flex items-center gap-2 px-2 py-1.5 text-sm rounded cursor-pointer outline-none hover:bg-red-500/20 text-red-400 transition-colors"
                 onSelect={() => onDelete(chatId)}
@@ -70,7 +70,7 @@ export const ChatContextMenu = memo(function ChatContextMenu({
             // Active chat menu
             <>
               <DropdownMenu.Sub>
-                <DropdownMenu.SubTrigger className="flex items-center gap-2 px-2 py-1.5 text-sm rounded cursor-pointer outline-none hover:bg-white/10 transition-colors data-[state=open]:bg-white/10">
+                <DropdownMenu.SubTrigger className="flex items-center gap-2 px-2 py-1.5 text-sm rounded cursor-pointer outline-none hover:bg-accent transition-colors data-[state=open]:bg-accent">
                   <FolderInput className="h-3.5 w-3.5" />
                   Move to...
                   <span className="ml-auto text-muted-foreground">▸</span>
@@ -82,7 +82,7 @@ export const ChatContextMenu = memo(function ChatContextMenu({
                   >
                     <DropdownMenu.Item
                       className={cn(
-                        "flex items-center gap-2 px-2 py-1.5 text-sm rounded cursor-pointer outline-none hover:bg-white/10 transition-colors",
+                        "flex items-center gap-2 px-2 py-1.5 text-sm rounded cursor-pointer outline-none hover:bg-accent transition-colors",
                         currentProjectId === null && "text-primary"
                       )}
                       onSelect={() => onMove(chatId, null)}
@@ -93,13 +93,13 @@ export const ChatContextMenu = memo(function ChatContextMenu({
                       {currentProjectId === null && <span className="ml-auto text-xs">current</span>}
                     </DropdownMenu.Item>
                     {projects.length > 0 && (
-                      <DropdownMenu.Separator className="h-px bg-white/10 my-1" />
+                      <DropdownMenu.Separator className="h-px bg-border my-1" />
                     )}
                     {projects.map((project) => (
                       <DropdownMenu.Item
                         key={project.id}
                         className={cn(
-                          "flex items-center gap-2 px-2 py-1.5 text-sm rounded cursor-pointer outline-none hover:bg-white/10 transition-colors",
+                          "flex items-center gap-2 px-2 py-1.5 text-sm rounded cursor-pointer outline-none hover:bg-accent transition-colors",
                           currentProjectId === project.id && "text-primary"
                         )}
                         onSelect={() => onMove(chatId, project.id)}
@@ -114,7 +114,7 @@ export const ChatContextMenu = memo(function ChatContextMenu({
               </DropdownMenu.Sub>
 
               <DropdownMenu.Item
-                className="flex items-center gap-2 px-2 py-1.5 text-sm rounded cursor-pointer outline-none hover:bg-white/10 transition-colors"
+                className="flex items-center gap-2 px-2 py-1.5 text-sm rounded cursor-pointer outline-none hover:bg-accent transition-colors"
                 onSelect={() => onRename(chatId)}
               >
                 <Pencil className="h-3.5 w-3.5" />
@@ -122,14 +122,14 @@ export const ChatContextMenu = memo(function ChatContextMenu({
               </DropdownMenu.Item>
 
               <DropdownMenu.Item
-                className="flex items-center gap-2 px-2 py-1.5 text-sm rounded cursor-pointer outline-none hover:bg-white/10 transition-colors"
+                className="flex items-center gap-2 px-2 py-1.5 text-sm rounded cursor-pointer outline-none hover:bg-accent transition-colors"
                 onSelect={() => onArchive(chatId)}
               >
                 <Archive className="h-3.5 w-3.5" />
                 Archive
               </DropdownMenu.Item>
 
-              <DropdownMenu.Separator className="h-px bg-white/10 my-1" />
+              <DropdownMenu.Separator className="h-px bg-border my-1" />
 
               <DropdownMenu.Item
                 className="flex items-center gap-2 px-2 py-1.5 text-sm rounded cursor-pointer outline-none hover:bg-red-500/20 text-red-400 transition-colors"

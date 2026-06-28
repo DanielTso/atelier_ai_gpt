@@ -111,7 +111,7 @@ export const ProjectDocumentsDialog = memo(function ProjectDocumentsDialog({
               <FileText className="h-5 w-5 text-blue-400" />
               Documents — {projectName}
             </Dialog.Title>
-            <Dialog.Close className="p-1 rounded hover:bg-white/10 transition-colors">
+            <Dialog.Close className="p-1 rounded hover:bg-accent transition-colors">
               <X className="h-4 w-4" />
             </Dialog.Close>
           </div>
@@ -120,7 +120,7 @@ export const ProjectDocumentsDialog = memo(function ProjectDocumentsDialog({
           <div
             className={cn(
               "border-2 border-dashed rounded-xl p-6 mb-4 text-center transition-colors cursor-pointer",
-              dragOver ? "border-primary bg-primary/5" : "border-white/10 hover:border-white/20",
+              dragOver ? "border-primary bg-primary/5" : "border-border hover:border-border",
               uploading && "opacity-50 pointer-events-none"
             )}
             onClick={() => !uploading && fileInputRef.current?.click()}
@@ -185,7 +185,7 @@ export const ProjectDocumentsDialog = memo(function ProjectDocumentsDialog({
 
           {/* Footer summary */}
           {documents.length > 0 && (
-            <div className="pt-3 mt-3 border-t border-white/5 text-xs text-muted-foreground text-center">
+            <div className="pt-3 mt-3 border-t border-border text-xs text-muted-foreground text-center">
               {totalChunks} chunk{totalChunks !== 1 ? 's' : ''} indexed across {readyDocs} document{readyDocs !== 1 ? 's' : ''}
             </div>
           )}

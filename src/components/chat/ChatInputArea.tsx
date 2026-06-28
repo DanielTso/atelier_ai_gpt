@@ -361,19 +361,19 @@ export const ChatInputArea = memo(function ChatInputArea({
             {attachedImages.map((img, index) => (
               <div
                 key={`img-${img.name}-${index}`}
-                className="relative group/thumb w-20 h-20 rounded-lg overflow-hidden border border-white/10 bg-black/20"
+                className="relative group/thumb w-20 h-20 rounded-lg overflow-hidden border border-border bg-muted"
               >
                 <img
                   src={img.dataUrl}
                   alt={img.name}
                   className="w-full h-full object-cover"
                 />
-                <div className="absolute inset-x-0 bottom-0 bg-black/60 px-1 py-0.5">
-                  <span className="text-[10px] text-white/80 truncate block">{img.name}</span>
+                <div className="absolute inset-x-0 bottom-0 bg-background/80 px-1 py-0.5">
+                  <span className="text-[10px] text-foreground truncate block">{img.name}</span>
                 </div>
                 <button
                   onClick={() => removeImage(index)}
-                  className="absolute top-0.5 right-0.5 p-0.5 rounded-full bg-black/60 text-white/80 hover:text-white hover:bg-black/80 opacity-0 group-hover/thumb:opacity-100 transition-opacity"
+                  className="absolute top-0.5 right-0.5 p-0.5 rounded-full bg-background/80 text-foreground hover:text-foreground hover:bg-accent opacity-0 group-hover/thumb:opacity-100 transition-opacity"
                   title="Remove image"
                 >
                   <X className="h-3 w-3" />
@@ -411,7 +411,7 @@ export const ChatInputArea = memo(function ChatInputArea({
               </div>
             ))}
             {isExtracting && (
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-xs text-muted-foreground">
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-muted border border-border text-xs text-muted-foreground">
                 <Loader2 className="h-3 w-3 animate-spin" />
                 <span>Extracting...</span>
               </div>

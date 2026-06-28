@@ -42,7 +42,7 @@ export const DeleteConfirmDialog = memo(function DeleteConfirmDialog({
               </Dialog.Description>
             </div>
             <Dialog.Close asChild>
-              <button className="p-1 rounded hover:bg-white/10 transition-colors">
+              <button className="p-1 rounded hover:bg-accent transition-colors">
                 <X className="h-4 w-4" />
               </button>
             </Dialog.Close>
@@ -50,7 +50,7 @@ export const DeleteConfirmDialog = memo(function DeleteConfirmDialog({
 
           <div className="flex justify-end gap-3 mt-6">
             <Dialog.Close asChild>
-              <button className="px-4 py-2 text-sm rounded-lg hover:bg-white/10 transition-colors">
+              <button className="px-4 py-2 text-sm rounded-lg hover:bg-accent transition-colors">
                 Cancel
               </button>
             </Dialog.Close>

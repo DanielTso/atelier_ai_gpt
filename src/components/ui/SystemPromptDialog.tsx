@@ -68,7 +68,7 @@ export const SystemPromptDialog = memo(function SystemPromptDialog({
               </div>
             </div>
             <Dialog.Close asChild>
-              <button className="p-1 rounded hover:bg-white/10 transition-colors">
+              <button className="p-1 rounded hover:bg-accent transition-colors">
                 <X className="h-4 w-4" />
               </button>
             </Dialog.Close>
@@ -79,7 +79,7 @@ export const SystemPromptDialog = memo(function SystemPromptDialog({
               ref={textareaRef}
               defaultValue={currentPrompt || ''}
               rows={5}
-              className="w-full px-3 py-2 bg-black/20 border border-white/10 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all resize-none"
+              className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all resize-none"
               placeholder="e.g., You are a helpful coding assistant..."
             />
 
@@ -91,7 +91,7 @@ export const SystemPromptDialog = memo(function SystemPromptDialog({
                     key={i}
                     type="button"
                     onClick={() => handleExampleClick(example)}
-                    className="text-xs px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-muted-foreground hover:text-foreground transition-colors truncate max-w-[200px]"
+                    className="text-xs px-2 py-1 rounded bg-muted hover:bg-accent text-muted-foreground hover:text-foreground transition-colors truncate max-w-[200px]"
                   >
                     {example.substring(0, 40)}...
                   </button>
@@ -111,7 +111,7 @@ export const SystemPromptDialog = memo(function SystemPromptDialog({
                 <Dialog.Close asChild>
                   <button
                     type="button"
-                    className="px-4 py-2 text-sm rounded-lg hover:bg-white/10 transition-colors"
+                    className="px-4 py-2 text-sm rounded-lg hover:bg-accent transition-colors"
                   >
                     Cancel
                   </button>
@@ -126,7 +126,7 @@ export const SystemPromptDialog = memo(function SystemPromptDialog({
             </div>
           </form>
 
-          <div className="mt-4 pt-4 border-t border-white/10">
+          <div className="mt-4 pt-4 border-t border-border">
             <p className="text-xs text-muted-foreground">
               The system instruction defines the AI&apos;s role and behavior. It&apos;s always included in every message and never trimmed during context management.
             </p>

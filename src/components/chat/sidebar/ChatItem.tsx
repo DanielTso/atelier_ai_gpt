@@ -44,7 +44,7 @@ export const ChatItem = memo(function ChatItem({
         isArchived && "opacity-60 hover:opacity-100",
         isActive
           ? cn("text-primary font-medium", isProjectChat ? "bg-primary/5" : "bg-primary/10")
-          : cn("text-muted-foreground hover:text-foreground", !isProjectChat && "hover:bg-white/5"),
+          : cn("text-muted-foreground hover:text-foreground", !isProjectChat && "hover:bg-accent"),
       )}
     >
       {isProjectChat ? (

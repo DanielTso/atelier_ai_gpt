@@ -51,12 +51,12 @@ export const SettingsDialog = memo(function SettingsDialog({
         <Dialog.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50" />
         <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 glass-panel rounded-xl shadow-2xl z-50 focus:outline-none w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
           {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 shrink-0">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
             <Dialog.Title className="text-lg font-semibold">
               Settings
             </Dialog.Title>
             <Dialog.Close asChild>
-              <button className="p-1 rounded hover:bg-white/10 transition-colors">
+              <button className="p-1 rounded hover:bg-accent transition-colors">
                 <X className="h-4 w-4" />
               </button>
             </Dialog.Close>
@@ -68,7 +68,7 @@ export const SettingsDialog = memo(function SettingsDialog({
           {/* Body */}
           <div className="flex flex-1 min-h-0">
             {/* Tab Navigation */}
-            <nav className="w-48 border-r border-white/10 p-2 shrink-0">
+            <nav className="w-48 border-r border-border p-2 shrink-0">
               {tabs.map((tab) => {
                 const Icon = tab.icon
                 return (
@@ -79,7 +79,7 @@ export const SettingsDialog = memo(function SettingsDialog({
                       "flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm transition-colors text-left",
                       activeTab === tab.id
                         ? "bg-primary/15 text-primary font-medium"
-                        : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+                        : "text-muted-foreground hover:text-foreground hover:bg-accent"
                     )}
                   >
                     <Icon className="h-4 w-4 shrink-0" />
