@@ -31,8 +31,10 @@ export function createGenerateImageTool(ctx: { chatId: number; projectId: number
         const url = await createSignedDownloadUrl(path, ARTIFACT_URL_TTL_SECONDS)
         return { storagePath: path, url, mediaType, filename: `generated-image.${ext}`, fileSize: bytes.byteLength }
       } catch (e) {
+        // Surface generateImageBytes's specific, user-appropriate message (no Gemini
+        // key / no image returned) — preserves the pre-refactor chat-tool behavior.
         console.warn('[generate_image] failed:', e instanceof Error ? e.message : e)
-        return { error: 'Image generation failed.' }
+        return { error: e instanceof Error ? e.message : 'Image generation failed.' }
       }
     },
   })
