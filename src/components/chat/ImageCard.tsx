@@ -12,7 +12,7 @@ interface ImageCardProps {
 export const ImageCard = memo(function ImageCard({ image, onOpen, onDelete }: ImageCardProps) {
   const url = image.url ?? ''
 
-  async function handleDelete(e: React.MouseEvent) {
+  function handleDelete(e: React.MouseEvent) {
     e.stopPropagation()
     onDelete(image.id)
   }
