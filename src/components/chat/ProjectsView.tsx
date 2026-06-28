@@ -1,8 +1,9 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Search, Plus, MoreVertical, Pencil, Trash2, ChevronDown, FolderPlus, FileText } from 'lucide-react'
+import { Search, Plus, MoreVertical, Pencil, Trash2, ChevronDown, FolderPlus, FileText, Pin } from 'lucide-react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
+import { useLocalStorage } from '@/hooks/useLocalStorage'
 
 interface ProjectCard {
   id: number
@@ -46,6 +47,14 @@ export function ProjectsView({
 }: ProjectsViewProps) {
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<SortKey>('recent')
+  const [pinnedIds, setPinnedIds] = useLocalStorage<number[]>(
+    'pinned-project-ids',
+    [],
+    v => Array.isArray(v) && v.every(x => typeof x === 'number'),
+  )
+
+  const togglePin = (id: number) =>
+    setPinnedIds(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]))
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -67,8 +76,10 @@ export function ProjectsView({
       }
       sorted.sort((a, b) => ts(b) - ts(a))
     }
-    return sorted
-  }, [projects, query, sort])
+    // Pinned projects float to the top, preserving their relative sort order.
+    const isPinned = (id: number) => pinnedIds.includes(id)
+    return [...sorted.filter(p => isPinned(p.id)), ...sorted.filter(p => !isPinned(p.id))]
+  }, [projects, query, sort, pinnedIds])
 
   return (
     <div className="flex-1 overflow-y-auto p-8">
@@ -145,6 +156,7 @@ export function ProjectsView({
           {visible.map(p => {
             const updated = formatDate(p.updatedAt ?? p.createdAt)
             const fileCount = fileCounts?.[p.id] ?? 0
+            const pinned = pinnedIds.includes(p.id)
             return (
               <div
                 key={p.id}
@@ -154,7 +166,10 @@ export function ProjectsView({
                   onClick={() => onSelectProject(p.id)}
                   className="flex flex-col gap-3 w-full text-left p-5 min-h-52"
                 >
-                  <span className="font-semibold text-foreground truncate pr-8">{p.name}</span>
+                  <span className="flex items-center gap-1.5 font-semibold text-foreground truncate pr-8">
+                    {pinned && <Pin className="h-3.5 w-3.5 shrink-0 text-primary fill-current" />}
+                    <span className="truncate">{p.name}</span>
+                  </span>
                   <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
                     <FileText className="h-3.5 w-3.5 shrink-0" />
                     {fileCount} {fileCount === 1 ? 'file' : 'files'}
@@ -197,6 +212,13 @@ export function ProjectsView({
                         sideOffset={6}
                         className="min-w-[160px] glass-panel rounded-xl p-1.5 shadow-2xl border border-border z-50"
                       >
+                        <DropdownMenu.Item
+                          onClick={() => togglePin(p.id)}
+                          className="flex items-center gap-2.5 px-3 py-2 text-sm rounded-lg cursor-pointer hover:bg-accent outline-none transition-colors"
+                        >
+                          <Pin className={`h-3.5 w-3.5 ${pinned ? 'text-primary fill-current' : 'text-muted-foreground'}`} />
+                          {pinned ? 'Unpin' : 'Pin'}
+                        </DropdownMenu.Item>
                         <DropdownMenu.Item
                           onClick={() => onRenameProject(p.id)}
                           className="flex items-center gap-2.5 px-3 py-2 text-sm rounded-lg cursor-pointer hover:bg-accent outline-none transition-colors"

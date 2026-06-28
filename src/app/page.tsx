@@ -616,6 +616,92 @@ export default function Home() {
     }
   }
 
+  // Project-landing composer: create a chat in the CURRENT project (applying its
+  // persona/model defaults), open it, and send the first message — all inline using
+  // local values to avoid setState-then-read timing bugs (mirrors handleSendMessage).
+  const handleProjectLandingCompose = useCallback(async () => {
+    if ((!input.trim() && attachedFiles.length === 0 && attachedImages.length === 0) || isLoading) return
+    const projectId = activeProjectIdRef.current
+    if (projectId == null) return
+
+    // Derive the project's defaults (same logic as createChatForProject) so the new
+    // chat uses the project's persona prompt + model.
+    let systemPrompt: string | null = null
+    try {
+      const defaults = await getProjectDefaults(projectId)
+      if (defaults.defaultPersonaId) {
+        const persona = getPersonaById(defaults.defaultPersonaId)
+        if (persona?.prompt) {
+          systemPrompt = persona.prompt
+          setSelectedEffort(persona.effort)
+          selectedEffortRef.current = persona.effort
+        }
+      }
+      if (defaults.defaultModel) {
+        setSelectedModel(defaults.defaultModel)
+        selectedModelRef.current = defaults.defaultModel
+      }
+    } catch {
+      // Defaults are optional.
+    }
+
+    try {
+      const [newC] = await createChat(projectId, "New Chat")
+      setChats(prev => [newC, ...prev])
+      if (systemPrompt) {
+        await updateChatSystemPrompt(newC.id, systemPrompt).catch(() => {})
+        setCurrentSystemPrompt(systemPrompt)
+      }
+      skipLoadOnceRef.current = newC.id
+      setActiveChatId(newC.id)
+      activeChatIdRef.current = newC.id
+      setNewChatCompose(false)
+    } catch (e) {
+      console.error(e)
+      setError("Failed to create chat.")
+      return
+    }
+
+    // Capture images in ref before clearing state (mirrors handleSendMessage's tail).
+    pendingImagesRef.current = [...attachedImages]
+
+    const userMessage = attachedFiles.length > 0
+      ? buildFileMessage(input.trim(), attachedFiles)
+      : input.trim()
+
+    const fileParts: FileUIPart[] = attachedImages.map(img => ({
+      type: 'file' as const,
+      mediaType: img.mediaType,
+      url: img.dataUrl,
+    }))
+
+    setInput("")
+    setAttachedFiles([])
+    setAttachedImages([])
+
+    if (fileParts.length > 0) {
+      await sendMessage({ text: userMessage, files: fileParts })
+    } else {
+      await sendMessage({ text: userMessage })
+    }
+  }, [input, attachedFiles, attachedImages, isLoading, getPersonaById, sendMessage])
+
+  const handleProjectLandingKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+      e.preventDefault()
+      handleProjectLandingCompose()
+    }
+    if (e.key === 'Escape') {
+      setInput("")
+      ;(e.target as HTMLTextAreaElement).blur()
+    }
+  }
+
+  const handleProjectLandingFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    handleProjectLandingCompose()
+  }
+
   // Save user messages to database when messages array changes
   useEffect(() => {
     if (messages.length === 0 || !activeChatId) return
@@ -1051,11 +1137,35 @@ export default function Home() {
             project={projects.find(p => p.id === activeProjectId)!}
             chatPreviews={chatPreviews}
             loading={chatPreviewsLoading}
+            composer={
+              <ChatInputArea
+                input={input}
+                onInputChange={setInput}
+                onFormSubmit={handleProjectLandingFormSubmit}
+                onKeyDown={handleProjectLandingKeyDown}
+                isLoading={isLoading}
+                activeChatId={activeChatId}
+                activeProjectId={activeProjectId}
+                systemPrompt={currentSystemPrompt}
+                onSystemPromptChange={handleSaveSystemPrompt}
+                onSystemPromptClick={() => dialogs.systemPrompt.setOpen(true)}
+                models={models}
+                selectedModel={selectedModel}
+                onModelChange={handleModelChange}
+                selectedEffort={selectedEffort}
+                onEffortChange={handleEffortChange}
+                attachedFiles={attachedFiles}
+                onFilesChange={setAttachedFiles}
+                attachedImages={attachedImages}
+                onImagesChange={setAttachedImages}
+              />
+            }
             onSelectChat={setActiveChatId}
-            onCreateChat={handleCreateChat}
             onAddFiles={() => handleOpenProjectDocuments(activeProjectId)}
             onSaveContext={handleSaveProjectContext}
             onDeleteProject={handleRequestDeleteProject}
+            onBack={() => { setActiveView('projects'); setActiveChatId(null); setActiveProjectId(null) }}
+            onRename={() => handleRequestRenameProject(activeProjectId)}
           />
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center w-full max-w-(--thread-max-width) mx-auto px-4">

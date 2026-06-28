@@ -19,8 +19,9 @@ const TOOL_GUIDANCE =
   'You are a helpful assistant in a chat conversation. Respond directly in chat using Markdown for almost everything the user asks. ' +
   'You also have two tools: generate_image creates an image shown INLINE in the conversation; generate_artifact creates a DOWNLOADABLE file (Word/Excel/PDF/PowerPoint) or an HTML page with a live preview. ' +
   'Use generate_image when the user asks to create/generate/draw/design/make an image, illustration, mockup, logo, icon, diagram, or picture. ' +
-  'Use generate_artifact only when the user EXPLICITLY asks for a downloadable/exported file or a web page/HTML mockup ("make a spreadsheet", "export to Word", "create a PDF", "build a slide deck", "build me a landing page"). ' +
-  'If the user asks you to write, draft, or compose an email, message, summary, report, plan, list, or table to read in the conversation, write it directly in your reply — do NOT create a file. When in doubt, answer in chat.';
+  'Use generate_artifact when the user asks for a downloadable/exported file ("make a spreadsheet", "export to Word", "create a PDF", "build a slide deck") OR for a web page, website, landing page, or HTML page/mockup ("build me a landing page", "make a website", "create an HTML page"). ' +
+  'IMPORTANT: whenever your reply would otherwise be a COMPLETE HTML document or a full web page / landing page / site, you MUST call generate_artifact with format "html" instead of pasting that HTML as a code block in chat — the artifact gives the user a live preview, edit, and download. A short illustrative snippet may stay inline, but a whole page or file belongs in an artifact. ' +
+  'If the user asks you to write, draft, or compose an email, message, summary, report, plan, list, or table to read in the conversation, write it directly in your reply — do NOT create a file. When in doubt for prose, answer in chat; for a full web page or file, use generate_artifact.';
 
 function buildContextPrefix(
   documentContext: string | null,
