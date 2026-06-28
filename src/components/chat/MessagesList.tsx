@@ -271,35 +271,39 @@ export const MessagesList = memo(function MessagesList({
 
   if (!activeChatId) {
     return (
-      <div className="h-full flex flex-col items-center justify-center text-muted-foreground px-4 animate-in fade-in duration-500">
-        <div className="relative">
-          <Folder className="h-16 w-16 mb-4 opacity-10" />
-          <div className="absolute inset-0 h-16 w-16 mb-4 opacity-5 animate-pulse">
-            <Folder className="h-16 w-16" />
-          </div>
+      <motion.div
+        className="h-full flex flex-col items-center justify-center text-muted-foreground px-4"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: "easeOut" }}
+      >
+        <div className="w-16 h-16 rounded-2xl bg-linear-to-br from-primary/15 to-primary/5 ring-1 ring-primary/15 flex items-center justify-center mb-4">
+          <Folder className="h-7 w-7 text-primary/70" />
         </div>
-        <p className="text-lg font-medium text-foreground/60 mb-2">No Chat Selected</p>
-        <p className="text-sm text-center max-w-md">
+        <p className="text-lg font-medium text-foreground mb-2">No Chat Selected</p>
+        <p className="text-sm text-center max-w-md text-muted-foreground">
           Create a new project and chat to start your conversation with AI models
         </p>
-      </div>
+      </motion.div>
     )
   }
 
   if (messages.length === 0) {
     return (
-      <div className="h-full flex flex-col items-center justify-center text-muted-foreground px-4 animate-in fade-in duration-500">
-        <div className="relative">
-          <MessageSquare className="h-16 w-16 mb-4 opacity-10" />
-          <div className="absolute inset-0 h-16 w-16 mb-4 opacity-5 animate-pulse">
-            <MessageSquare className="h-16 w-16" />
-          </div>
+      <motion.div
+        className="h-full flex flex-col items-center justify-center text-muted-foreground px-4"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: "easeOut" }}
+      >
+        <div className="w-16 h-16 rounded-2xl bg-linear-to-br from-primary/15 to-primary/5 ring-1 ring-primary/15 flex items-center justify-center mb-4">
+          <MessageSquare className="h-7 w-7 text-primary/70" />
         </div>
-        <p className="text-lg font-medium text-foreground/60 mb-2">Start Your Conversation</p>
-        <p className="text-sm text-center max-w-md">
+        <p className="text-lg font-medium text-foreground mb-2">Start Your Conversation</p>
+        <p className="text-sm text-center max-w-md text-muted-foreground">
           Type your message below to chat with <span className="text-primary font-medium">{selectedModel || "your AI"}</span>
         </p>
-      </div>
+      </motion.div>
     )
   }
 

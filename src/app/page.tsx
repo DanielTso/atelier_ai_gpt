@@ -1168,7 +1168,8 @@ export default function Home() {
             onRename={() => handleRequestRenameProject(activeProjectId)}
           />
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center w-full max-w-(--thread-max-width) mx-auto px-4">
+          <div className="relative isolate flex-1 flex flex-col items-center justify-center w-full max-w-(--thread-max-width) mx-auto px-4">
+            <div aria-hidden className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-225 max-w-[130vw] h-140 -z-10 bg-[radial-gradient(ellipse_at_center,color-mix(in_oklab,var(--primary)_16%,transparent),transparent_70%)]" />
             <HomeGreeting displayName={displayName || undefined} />
             <div className="w-full">
               <ChatInputArea

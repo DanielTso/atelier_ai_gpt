@@ -138,11 +138,18 @@ export const ProjectLandingPage = memo(function ProjectLandingPage({
                 ))}
               </div>
             ) : chatPreviews.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-                <MessageSquare className="h-10 w-10 mb-3 opacity-40" />
+              <motion.div
+                className="flex flex-col items-center justify-center py-16 text-muted-foreground"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, ease: 'easeOut' }}
+              >
+                <div className="w-14 h-14 rounded-2xl bg-linear-to-br from-primary/15 to-primary/5 ring-1 ring-primary/15 flex items-center justify-center mb-3">
+                  <MessageSquare className="h-6 w-6 text-primary/70" />
+                </div>
                 <p className="text-sm">No chats yet</p>
-                <p className="text-xs mt-1 opacity-70">Start a conversation in this project</p>
-              </div>
+                <p className="text-xs mt-1 text-muted-foreground/70">Start a conversation in this project</p>
+              </motion.div>
             ) : (
               <div className="mt-1">
                 {chatPreviews.map((chat, idx) => (
