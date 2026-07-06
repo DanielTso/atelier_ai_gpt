@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.40.1] - 2026-07-06 — CLAUDE.md accuracy pass (docs only)
+
+A docs-only patch from a `/init` audit of `CLAUDE.md` against the v4.40.0 codebase. No code changes.
+
+### Changed
+
+- **CLAUDE.md** gains: a "read the latest session handoff first" bootstrap pointer; `npm run typecheck` in the commands block; the verification gate + local conventions (no Prettier — never `prettier --write`; Tailwind v4.1 `bg-linear-to-br`; header verification is prod-only since previews sit behind Vercel Authentication); the `/api/auth` login throttle (`src/lib/rateLimit.ts`) in the Security section; and an updated client-view description (`activeView`: `home | projects | artifacts | images` via `SidebarNav`, replacing the stale "three view states" text).
+
+### Notes
+
+- No DB migration. No runtime surface — docs only.
+
 ## [4.40.0] - 2026-06-28 — Warm aesthetic pass + PDF preview fix
 
 A creative/visual pass leaning into the warm + Fraunces brand, plus a fix for PDF artifact previews. Verified on Vercel previews before release.

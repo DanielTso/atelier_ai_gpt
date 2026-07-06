@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+**Start a new session by reading the latest `docs/SESSION_HANDOFF_<date>.md`** (currently `docs/SESSION_HANDOFF_2026-06-29.md`) — it is the authoritative current-state bootstrap (where the build is, what shipped, live infra, open items). This CLAUDE.md is the source of truth for *how the code works*; the handoff tracks *where the project is*.
+
 ## Build & Development Commands
 
 ```bash
@@ -10,6 +12,7 @@ npm run dev          # Start development server (http://localhost:3000)
 npm run build        # Production build
 npm run start        # Run production server
 npm run lint         # Run ESLint
+npm run typecheck    # tsc --noEmit (part of the verification gate)
 npx drizzle-kit generate          # Author a migration from schema.ts changes
 DIRECT_URL=... npx drizzle-kit migrate   # Apply migrations to Supabase (direct connection)
 npm test             # Run Vitest unit/integration tests
@@ -28,6 +31,13 @@ npx vitest run tests/unit/api/                      # All tests in a directory
 ```
 
 Path alias: `@/*` → `./src/*`.
+
+**Verification gate** (run before tagging/shipping): `npm run typecheck` (0 errors) → `npm run lint` (0 errors; ~25 baseline warnings are fine) → `npm run build` → `npm test`. E2E (`npm run test:e2e`) runs in **CI only** — locally `.env.local` has the access gate ON and `DATABASE_URL` pointed at production Supabase, so live/manual smoke is done against prod, not a local dev server.
+
+**Local code-style conventions (important):**
+- **No Prettier config exists — never run `prettier --write`.** The codebase is hand-written **single-quote, no-semicolon**; a Prettier pass reformats whole files to double-quote+semicolon and creates massive spurious diffs. Make minimal, targeted edits that match the surrounding file (note: some older files still use semicolons — match the file you're in).
+- **Tailwind v4.1**: the gradient utility is `bg-linear-to-br` (renamed from `bg-gradient-to-*`).
+- **Header/CSP verification only works against prod** (`atelier-ai-app.vercel.app`). Vercel **preview** deployments sit behind Vercel Authentication, so `curl -I` of a preview returns Vercel's auth-page headers, not the app's.
 
 ## Environment Setup
 
@@ -89,7 +99,7 @@ The app uses two AI providers with a clear split — **Claude is the brain, Gemi
 
 ### Security
 
-`getSetting()` and `getSettings()` server actions block the sensitive `gemini-api-key`, `anthropic-api-key`, and `tavily-api-key` from being read by client code (`SENSITIVE_KEYS`). Keys are only accessed server-side via `src/lib/settings.ts` (`getGeminiApiKey()`, `getAnthropicApiKey()`, `getTavilyApiKey()`). The `getApiKeyStatus()` server action returns booleans only (`{ gemini, anthropic, tavily }`, configured / not) so the API Keys UI can show status without exposing values. All POST API routes validate request bodies with Zod schemas; error responses are sanitized via `apiError()` helper (no raw error messages to clients).
+`getSetting()` and `getSettings()` server actions block the sensitive `gemini-api-key`, `anthropic-api-key`, and `tavily-api-key` from being read by client code (`SENSITIVE_KEYS`). Keys are only accessed server-side via `src/lib/settings.ts` (`getGeminiApiKey()`, `getAnthropicApiKey()`, `getTavilyApiKey()`). The `getApiKeyStatus()` server action returns booleans only (`{ gemini, anthropic, tavily }`, configured / not) so the API Keys UI can show status without exposing values. All POST API routes validate request bodies with Zod schemas; error responses are sanitized via `apiError()` helper (no raw error messages to clients). `POST /api/auth` (the access-gate login) is throttled by a best-effort in-memory login limiter (`src/lib/rateLimit.ts` — 10 failures / 15-min window per IP); it slows online password guessing but is per-instance, not distributed (add a Vercel WAF rule for a hard guarantee).
 
 **Security headers (`next.config.ts`):** a CSP (with `'unsafe-inline'` — the Next 16 Turbopack nonce pipeline was attempted + found broken, see the inline comment), plus `X-Content-Type-Options: nosniff`, HSTS, and **`X-Frame-Options: SAMEORIGIN` + CSP `frame-ancestors 'self'`** (relaxed from `DENY`/`'none'` so the app can frame its own same-origin PDF proxy at `/api/artifacts/:id/raw`; cross-origin framing of the app is still blocked). `frame-src`/`img-src` allow the Supabase origin. Note: Next's header `source` cannot negative-lookahead-exclude a path (that's the middleware matcher) — vary a header by relaxing the global value or setting it in the route handler.
 
@@ -99,7 +109,7 @@ Atelier Studio is a Next.js 16 App Router chat application. **Claude (Anthropic)
 
 ### Data Flow
 
-1. **Client** (`src/app/page.tsx`) — Single-page chat UI using `useChat` from `@ai-sdk/react`. All application state lives here. Three view states: **active chat**, **project landing page** (two-column: chats + documents), **empty state** (branding with always-visible input toolbar). Sending a message with no active chat auto-creates a standalone quick chat.
+1. **Client** (`src/app/page.tsx`) — Single-page chat UI using `useChat` from `@ai-sdk/react`. All application state lives here. A top-level `activeView` state (`AppView` = `home | projects | artifacts | images`) is driven by the left `SidebarNav` (New chat · Projects · Artifacts · Images · Customize/Settings) and swaps the main pane: **`home`** = the chat surface (active chat, project landing page, or the branded empty/home state with an always-visible input toolbar), **`projects`** = all-projects grid, **`artifacts`** = artifact gallery, **`images`** = the Images studio. Sending a message with no active chat auto-creates a standalone quick chat.
 2. **Server Actions** (`src/app/actions.ts`) — "use server" functions for all DB reads/writes (CRUD for projects, chats, messages, settings, chat previews).
 3. **API Routes**:
    - `POST /api/chat` — Streams LLM responses. Claude models (`claude-*`) route to Anthropic with **web search** enabled (`anthropic.tools.webSearch_20250305`). The Gemini image model (`*image*`) gets `responseModalities: ['TEXT', 'IMAGE']`. Applies five-layer context (see below). Default model fallback is `claude-opus-4-8`.
