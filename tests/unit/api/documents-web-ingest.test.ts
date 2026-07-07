@@ -19,7 +19,7 @@ async function importRoute() {
     isStorageConfigured: m.isStorageConfigured, uploadBuffer: m.uploadBuffer,
     createSignedDownloadUrl: m.createSignedDownloadUrl, DOCUMENT_URL_TTL_SECONDS: 3600,
   }))
-  vi.doMock('@/lib/fileExtraction', () => ({ MAX_TEXT_LENGTH: 100_000 }))
+  vi.doMock('@/lib/fileExtraction', () => ({ DOCUMENT_MAX_CHARS: 100_000 }))
   return (await import('@/app/api/documents/web-ingest/route')).POST
 }
 
@@ -93,9 +93,18 @@ describe('POST /api/documents/web-ingest', () => {
     expect(data.document).toMatchObject({ id: 42, mimeType: 'text/markdown', url: 'https://signed/source.md' })
     expect(m.createUploadingDocument).toHaveBeenCalledWith(expect.objectContaining({ projectId: 1, mimeType: 'text/markdown', filename: 'Page A' }))
     expect(m.uploadBuffer).toHaveBeenCalledWith('documents/1/42/source.md', expect.any(Buffer), 'text/markdown')
-    expect(m.ingestText).toHaveBeenCalledWith({ id: 42, projectId: 1 }, expect.stringContaining('Source: https://x.com/a'), { extractionMethod: 'text' })
+    expect(m.ingestText).toHaveBeenCalledWith({ id: 42, projectId: 1 }, expect.stringContaining('Source: https://x.com/a'), { extractionMethod: 'text', partial: false })
     // secret-handling: the key never appears in the response body
     expect(JSON.stringify(data)).not.toMatch(/tvly-/)
+  })
+
+  it('flags partial (no silent loss) when the page exceeds DOCUMENT_MAX_CHARS', async () => {
+    m.extractUrl.mockResolvedValue({ url: 'https://x.com/a', title: 'Big', markdown: 'B'.repeat(120_000) })
+    const POST = await importRoute()
+    const res = await POST(req({ url: 'https://x.com/a', projectId: 1 }) as never)
+    expect(res.status).toBe(200)
+    expect(m.ingestText).toHaveBeenCalledWith({ id: 42, projectId: 1 }, expect.any(String), { extractionMethod: 'text', partial: true })
+    expect(m.ingestText.mock.calls[0][1].length).toBe(100_000) // truncated to the ceiling
   })
 
   it('marks the row error and returns 500 when ingestion throws', async () => {

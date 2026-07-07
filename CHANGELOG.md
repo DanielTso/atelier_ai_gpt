@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.44.0] - 2026-07-07 — RAG Phase 1: ingestion reliability & fidelity
+
+Phase 1 of the RAG overhaul. Kills three silent-loss bugs in document ingestion and makes fidelity visible — every document now ends complete, explicitly **partial**, or error. Groundwork for running full contracts and plans reliably.
+
+### Fixed
+
+- **No more silent 100K truncation.** `MAX_TEXT_LENGTH` (100K) → `DOCUMENT_MAX_CHARS` (default **2,000,000**, env-configurable). Long contracts/plans now ingest in full; text past the ceiling is dropped *and flagged partial*, never silently. (A live check found existing documents were already truncated at exactly 100K.)
+- **No more silent embedding loss.** New bounded-concurrency + retry/backoff embedder (`embedChunks`/`embedContents`, `EMBED_CONCURRENCY=5`, `EMBED_MAX_RETRIES=3`) shared by the new-upload and replace paths — a long doc's hundreds of chunks no longer 429 Gemini into null embeddings, and a per-chunk persist failure is counted, never a crash.
+- **No more silent 30-page vision cap.** `EXTRACTION_MAX_PAGES` default 30 → **60**; over-cap scanned PDFs are flagged partial with the extracted/total page counts.
+
+### Added
+
+- **Full extracted text stored** as `documents/<proj>/<id>[/rev<N>]/extracted.txt` (best-effort; also the input for Phase 2's whole-document mode).
+- **Fidelity schema (migration 0014):** `page_count`, `pages_extracted`, `extraction_partial` on `documents`.
+- **Amber "Partial" badge** + tooltip on `DocumentCard` and a notice in the preview dialog when extraction was truncated, page-capped, or some chunks failed to embed.
+
+### Notes
+
+- No backfill: existing (already-truncated) documents keep `extraction_partial = false`; re-upload for full fidelity. Vision pages stay serial (memory-safe). **Migration 0014 must be applied to live Supabase** (user-gated). Deferred to later phases: whole-document mode, structure-aware chunking, hybrid keyword+vector retrieval, scale/index tuning.
+
 ## [4.43.0] - 2026-07-07 — Fable 5 flagship personas
 
 Four new personas on Claude Fable 5, tuned for the hardest, expensive-if-wrong reasoning (act don't over-plan, lead with the outcome, cite every claim to a source, never invent a value, report assessment vs action):

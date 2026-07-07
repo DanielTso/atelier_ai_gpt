@@ -47,6 +47,18 @@ describe('GET /api/documents', () => {
     expect(mockCreateSignedDownloadUrls).toHaveBeenCalledWith(['documents/1/1/a.pdf'], 3600)
     expect(mockCreateSignedDownloadUrls).toHaveBeenCalledWith(['documents/1/1/thumb.webp'], 3600)
   })
+
+  it('passes through fidelity fields (pageCount/pagesExtracted/extractionPartial)', async () => {
+    mockGetProjectDocuments.mockResolvedValue([
+      { id: 1, projectId: 1, filename: 'a.pdf', storagePath: null, thumbnailPath: null, status: 'ready', pageCount: 80, pagesExtracted: 60, extractionPartial: true },
+    ])
+    const { GET } = await importRoute()
+    const res = await GET(new Request('http://localhost/api/documents?projectId=1') as never)
+    const data = await res.json()
+    expect(data.documents[0].extractionPartial).toBe(true)
+    expect(data.documents[0].pageCount).toBe(80)
+    expect(data.documents[0].pagesExtracted).toBe(60)
+  })
 })
 
 describe('DELETE /api/documents', () => {
@@ -55,13 +67,14 @@ describe('DELETE /api/documents', () => {
   })
 
   it('removes storage objects then deletes the row', async () => {
-    mockGetDocumentById.mockResolvedValue({ id: 5, storagePath: 'documents/1/5/a.pdf', thumbnailPath: 'documents/1/5/thumb.webp' })
+    mockGetDocumentById.mockResolvedValue({ id: 5, projectId: 1, storagePath: 'documents/1/5/a.pdf', thumbnailPath: 'documents/1/5/thumb.webp' })
     mockRemoveObjects.mockResolvedValue(undefined)
     mockDeleteDocument.mockResolvedValue([{ id: 5 }])
     const { DELETE } = await importRoute()
     const res = await DELETE(new Request('http://localhost/api/documents?id=5', { method: 'DELETE' }) as never)
     expect(res.status).toBe(200)
-    expect(mockRemoveObjects).toHaveBeenCalledWith(['documents/1/5/a.pdf', 'documents/1/5/thumb.webp'])
+    // the current file's extracted.txt is swept alongside the original + thumbnail
+    expect(mockRemoveObjects).toHaveBeenCalledWith(['documents/1/5/a.pdf', 'documents/1/5/thumb.webp', 'documents/1/5/extracted.txt'])
     expect(mockDeleteDocument).toHaveBeenCalledWith(5)
   })
 })

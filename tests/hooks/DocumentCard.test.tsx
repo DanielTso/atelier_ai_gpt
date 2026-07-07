@@ -40,4 +40,21 @@ describe('DocumentCard', () => {
     fireEvent.click(screen.getByText('GradingPlan.pdf'))
     expect(onOpen).toHaveBeenCalledWith(base)
   })
+
+  it('renders an amber Partial badge with a page-count tooltip when extractionPartial', () => {
+    render(<DocumentCard doc={{ ...base, extractionPartial: true, pagesExtracted: 60, pageCount: 80 }} onOpen={() => {}} onDelete={() => {}} />)
+    const badge = screen.getByText(/partial/i)
+    expect(badge).toBeTruthy()
+    expect(badge.closest('[title]')?.getAttribute('title')).toBe('Extracted 60 of 80 pages')
+  })
+
+  it('uses the generic Partial tooltip when page counts are unknown', () => {
+    render(<DocumentCard doc={{ ...base, extractionPartial: true }} onOpen={() => {}} onDelete={() => {}} />)
+    expect(screen.getByText(/partial/i).closest('[title]')?.getAttribute('title')).toMatch(/some content may be missing/i)
+  })
+
+  it('shows no Partial badge when extractionPartial is falsy', () => {
+    render(<DocumentCard doc={base} onOpen={() => {}} onDelete={() => {}} />)
+    expect(screen.queryByText(/partial/i)).toBeNull()
+  })
 })

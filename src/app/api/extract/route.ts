@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { MAX_TEXT_LENGTH, getExtension, validateUploadedFile, extractTextFromBuffer } from '@/lib/fileExtraction'
+import { getExtension, validateUploadedFile, extractTextFromBuffer } from '@/lib/fileExtraction'
 import { apiError } from '@/lib/errors'
 
 export async function POST(request: NextRequest) {
@@ -18,19 +18,14 @@ export async function POST(request: NextRequest) {
 
     const ext = getExtension(file.name)
     const buffer = Buffer.from(await file.arrayBuffer())
-    let textContent = await extractTextFromBuffer(buffer, ext)
-
-    const truncated = textContent.length > MAX_TEXT_LENGTH
-    if (truncated) {
-      textContent = textContent.slice(0, MAX_TEXT_LENGTH)
-    }
+    const { text: textContent, partial } = await extractTextFromBuffer(buffer, ext)
 
     return NextResponse.json({
       filename: file.name,
       mimeType: file.type,
       textContent,
       charCount: textContent.length,
-      truncated,
+      truncated: partial,
     })
   } catch (error) {
     return apiError(error, 'Failed to extract text from file', 500)

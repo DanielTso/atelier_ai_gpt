@@ -77,6 +77,14 @@ export const DocumentPreviewDialog = memo(function DocumentPreviewDialog({
             )}
           </div>
 
+          {doc.extractionPartial && (
+            <div className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
+              {doc.pagesExtracted != null && doc.pageCount != null && doc.pagesExtracted < doc.pageCount
+                ? `Partial extraction — extracted ${doc.pagesExtracted} of ${doc.pageCount} pages. Some content may be missing.`
+                : 'Partial extraction — some content may be missing.'}
+            </div>
+          )}
+
           {/* Tab strip */}
           <div className="flex items-center gap-2 mb-3 text-sm">
             <div role="tablist" className="flex items-center gap-1">

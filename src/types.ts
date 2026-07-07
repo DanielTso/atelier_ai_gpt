@@ -18,6 +18,9 @@ export interface DocumentSummary {
   url: string | null
   thumbnailUrl: string | null
   extractionMethod: 'text' | 'vision' | null
+  pageCount?: number | null
+  pagesExtracted?: number | null
+  extractionPartial?: boolean
   revision: number
   updatedAt: string | null
 }

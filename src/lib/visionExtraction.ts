@@ -1,6 +1,7 @@
 import { generateText } from 'ai'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { getGeminiApiKey } from './settings'
+import type { ExtractionResult } from './fileExtraction'
 
 const EXTRACTION_PROMPT =
   'You are reading a single page of a construction document (plan/drawing/schedule). ' +
@@ -13,7 +14,7 @@ function num(v: string | undefined, d: number) { const n = v ? Number(v) : NaN; 
 function cfg() {
   return {
     model: process.env.EXTRACTION_MODEL || 'gemini-3.5-flash',
-    maxPages: num(process.env.EXTRACTION_MAX_PAGES, 30),
+    maxPages: num(process.env.EXTRACTION_MAX_PAGES, 60),
     scale: num(process.env.EXTRACTION_RENDER_SCALE, 3),
     maxOutputTokens: num(process.env.EXTRACTION_MAX_OUTPUT_TOKENS, 8000),
   }
@@ -29,10 +30,10 @@ async function extractImage(image: Uint8Array, model: string, maxOutputTokens: n
   return text.trim()
 }
 
-/** Render each PDF page and vision-extract it. Best-effort; '' if no key. */
-export async function extractViaVision(buffer: Buffer): Promise<string> {
+/** Render each PDF page and vision-extract it. Best-effort; empty result if no key. */
+export async function extractViaVision(buffer: Buffer): Promise<ExtractionResult> {
   const apiKey = await getGeminiApiKey()
-  if (!apiKey) return ''
+  if (!apiKey) return { text: '', pageCount: null, pagesExtracted: null, partial: false }
   const { model, maxPages, scale, maxOutputTokens } = cfg()
   const { definePDFJSModule, getDocumentProxy, renderPageAsImage } = await import('unpdf')
   await definePDFJSModule(() => import('pdfjs-dist/legacy/build/pdf.mjs'))
@@ -42,10 +43,9 @@ export async function extractViaVision(buffer: Buffer): Promise<string> {
   const source = new Uint8Array(buffer)
   const pdf = await getDocumentProxy(new Uint8Array(source))
   try {
-    const total = Math.min(pdf.numPages, maxPages)
-    if (pdf.numPages > maxPages) {
-      console.warn(`[visionExtraction] capping at ${maxPages}/${pdf.numPages} pages`)
-    }
+    const pageCount = pdf.numPages
+    const total = Math.min(pageCount, maxPages)
+    if (pageCount > maxPages) console.warn(`[visionExtraction] capping at ${maxPages}/${pageCount} pages`)
     const parts: string[] = []
     for (let page = 1; page <= total; page++) {
       try {
@@ -56,22 +56,23 @@ export async function extractViaVision(buffer: Buffer): Promise<string> {
         console.warn(`[visionExtraction] page ${page} failed:`, err instanceof Error ? err.message : err)
       }
     }
-    return parts.join('\n\n')
+    return { text: parts.join('\n\n'), pageCount, pagesExtracted: total, partial: total < pageCount }
   } finally {
     // Release pdfjs worker + page caches so they don't accumulate on a warm instance.
     await pdf.destroy?.()
   }
 }
 
-/** Vision-extract a single uploaded image. Best-effort; '' if no key. */
-export async function extractViaVisionImage(buffer: Buffer, _mimeType: string): Promise<string> {
+/** Vision-extract a single uploaded image. Best-effort; empty result if no key. */
+export async function extractViaVisionImage(buffer: Buffer, _mimeType: string): Promise<ExtractionResult> {
   const apiKey = await getGeminiApiKey()
-  if (!apiKey) return ''
+  if (!apiKey) return { text: '', pageCount: 1, pagesExtracted: 1, partial: false }
   const { model, maxOutputTokens } = cfg()
   try {
-    return await extractImage(new Uint8Array(buffer), model, maxOutputTokens, apiKey)
+    const text = await extractImage(new Uint8Array(buffer), model, maxOutputTokens, apiKey)
+    return { text, pageCount: 1, pagesExtracted: 1, partial: false }
   } catch (err) {
     console.warn('[visionExtraction] image failed:', err instanceof Error ? err.message : err)
-    return ''
+    return { text: '', pageCount: 1, pagesExtracted: 1, partial: false }
   }
 }

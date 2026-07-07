@@ -4,7 +4,7 @@ import { ingestText } from '@/lib/ingest'
 import { createUploadingDocument, updateDocumentStatus, updateDocumentStoragePath, getDocumentById } from '@/app/actions'
 import { ensureEmbeddingModel } from '@/lib/embeddings'
 import { isStorageConfigured, uploadBuffer, createSignedDownloadUrl, DOCUMENT_URL_TTL_SECONDS } from '@/lib/storage'
-import { MAX_TEXT_LENGTH } from '@/lib/fileExtraction'
+import { DOCUMENT_MAX_CHARS } from '@/lib/fileExtraction'
 import { webIngestRequestSchema } from '@/lib/validation'
 import { apiError } from '@/lib/errors'
 
@@ -35,7 +35,9 @@ export async function POST(request: NextRequest) {
     }
 
     let text = `Source: ${url}\n\n${markdown}`
-    if (text.length > MAX_TEXT_LENGTH) text = text.slice(0, MAX_TEXT_LENGTH)
+    // Over the ceiling → drop the tail AND flag partial (no silent loss, same as file ingest).
+    const partial = text.length > DOCUMENT_MAX_CHARS
+    if (partial) text = text.slice(0, DOCUMENT_MAX_CHARS)
 
     const [doc] = await createUploadingDocument({
       projectId, filename: title, mimeType: 'text/markdown', fileSize: Buffer.byteLength(text, 'utf-8'),
@@ -47,7 +49,7 @@ export async function POST(request: NextRequest) {
     await uploadBuffer(storagePath, Buffer.from(text, 'utf-8'), 'text/markdown')
     await updateDocumentStoragePath(doc.id, storagePath)
 
-    const { status } = await ingestText({ id: doc.id, projectId }, text, { extractionMethod: 'text' })
+    const { status } = await ingestText({ id: doc.id, projectId }, text, { extractionMethod: 'text', partial })
 
     const fresh = await getDocumentById(doc.id)
     const signedUrl = await createSignedDownloadUrl(storagePath, DOCUMENT_URL_TTL_SECONDS).catch(() => null)

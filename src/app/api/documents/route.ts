@@ -42,9 +42,14 @@ export async function DELETE(request: NextRequest) {
     if (doc) {
       // Sweep the current file + all retained revision files (revision rows cascade in the DB).
       const revisions = await getDocumentRevisions(id)
+      const extractedTxtPaths = [
+        `documents/${doc.projectId}/${doc.id}/extracted.txt`,
+        ...revisions.map(r => `documents/${r.projectId}/${doc.id}/rev${r.revision}/extracted.txt`),
+      ]
       const paths = [
         doc.storagePath, doc.thumbnailPath,
         ...revisions.flatMap(r => [r.storagePath, r.thumbnailPath]),
+        ...extractedTxtPaths,
       ].filter((p): p is string => Boolean(p))
       await removeObjects(paths).catch((e) => {
         console.warn('[documents] storage cleanup failed:', e instanceof Error ? e.message : e)
