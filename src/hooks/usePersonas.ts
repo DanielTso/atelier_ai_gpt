@@ -21,7 +21,9 @@ export interface Persona {
 /** Short, human-friendly labels for the curated models (used on persona chips). */
 const MODEL_SHORT_LABELS: Record<string, string> = {
   'claude-opus-4-8': 'Opus 4.8',
-  'claude-sonnet-4-6': 'Sonnet 4.6',
+  'claude-fable-5': 'Fable 5',
+  'claude-sonnet-5': 'Sonnet 5',
+  'claude-sonnet-4-6': 'Sonnet 4.6', // legacy label for chats still pinned to it
   'claude-haiku-4-5': 'Haiku 4.5',
   'gemini-3.1-flash-image': 'Nano Banana 2',
 }
@@ -193,15 +195,15 @@ You extract and structure information from construction drawings and specificati
 
 // Unified persona roster — each carries a prompt, model, and (except Haiku) effort.
 const PERSONAS: Persona[] = [
-  { id: 'general-assistant', name: 'General Assistant', icon: '💬', prompt: GENERAL_PROMPT, model: 'claude-sonnet-4-6', effort: 'medium', isDefault: true, description: 'Versatile everyday assistant' },
+  { id: 'general-assistant', name: 'General Assistant', icon: '💬', prompt: GENERAL_PROMPT, model: 'claude-sonnet-5', effort: 'medium', isDefault: true, description: 'Versatile everyday assistant' },
   { id: 'coding', name: 'Coding', icon: '👨‍💻', prompt: CODING_PROMPT, model: 'claude-opus-4-8', effort: 'high', description: 'Production-ready code, fast' },
   { id: 'code-review', name: 'Code Review', icon: '🔎', prompt: CODE_REVIEW_PROMPT, model: 'claude-opus-4-8', effort: 'high', description: 'Rigorous review for bugs, security & style' },
   { id: 'deep-analysis', name: 'Deep Analysis', icon: '🧠', prompt: DEEP_ANALYSIS_PROMPT, model: 'claude-opus-4-8', effort: 'max', description: 'Step-by-step reasoning at max effort' },
-  { id: 'creative-writing', name: 'Creative Writing', icon: '🎭', prompt: CREATIVE_PROMPT, model: 'claude-sonnet-4-6', effort: 'medium', description: 'Creative writing and storytelling' },
+  { id: 'creative-writing', name: 'Creative Writing', icon: '🎭', prompt: CREATIVE_PROMPT, model: 'claude-sonnet-5', effort: 'medium', description: 'Creative writing and storytelling' },
   { id: 'brief', name: 'Brief', icon: '⚡', prompt: BRIEF_PROMPT, model: 'claude-haiku-4-5', description: 'Fast, ultra-concise answers' },
-  { id: 'teacher', name: 'Teacher', icon: '📚', prompt: TEACHER_PROMPT, model: 'claude-sonnet-4-6', effort: 'medium', description: 'Patient, clear explanations' },
+  { id: 'teacher', name: 'Teacher', icon: '📚', prompt: TEACHER_PROMPT, model: 'claude-sonnet-5', effort: 'medium', description: 'Patient, clear explanations' },
   { id: 'construction-pro', name: 'Construction Pro', icon: '🏗️', prompt: CONSTRUCTION_PRO_PROMPT, model: 'claude-opus-4-8', effort: 'high', description: 'Superintendent’s aide: RFIs, submittals, schedules' },
-  { id: 'plan-spec-reader', name: 'Plan & Spec Reader', icon: '📐', prompt: PLAN_SPEC_READER_PROMPT, model: 'claude-sonnet-4-6', effort: 'medium', description: 'Structured extraction from drawings & specs' },
+  { id: 'plan-spec-reader', name: 'Plan & Spec Reader', icon: '📐', prompt: PLAN_SPEC_READER_PROMPT, model: 'claude-sonnet-5', effort: 'medium', description: 'Structured extraction from drawings & specs' },
 ]
 
 const DEFAULT_PERSONA = PERSONAS.find(p => p.isDefault) ?? PERSONAS[0]

@@ -18,8 +18,11 @@ describe('GET /api/models', () => {
     const data = await (await GET()).json()
     expect(data.models[0].model).toBe('claude-opus-4-8')
     const ids = data.models.map((m: { model: string }) => m.model)
-    expect(ids).toContain('claude-sonnet-4-6')
+    expect(ids).toContain('claude-fable-5')
+    expect(ids).toContain('claude-sonnet-5')
     expect(ids).toContain('claude-haiku-4-5')
+    // Sonnet 4.6 is retired from the picker (superseded by Sonnet 5)
+    expect(ids).not.toContain('claude-sonnet-4-6')
   })
 
   it('includes Nano Banana when Gemini key is set, no Gemini text models', async () => {
