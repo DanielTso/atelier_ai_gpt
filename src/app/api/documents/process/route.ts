@@ -137,7 +137,11 @@ export async function POST(request: NextRequest) {
       const textChunks = chunkText(textContent)
       // Replace: embed FIRST (no destructive writes yet), then snapshot the old
       // revision and atomically swap (delete old chunks + insert new + update row).
-      // If embedding/commit fails the prior revision stays fully intact.
+      // A commit/transaction failure rolls back, leaving the prior revision intact. A
+      // TOTAL embed failure still swaps in the new (unembedded) revision with status
+      // 'error' — the old file is kept as a revision snapshot, but its chunk index is
+      // replaced. (Retry/backoff makes total failure unlikely; aborting the swap to
+      // preserve the last good index is a deferred follow-up.)
       const { embeddings, embedded, failed } = await embedContents(textChunks.map(c => c.content))
       const chunkRows = textChunks.map((c, i) => ({ chunkIndex: c.index, content: c.content, embedding: embeddings[i] }))
       if (failed > 0) console.warn(`[documents/process] ${failed}/${textChunks.length} chunks failed to embed`)
