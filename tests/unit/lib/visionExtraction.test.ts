@@ -1,80 +1,105 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const mockGenerateText = vi.fn()
-const mockRender = vi.fn()
+const mockSplit = vi.fn()
 
-function setup(key: string | null = 'k', numPages = 2) {
+const seg = (firstPage: number, lastPage: number) => ({ bytes: new Uint8Array([1]), firstPage, lastPage })
+
+function setup(key: string | null = 'k') {
   vi.resetModules()
   vi.doMock('ai', () => ({ generateText: (...a: unknown[]) => mockGenerateText(...a) }))
   vi.doMock('@ai-sdk/google', () => ({ createGoogleGenerativeAI: () => (m: string) => ({ modelId: m }) }))
   vi.doMock('@/lib/settings', () => ({ getGeminiApiKey: () => Promise.resolve(key) }))
-  vi.doMock('unpdf', () => ({
-    definePDFJSModule: () => Promise.resolve(),
-    getDocumentProxy: () => Promise.resolve({ numPages }),
-    renderPageAsImage: (...a: unknown[]) => mockRender(...a),
-  }))
+  vi.doMock('@/lib/pdfSegments', () => ({ splitPdfIntoSegments: (...a: unknown[]) => mockSplit(...a) }))
 }
 
-describe('extractViaVision', () => {
-  beforeEach(() => { mockGenerateText.mockReset(); mockRender.mockReset() })
-
-  it('renders each page and concatenates per-page extractions', async () => {
-    setup('k', 2)
-    mockRender.mockResolvedValue(new ArrayBuffer(8))
-    mockGenerateText
-      .mockResolvedValueOnce({ text: 'PAGE ONE TEXT' })
-      .mockResolvedValueOnce({ text: 'PAGE TWO TEXT' })
-    const { extractViaVision } = await import('@/lib/visionExtraction')
-    const out = await extractViaVision(Buffer.from('pdf'))
-    expect(out.text).toContain('PAGE ONE TEXT')
-    expect(out.text).toContain('PAGE TWO TEXT')
-    expect(out.partial).toBe(false)
-    expect(out.pagesExtracted).toBe(2)
-    expect(mockRender).toHaveBeenCalledTimes(2)
-    // Each render must get its OWN buffer copy — pdfjs detaches the array it parses,
-    // so reusing one instance breaks page 2+ with a DataCloneError.
-    expect(mockRender.mock.calls[0][0]).not.toBe(mockRender.mock.calls[1][0])
+describe('extractViaVision (segmented)', () => {
+  beforeEach(() => {
+    mockGenerateText.mockReset()
+    mockSplit.mockReset()
+    process.env.EXTRACTION_SEGMENT_RETRIES = '0' // keep failure tests fast
   })
 
-  it('returns empty string when no API key', async () => {
-    setup(null, 2)
+  it('sends one call per segment with the pdf inline and joins in page order', async () => {
+    setup()
+    mockSplit.mockResolvedValue({ segments: [seg(1, 2), seg(3, 4)], pageCount: 4, skippedPages: 0 })
+    mockGenerateText
+      .mockResolvedValueOnce({ text: 'SEG ONE', finishReason: 'stop' })
+      .mockResolvedValueOnce({ text: 'SEG TWO', finishReason: 'stop' })
+    const { extractViaVision } = await import('@/lib/visionExtraction')
+    const out = await extractViaVision(Buffer.from('pdf'))
+    expect(out.text.indexOf('SEG ONE')).toBeLessThan(out.text.indexOf('SEG TWO'))
+    expect(out).toMatchObject({ pageCount: 4, pagesExtracted: 4, partial: false })
+    expect(mockGenerateText).toHaveBeenCalledTimes(2)
+    const content = mockGenerateText.mock.calls[0][0].messages[0].content
+    expect(content[1]).toMatchObject({ type: 'file', mediaType: 'application/pdf' })
+    // prompt carries the absolute page range so headings use real page numbers
+    expect(content[0].text).toContain('pages 1-2')
+  })
+
+  it('returns empty result without touching the pdf when no API key', async () => {
+    setup(null)
     const { extractViaVision } = await import('@/lib/visionExtraction')
     expect((await extractViaVision(Buffer.from('pdf'))).text).toBe('')
-    expect(mockRender).not.toHaveBeenCalled()
+    expect(mockSplit).not.toHaveBeenCalled()
   })
 
-  it('caps pages at EXTRACTION_MAX_PAGES and reports partial', async () => {
-    process.env.EXTRACTION_MAX_PAGES = '1'
-    setup('k', 5)
-    mockRender.mockResolvedValue(new ArrayBuffer(8))
-    mockGenerateText.mockResolvedValue({ text: 'X' })
-    const { extractViaVision } = await import('@/lib/visionExtraction')
-    const out = await extractViaVision(Buffer.from('pdf'))
-    expect(mockRender).toHaveBeenCalledTimes(1)
-    expect(out.pageCount).toBe(5)
-    expect(out.pagesExtracted).toBe(1)
-    expect(out.partial).toBe(true)
-    delete process.env.EXTRACTION_MAX_PAGES
-  })
-
-  it('tolerates a per-page failure and keeps going', async () => {
-    setup('k', 2)
-    mockRender.mockResolvedValue(new ArrayBuffer(8))
+  it('a segment that fails after retries drops its pages and flags partial', async () => {
+    setup()
+    mockSplit.mockResolvedValue({ segments: [seg(1, 2), seg(3, 4)], pageCount: 4, skippedPages: 0 })
     mockGenerateText
-      .mockRejectedValueOnce(new Error('page 1 boom'))
-      .mockResolvedValueOnce({ text: 'PAGE TWO OK' })
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValueOnce({ text: 'SEG TWO', finishReason: 'stop' })
     const { extractViaVision } = await import('@/lib/visionExtraction')
     const out = await extractViaVision(Buffer.from('pdf'))
-    expect(out.text).toContain('PAGE TWO OK')
+    expect(out.text).toBe('SEG TWO')
+    expect(out).toMatchObject({ pagesExtracted: 2, partial: true })
   })
 
-  it('extractViaVisionImage sends a single image directly', async () => {
-    setup('k')
+  it('retries a failed segment before giving up', async () => {
+    process.env.EXTRACTION_SEGMENT_RETRIES = '1'
+    setup()
+    mockSplit.mockResolvedValue({ segments: [seg(1, 2)], pageCount: 2, skippedPages: 0 })
+    mockGenerateText
+      .mockRejectedValueOnce(new Error('429'))
+      .mockResolvedValueOnce({ text: 'RECOVERED', finishReason: 'stop' })
+    const { extractViaVision } = await import('@/lib/visionExtraction')
+    const out = await extractViaVision(Buffer.from('pdf'))
+    expect(out.text).toBe('RECOVERED')
+    expect(out.partial).toBe(false)
+    expect(mockGenerateText).toHaveBeenCalledTimes(2)
+  })
+
+  it('output truncation (finishReason length) keeps text but flags partial', async () => {
+    setup()
+    mockSplit.mockResolvedValue({ segments: [seg(1, 2)], pageCount: 2, skippedPages: 0 })
+    mockGenerateText.mockResolvedValue({ text: 'TRUNCATED TEXT', finishReason: 'length' })
+    const { extractViaVision } = await import('@/lib/visionExtraction')
+    const out = await extractViaVision(Buffer.from('pdf'))
+    expect(out.text).toBe('TRUNCATED TEXT')
+    expect(out.partial).toBe(true)
+  })
+
+  it('skipped pages from the splitter flag partial', async () => {
+    setup()
+    mockSplit.mockResolvedValue({ segments: [seg(1, 2)], pageCount: 3, skippedPages: 1 })
+    mockGenerateText.mockResolvedValue({ text: 'OK', finishReason: 'stop' })
+    const { extractViaVision } = await import('@/lib/visionExtraction')
+    const out = await extractViaVision(Buffer.from('pdf'))
+    expect(out).toMatchObject({ pageCount: 3, pagesExtracted: 2, partial: true })
+  })
+})
+
+describe('extractViaVisionImage', () => {
+  beforeEach(() => { mockGenerateText.mockReset(); mockSplit.mockReset() })
+
+  it('sends a single image directly', async () => {
+    setup()
     mockGenerateText.mockResolvedValue({ text: 'IMAGE TEXT' })
     const { extractViaVisionImage } = await import('@/lib/visionExtraction')
     const out = await extractViaVisionImage(Buffer.from('img'), 'image/png')
     expect(out.text).toBe('IMAGE TEXT')
     expect(out.pageCount).toBe(1)
-    expect(mockRender).not.toHaveBeenCalled()
+    expect(mockSplit).not.toHaveBeenCalled()
   })
 })
