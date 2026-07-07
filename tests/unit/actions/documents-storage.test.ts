@@ -43,4 +43,17 @@ describe('document storage actions', () => {
     const [deleted] = await deleteDocument(doc.id)
     expect(deleted.id).toBe(doc.id)
   })
+
+  it('updateDocumentStatus bumps updated_at', async () => {
+    const { createUploadingDocument, updateDocumentStatus, getDocumentById } = await import('@/app/actions')
+    const [project] = await createProject('Bump Project')
+    const [doc] = await createUploadingDocument({ projectId: project.id, filename: 'b.pdf', mimeType: 'application/pdf', fileSize: 10 })
+
+    const before = Date.now()
+    await updateDocumentStatus(doc.id, 'processing')
+    const after = await getDocumentById(doc.id)
+
+    expect(after?.updatedAt).toBeInstanceOf(Date)
+    expect(after!.updatedAt!.getTime()).toBeGreaterThanOrEqual(before - 1000)
+  })
 })

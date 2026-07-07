@@ -13,6 +13,7 @@ async function importRoute() {
     getDocumentById: mockGetDocumentById,
     deleteDocument: mockDeleteDocument,
     getDocumentRevisions: vi.fn(async () => []),
+    reapStaleProcessing: vi.fn(async () => []),
   }))
   vi.doMock('@/lib/storage', () => ({
     createSignedDownloadUrls: mockCreateSignedDownloadUrls,

@@ -8,6 +8,9 @@ import { MAX_TEXT_LENGTH } from '@/lib/fileExtraction'
 import { webIngestRequestSchema } from '@/lib/validation'
 import { apiError } from '@/lib/errors'
 
+// Tavily extract + chunk + embed can run long on a large page; give it headroom.
+export const maxDuration = 800
+
 export async function POST(request: NextRequest) {
   let docId: number | null = null
   try {

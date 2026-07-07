@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.41.0] - 2026-07-06 — Stability & security hardening (Batch A)
+
+A cohesive hardening release from the 2026-07-06 deep-dive audit: RLS + FK indexes on the two tables added after the June RLS pass, incremental/infrequent summarization, and a guarantee that stuck document rows reach a terminal status. **No UI changes** — the warm palette + Fraunces are untouched.
+
+### Fixed
+
+- **Runaway re-summarization.** Past the 30-message threshold, `onFinish` used to fire summarization on *every* assistant turn and re-fold the whole history from message 1, plus a "Conversation summarized" toast each time. Now the client fires at most once per **10** new messages (monotonic delta gate — kept ≤ `RECENT_MESSAGES_LIMIT − MESSAGES_TO_KEEP` so the chat route's summary + recent-tail window stays gapless), the server folds only messages after `summary_up_to_message_id` (an empty window is a **200 no-op**, not a 400), and the toast is gone (silent housekeeping like embed/title/memory).
+- **Documents stuck in `processing` forever.** A platform timeout mid-vision-run could bypass every `catch`, leaving the row non-terminal. Routes now export `maxDuration = 800`, `updateDocumentStatus` bumps `updated_at` on every write, and a lazy reaper flips genuinely-stuck `processing` rows (older than **20 min**) to `error` on the next documents-list fetch.
+
+### Security
+
+- **RLS enabled on `artifact_versions` and `generated_images`** (deny-all to PostgREST/anon, matching the 13 other public tables; the app's owner role bypasses RLS — no policy added), clearing the two ERROR-level `rls_disabled_in_public` advisors.
+- **Three unindexed foreign keys indexed** — `idx_artifacts_project_id`, `idx_document_revisions_project_id`, `idx_memory_suggestions_chat_id` — clearing the `unindexed_foreign_keys` advisors.
+
+### Notes
+
+- **DB migration `0013`** (2 RLS enables + 3 FK indexes). Applied to live Supabase **user-gated** (`DIRECT_URL=… npx drizzle-kit migrate`); CI applies it automatically to its ephemeral pgvector Postgres. Re-run Supabase advisors after applying to confirm the findings clear.
+- Bounded vision-page concurrency stays **deferred to Batch B** (pages remain serial). The audit's remaining batches (B: perf quick-wins, C: dead-code + docs, D: dependency currency) are follow-ups.
+
 ## [4.40.1] - 2026-07-06 — CLAUDE.md accuracy pass (docs only)
 
 A docs-only patch from a `/init` audit of `CLAUDE.md` against the v4.40.0 codebase. No code changes.

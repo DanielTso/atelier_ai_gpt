@@ -23,7 +23,7 @@ vi.mock('@/app/actions', () => ({
 
 // Import the hook AFTER vi.mock so mocks are in place
 import { useChatPersistence, MEMORY_SUGGEST_EVERY } from '@/hooks/useChatPersistence'
-import { SUMMARIZATION_THRESHOLD } from '@/hooks/useSummarization'
+import { SUMMARIZATION_THRESHOLD, SUMMARIZE_EVERY } from '@/hooks/useSummarization'
 
 // ----------------------------------------------------------------
 // Helpers
@@ -59,18 +59,21 @@ function makeOpts(overrides: {
   projectId?: number | null
   lastSavedAssistantId?: string | null
   lastSuggestedAt?: Map<number, number>
+  lastSummarizedCount?: Map<number, number>
 } = {}) {
   const {
     chatId = 1,
     projectId = null,
     lastSavedAssistantId = null,
     lastSuggestedAt = new Map(),
+    lastSummarizedCount = new Map(),
   } = overrides
 
   const activeChatIdRef = { current: chatId }
   const activeProjectIdRef = { current: projectId }
   const lastSavedAssistantIdRef = { current: lastSavedAssistantId }
   const lastSuggestedAtRef = { current: lastSuggestedAt }
+  const lastSummarizedCountRef = { current: lastSummarizedCount }
   // Cast mocks to the required dispatch types — the actual type doesn't matter in tests.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const setMessages = vi.fn() as any
@@ -84,6 +87,7 @@ function makeOpts(overrides: {
     activeProjectIdRef,
     lastSavedAssistantIdRef,
     lastSuggestedAtRef,
+    lastSummarizedCountRef,
     setMessages,
     setArtifacts,
     triggerSummarization,
@@ -172,6 +176,27 @@ describe('useChatPersistence', () => {
     })
 
     expect(opts.triggerSummarization).not.toHaveBeenCalled()
+  })
+
+  // (c) delta-gate: past the threshold, fold at most once per SUMMARIZE_EVERY new messages
+  it('(c) fires summarization at most once per SUMMARIZE_EVERY new messages past the threshold', async () => {
+    const opts = makeOpts({ chatId: 12 })
+    const { result } = renderHook(() => useChatPersistence(opts))
+
+    // First finish past the threshold → fires, records the count.
+    mockGetMessageCount.mockResolvedValue(SUMMARIZATION_THRESHOLD + 1) // 31, delta 31
+    await act(async () => { await result.current({ message: makeMessage({ id: 'a' }) }) })
+    expect(opts.triggerSummarization).toHaveBeenCalledTimes(1)
+
+    // A few messages later (delta < SUMMARIZE_EVERY) → does NOT fire again.
+    mockGetMessageCount.mockResolvedValue(SUMMARIZATION_THRESHOLD + 10) // 40, delta 9
+    await act(async () => { await result.current({ message: makeMessage({ id: 'b' }) }) })
+    expect(opts.triggerSummarization).toHaveBeenCalledTimes(1)
+
+    // Once the delta reaches SUMMARIZE_EVERY → fires again.
+    mockGetMessageCount.mockResolvedValue(SUMMARIZATION_THRESHOLD + SUMMARIZE_EVERY + 1) // 51, delta 20 from the first fire
+    await act(async () => { await result.current({ message: makeMessage({ id: 'c' }) }) })
+    expect(opts.triggerSummarization).toHaveBeenCalledTimes(2)
   })
 
   // (d) project chat past the gate → POST /api/memory/suggest

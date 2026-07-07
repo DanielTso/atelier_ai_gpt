@@ -26,6 +26,7 @@ import {
   createChat,
   saveMessage,
   getChatWithContext,
+  updateChatSummary,
 } from '@/app/actions'
 
 function makeRequest(body: Record<string, unknown>) {
@@ -78,15 +79,37 @@ describe('POST /api/summarize', () => {
     expect(data.error).toContain('not found')
   })
 
-  it('returns 400 when no messages to summarize', async () => {
+  it('returns a 200 no-op when the window is empty (already up to date)', async () => {
     const [project] = await createProject('P')
     const [chat] = await createChat(project.id, 'Chat')
 
     const POST = await importRoute()
     const res = await POST(makeRequest({ chatId: chat.id, cutoffMessageId: 999 }))
-    expect(res.status).toBe(400)
+    expect(res.status).toBe(200)
     const data = await res.json()
-    expect(data.error).toContain('No messages')
+    expect(data.success).toBe(true)
+    expect(data.summarizedMessageCount).toBe(0)
+  })
+
+  it('folds only messages after summaryUpToMessageId', async () => {
+    const [project] = await createProject('P')
+    const [chat] = await createChat(project.id, 'Chat')
+    await saveMessage(chat.id, 'user', 'One')
+    const [m2] = await saveMessage(chat.id, 'assistant', 'Two')
+    await saveMessage(chat.id, 'user', 'Three')
+    const [m4] = await saveMessage(chat.id, 'assistant', 'Four')
+    // Pretend we already summarized through m2.
+    await updateChatSummary(chat.id, 'Earlier summary', m2.id)
+
+    const POST = await importRoute()
+    const res = await POST(makeRequest({ chatId: chat.id, cutoffMessageId: m4.id }))
+    expect(res.status).toBe(200)
+    const data = await res.json()
+    // Only m3 and m4 are in (m2, m4]; m1/m2 excluded by the lower bound.
+    expect(data.summarizedMessageCount).toBe(2)
+
+    const updated = await getChatWithContext(chat.id)
+    expect(updated!.summaryUpToMessageId).toBe(m4.id)
   })
 
   it('successfully summarizes messages and updates chat', async () => {

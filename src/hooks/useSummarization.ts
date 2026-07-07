@@ -1,11 +1,18 @@
 import { useCallback, type RefObject } from 'react'
-import { toast } from 'sonner'
 import { getChatMessages } from '@/app/actions'
 
 // Context management: auto-summarize older messages once a chat grows past the
 // threshold, keeping the most recent MESSAGES_TO_KEEP in full.
 export const SUMMARIZATION_THRESHOLD = 30
 export const MESSAGES_TO_KEEP = 10
+// Delta gate: past the threshold, fold at most once per this many NEW messages
+// (the server window is now incremental, so each fold is cheap). MUST stay
+// <= RECENT_MESSAGES_LIMIT - MESSAGES_TO_KEEP (the chat route sends `summary` +
+// the last RECENT_MESSAGES_LIMIT=20 messages): a larger value lets the lagging
+// summary boundary and the recent tail drift apart, leaving the messages between
+// them in NEITHER layer — a silent context gap. 20-10 = 10 keeps it gapless.
+// Imported by useChatPersistence's onFinish trigger.
+export const SUMMARIZE_EVERY = 10
 
 /**
  * Returns a stable `triggerSummarization(chatId, messageCount)` that compresses all but
@@ -26,15 +33,11 @@ export function useSummarization(selectedModelRef: RefObject<string>) {
       if (!cutoffMessageId) return
 
       try {
-        const response = await fetch('/api/summarize', {
+        await fetch('/api/summarize', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ chatId, cutoffMessageId, model: selectedModelRef.current }),
         })
-        if (response.ok) {
-          await response.json()
-          toast.success('Conversation summarized for better context management')
-        }
       } catch (error) {
         console.error('[Summarization] Error:', error)
       }

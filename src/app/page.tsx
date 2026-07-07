@@ -160,6 +160,9 @@ export default function Home() {
   // monotonic delta (count - last >= 6) instead of `count % 6` avoids both missed
   // boundaries (count jumps) and double-fires (overlapping onFinish).
   const lastSuggestedAtRef = useRef<Map<number, number>>(new Map())
+  // Summarization: per-chat message count at the last fold. Monotonic delta-gate
+  // (count - last >= SUMMARIZE_EVERY) so a long chat folds infrequently, not per turn.
+  const lastSummarizedCountRef = useRef<Map<number, number>>(new Map())
 
   // Context-window management (auto-summarize older messages past the threshold).
   const triggerSummarization = useSummarization(selectedModelRef)
@@ -186,6 +189,7 @@ export default function Home() {
     activeProjectIdRef,
     lastSavedAssistantIdRef,
     lastSuggestedAtRef,
+    lastSummarizedCountRef,
     setMessages,
     setArtifacts,
     triggerSummarization,
