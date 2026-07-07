@@ -100,6 +100,7 @@ export const documentRevisions = pgTable('document_revisions', {
   createdAt: createdAt(),
 }, (table) => [
   index('idx_doc_revisions_document_id').on(table.documentId),
+  index('idx_document_revisions_project_id').on(table.projectId),
 ]);
 
 export const documentChunks = pgTable('document_chunks', {
@@ -133,6 +134,7 @@ export const artifacts = pgTable('artifacts', {
   createdAt: createdAt(),
 }, (table) => [
   index('idx_artifacts_chat_id').on(table.chatId),
+  index('idx_artifacts_project_id').on(table.projectId),
 ]);
 
 // D2: one row per artifact version (create / edit / regenerate). The active one is
@@ -150,7 +152,7 @@ export const artifactVersions = pgTable('artifact_versions', {
   createdAt: createdAt(),
 }, (table) => [
   index('idx_artifact_versions_artifact_id').on(table.artifactId),
-]);
+]).enableRLS();
 
 export const personaUsage = pgTable('persona_usage', {
   id: idPk(),
@@ -205,7 +207,7 @@ export const generatedImages = pgTable('generated_images', {
   createdAt: createdAt(),
 }, (table) => [
   index('idx_generated_images_project_created').on(table.projectId, table.createdAt.desc()),
-]);
+]).enableRLS();
 
 // Auto-memory: throttled Gemini pass proposes durable project facts as pending
 // suggestions; accepting one appends to projects.memory. chatId is SET NULL on
@@ -220,4 +222,5 @@ export const memorySuggestions = pgTable('memory_suggestions', {
 }, (table) => [
   // Covers the hot query: filter (project_id, status) + ORDER BY created_at DESC.
   index('idx_memory_suggestions_project_status').on(table.projectId, table.status, table.createdAt.desc()),
+  index('idx_memory_suggestions_chat_id').on(table.chatId),
 ]);
