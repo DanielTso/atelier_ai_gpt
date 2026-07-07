@@ -83,4 +83,16 @@ describe('context actions', () => {
     expect(msgs[1].content).toBe('Second')
   })
 
+  it('getMessagesForSummarization respects the fromMessageId lower bound', async () => {
+    const [m1] = await saveMessage(chatId, 'user', 'First')
+    await saveMessage(chatId, 'assistant', 'Second')
+    const [m3] = await saveMessage(chatId, 'user', 'Third')
+
+    // Window (m1, m3] excludes m1.
+    const msgs = await getMessagesForSummarization(chatId, m3.id, m1.id)
+    expect(msgs).toHaveLength(2)
+    expect(msgs[0].content).toBe('Second')
+    expect(msgs[1].content).toBe('Third')
+  })
+
 })

@@ -31,12 +31,14 @@ export async function POST(req: Request) {
       });
     }
 
-    // Get messages to summarize
-    const messagesToSummarize = await getMessagesForSummarization(chatId, cutoffMessageId);
+    // Fold only messages newer than what the existing summary already covers.
+    const fromMessageId = chat.summaryUpToMessageId ?? 0;
+    const messagesToSummarize = await getMessagesForSummarization(chatId, cutoffMessageId, fromMessageId);
 
     if (messagesToSummarize.length === 0) {
-      return new Response(JSON.stringify({ error: 'No messages to summarize' }), {
-        status: 400,
+      // Already up to date — not an error. Silent no-op.
+      return new Response(JSON.stringify({ success: true, summarizedMessageCount: 0 }), {
+        status: 200,
         headers: { 'Content-Type': 'application/json' }
       });
     }

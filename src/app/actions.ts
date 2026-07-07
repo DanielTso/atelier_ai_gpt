@@ -2,7 +2,7 @@
 
 import { db } from '@/db'
 import { projects, chats, messages, settings, messageEmbeddings, personaUsage, chatTopics, documents, documentChunks, documentRevisions, messageAttachments, artifacts, artifactVersions, memorySuggestions, generatedImages } from '@/db/schema'
-import { eq, desc, isNull, isNotNull, and, lte, asc, count, inArray, sql } from 'drizzle-orm'
+import { eq, desc, isNull, isNotNull, and, lte, gt, asc, count, inArray, sql } from 'drizzle-orm'
 import { isStorageConfigured, uploadBuffer, createSignedDownloadUrls, removeObjects, signedArtifactUrl, signedArtifactUrls } from '@/lib/storage'
 import { blankArtifactTemplate } from '@/lib/artifacts/templates'
 import { renderArtifact } from '@/lib/artifacts/render'
@@ -261,13 +261,15 @@ export async function getMessageCount(chatId: number) {
   return result?.count ?? 0
 }
 
-export async function getMessagesForSummarization(chatId: number, upToMessageId: number) {
-  // Get messages up to (and including) the specified message ID for summarization
-  // These are the older messages that will be compressed into a summary
+export async function getMessagesForSummarization(chatId: number, upToMessageId: number, fromMessageId = 0) {
+  // Fold only messages in (fromMessageId, upToMessageId]. `fromMessageId` defaults to
+  // 0 (backwards-compatible: 0 < every identity PK) so existing callers are unchanged;
+  // the summarize route passes chat.summaryUpToMessageId so each fold is incremental.
   return await db.select()
     .from(messages)
     .where(and(
       eq(messages.chatId, chatId),
+      gt(messages.id, fromMessageId),
       lte(messages.id, upToMessageId),
     ))
     .orderBy(asc(messages.createdAt))
