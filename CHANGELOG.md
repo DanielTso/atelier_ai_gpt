@@ -8,7 +8,7 @@ A cohesive hardening release from the 2026-07-06 deep-dive audit: RLS + FK index
 
 ### Fixed
 
-- **Runaway re-summarization.** Past the 30-message threshold, `onFinish` used to fire summarization on *every* assistant turn and re-fold the whole history from message 1, plus a "Conversation summarized" toast each time. Now the client fires at most once per **20** new messages (monotonic delta gate), the server folds only messages after `summary_up_to_message_id` (an empty window is a **200 no-op**, not a 400), and the toast is gone (silent housekeeping like embed/title/memory).
+- **Runaway re-summarization.** Past the 30-message threshold, `onFinish` used to fire summarization on *every* assistant turn and re-fold the whole history from message 1, plus a "Conversation summarized" toast each time. Now the client fires at most once per **10** new messages (monotonic delta gate — kept ≤ `RECENT_MESSAGES_LIMIT − MESSAGES_TO_KEEP` so the chat route's summary + recent-tail window stays gapless), the server folds only messages after `summary_up_to_message_id` (an empty window is a **200 no-op**, not a 400), and the toast is gone (silent housekeeping like embed/title/memory).
 - **Documents stuck in `processing` forever.** A platform timeout mid-vision-run could bypass every `catch`, leaving the row non-terminal. Routes now export `maxDuration = 800`, `updateDocumentStatus` bumps `updated_at` on every write, and a lazy reaper flips genuinely-stuck `processing` rows (older than **20 min**) to `error` on the next documents-list fetch.
 
 ### Security

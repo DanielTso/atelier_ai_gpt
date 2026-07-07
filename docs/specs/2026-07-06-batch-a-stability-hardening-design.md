@@ -34,7 +34,7 @@ The 2026-07-06 audit surfaced three verified stability/security issues that shar
 | Decision | Choice |
 |---|---|
 | Spec scope | **Batch A alone**; P3 directions captured as follow-ups |
-| Summarization | **Incremental fold-in**, delta-gated (~20 new messages), toast removed |
+| Summarization | **Incremental fold-in**, delta-gated (10 new messages; final review revised 20→10 to keep the chat-context window gapless), toast removed |
 | Stale-processing reaper | **Opportunistic lazy sweep** (no cron infra) |
 | Archived chats (follow-up) | **Resurrect** — own spec later |
 | Artifact renderers (follow-up) | **Warm re-skin** — own spec later |
@@ -70,7 +70,7 @@ CREATE INDEX "idx_memory_suggestions_chat_id" ON "memory_suggestions" USING btre
 
 **Files:** `src/hooks/useChatPersistence.ts`, `src/hooks/useSummarization.ts`, `src/app/actions.ts`, `src/app/api/summarize/route.ts`.
 
-- **Trigger gate** (`useChatPersistence.ts`, near line 136): introduce a monotonic `lastSummarizedCountRef` (a `Map<number, number>` by chatId, mirroring the existing `lastSuggestedAtRef` auto-memory gate in the same callback). Fire only when `messageCount > SUMMARIZATION_THRESHOLD && messageCount - lastSummarized >= SUMMARIZE_EVERY`. On the summarize call, set `lastSummarizedCountRef[chatId] = messageCount`. `SUMMARIZE_EVERY = 20` is exported from `useSummarization.ts` (alongside `SUMMARIZATION_THRESHOLD`/`MESSAGES_TO_KEEP`) and imported by `useChatPersistence.ts`. A page reload resets the ref to 0 → at most one extra fold on the next finish, which is cheap because the server window is now incremental.
+- **Trigger gate** (`useChatPersistence.ts`, near line 136): introduce a monotonic `lastSummarizedCountRef` (a `Map<number, number>` by chatId, mirroring the existing `lastSuggestedAtRef` auto-memory gate in the same callback). Fire only when `messageCount > SUMMARIZATION_THRESHOLD && messageCount - lastSummarized >= SUMMARIZE_EVERY`. On the summarize call, set `lastSummarizedCountRef[chatId] = messageCount`. `SUMMARIZE_EVERY = 10` is exported from `useSummarization.ts` (alongside `SUMMARIZATION_THRESHOLD`/`MESSAGES_TO_KEEP`) and imported by `useChatPersistence.ts`. A page reload resets the ref to 0 → at most one extra fold on the next finish, which is cheap because the server window is now incremental.
 - **Incremental window** (`actions.ts:264`): change `getMessagesForSummarization(chatId, upToMessageId, fromMessageId = 0)` and add `gt(messages.id, fromMessageId)` to the `and(...)`. `fromMessageId` defaults to 0 (backwards-compatible with any other caller/tests).
 - **Route** (`api/summarize/route.ts`): read `chat.summaryUpToMessageId ?? 0` and pass it as `fromMessageId`, so only messages in `(summaryUpToMessageId, cutoffMessageId]` are folded. The existing prompt already prepends `chat.summary` as *"Previous conversation summary … New messages to incorporate:"* — folding is already the prompt shape. If the window is empty, return a **200 no-op** (`{ success: true, summarizedMessageCount: 0 }`) instead of the current 400 — "already up to date" is not an error. `updateChatSummary` already advances `summaryUpToMessageId`.
 - **Toast** (`useSummarization.ts:36`): remove the `toast.success(...)`; keep `console.error` on failure. Summarization becomes silent housekeeping, consistent with embed/title/memory.
@@ -122,7 +122,7 @@ CREATE INDEX "idx_memory_suggestions_chat_id" ON "memory_suggestions" USING btre
 ## Definition of done
 
 - Migration `0013` authored, generated SQL verified to contain only the intended statements, applied to live Supabase (user-gated), drizzle ledger in sync; advisors re-run show the two RLS ERRORs and three FK-index INFOs cleared.
-- Summarization fires ≤ once per 20 new messages, folds only new messages, no success toast; verified in a long chat.
+- Summarization fires ≤ once per 10 new messages, folds only new messages, no success toast; verified in a long chat.
 - A force-stuck `processing` row flips to `error` on the next documents-list fetch; `process`/`web-ingest` export `maxDuration`.
 - Full gate green with the five new/extended tests. Shipped as v4.41.0 (branch → gate → user go → merge/tag/push/release → CI → Supabase migration on confirm).
 

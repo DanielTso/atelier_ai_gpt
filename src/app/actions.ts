@@ -500,7 +500,7 @@ export async function reapStaleProcessing(projectId?: number) {
     .where(and(
       eq(documents.status, 'processing'),
       sql`coalesce(${documents.updatedAt}, ${documents.createdAt}) < now() - make_interval(mins => ${STALE_PROCESSING_MINUTES})`,
-      projectId ? eq(documents.projectId, projectId) : undefined,
+      projectId !== undefined ? eq(documents.projectId, projectId) : undefined,
     ))
     .returning()
 }

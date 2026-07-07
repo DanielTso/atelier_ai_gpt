@@ -19,7 +19,7 @@ Bake these into every task verbatim:
 - **Pages stay serial.** Bounded vision-page concurrency is deferred to Batch B (co-designed with RAM buffering). Do not add concurrency here.
 - **`maxDuration = 800`** exported in `documents/process` + `documents/web-ingest` (fallback `300` if the plan rejects 800 at deploy).
 - **Reaper threshold 20 min > `maxDuration` (~13.3 min)** so a still-running job is never reaped.
-- **`SUMMARIZE_EVERY = 20`** (delta gate) exported from `useSummarization.ts`.
+- **`SUMMARIZE_EVERY = 10`** (delta gate) exported from `useSummarization.ts`.
 - **`STALE_PROCESSING_MINUTES = 20`** exported from `actions.ts`.
 - **Commit trailer** on every commit: `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`. Conventional Commits 1.0, imperative lowercase, no trailing period.
 
@@ -312,7 +312,7 @@ Steps:
 ### Task 3: Trigger gate + toast removal (hooks)  — [Model tier: OPUS]
 
 **Files**
-- Modify `src/hooks/useSummarization.ts` — export `SUMMARIZE_EVERY = 20`; remove the `toast.success` (and the now-unused `toast` import + `response` handling).
+- Modify `src/hooks/useSummarization.ts` — export `SUMMARIZE_EVERY = 10`; remove the `toast.success` (and the now-unused `toast` import + `response` handling).
 - Modify `src/hooks/useChatPersistence.ts` — add `lastSummarizedCountRef` to the opts interface + destructure + monotonic gate + deps; import `SUMMARIZE_EVERY`.
 - Modify `src/app/page.tsx` — create `lastSummarizedCountRef` and pass it into `useChatPersistence` (interface change → required for typecheck).
 - Modify `tests/hooks/useChatPersistence.test.ts` — extend `makeOpts` with `lastSummarizedCountRef`; add the delta-gate test.
@@ -406,7 +406,7 @@ Steps:
   // Delta gate: past the threshold, fold at most once per this many NEW messages
   // (the server window is now incremental, so each fold is cheap). Imported by
   // useChatPersistence's onFinish trigger.
-  export const SUMMARIZE_EVERY = 20
+  export const SUMMARIZE_EVERY = 10
   ```
 
 - [ ] **Edit `src/hooks/useSummarization.ts` — remove the toast** (silent housekeeping, like embed/title/memory). Remove the `import { toast } from 'sonner'` line (line 2) and replace the whole `try`/`catch` block (lines 28–40) so the `response` var is dropped (no unused-var lint) and `console.error` is kept:
@@ -772,6 +772,6 @@ Steps:
 ## Definition of done (from the spec)
 
 - Migration `0013` authored, generated SQL verified to contain only the 2 RLS enables + 3 indexes, drizzle ledger in sync; applied to live Supabase (user-gated) with advisors cleared.
-- Summarization fires ≤ once per 20 new messages, folds only new messages, no success toast.
+- Summarization fires ≤ once per 10 new messages, folds only new messages, no success toast.
 - A force-stuck `processing` row flips to `error` on the next documents-list fetch; `process`/`web-ingest` export `maxDuration`.
 - Full gate green with the five new/extended test surfaces (`migration-0013`, `context` lower-bound, `summarize-route` 200-no-op + incremental, `documents-storage` bump, `reap-stale-processing`, `useChatPersistence` delta-gate). Shipped as v4.41.0.
