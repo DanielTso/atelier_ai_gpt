@@ -4,6 +4,7 @@ const m = {
   getDocumentById: vi.fn(), updateDocumentStatus: vi.fn(), saveDocumentChunks: vi.fn(), updateChunkEmbedding: vi.fn(),
   createDocumentRevision: vi.fn(), commitDocumentReplacement: vi.fn(),
   ensureEmbeddingModel: vi.fn(), generateEmbedding: vi.fn(), chunkText: vi.fn(),
+  embedChunks: vi.fn(), embedContents: vi.fn(),
   downloadToBuffer: vi.fn(), uploadBuffer: vi.fn(),
   generatePdfThumbnail: vi.fn(), generateImageThumbnail: vi.fn(),
   extractTextFromBuffer: vi.fn(), extractViaVision: vi.fn(), extractViaVisionImage: vi.fn(),
@@ -17,6 +18,7 @@ async function importRoute() {
     createDocumentRevision: m.createDocumentRevision, commitDocumentReplacement: m.commitDocumentReplacement,
   }))
   vi.doMock('@/lib/embeddings', () => ({ ensureEmbeddingModel: m.ensureEmbeddingModel, generateEmbedding: m.generateEmbedding }))
+  vi.doMock('@/lib/embedChunks', () => ({ embedChunks: m.embedChunks, embedContents: m.embedContents }))
   vi.doMock('@/lib/chunking', () => ({ chunkText: m.chunkText }))
   vi.doMock('@/lib/storage', () => ({ downloadToBuffer: m.downloadToBuffer, uploadBuffer: m.uploadBuffer, sanitizeStorageName: (s: string) => s.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/^\.+$/, '_') }))
   vi.doMock('@/lib/thumbnails', () => ({ generatePdfThumbnail: m.generatePdfThumbnail, generateImageThumbnail: m.generateImageThumbnail }))
@@ -42,6 +44,8 @@ describe('POST /api/documents/process', () => {
     m.downloadToBuffer.mockResolvedValue(Buffer.from('bytes'))
     m.chunkText.mockReturnValue([{ index: 0, content: 'chunk' }])
     m.saveDocumentChunks.mockResolvedValue([{ id: 11, content: 'chunk' }])
+    m.embedChunks.mockImplementation(async (chunks: { id: number }[]) => ({ embedded: chunks.length, failed: 0 }))
+    m.embedContents.mockImplementation(async (contents: string[]) => ({ embeddings: contents.map(() => new Array(768).fill(0.1)), embedded: contents.length, failed: 0 }))
     m.generateEmbedding.mockResolvedValue(new Array(768).fill(0.1))
     m.updateChunkEmbedding.mockResolvedValue(undefined)
     m.updateDocumentStatus.mockResolvedValue(undefined)
@@ -151,7 +155,7 @@ describe('POST /api/documents/process', () => {
   it('replace path: all embeddings fail → committed with status error (old revision not lost mid-flight)', async () => {
     m.getDocumentById.mockResolvedValue({ id: 21, projectId: 1, revision: 3, filename: 'old.pdf', mimeType: 'application/pdf', fileSize: 5, storagePath: 'p', thumbnailPath: null, charCount: 10, chunkCount: 1, extractionMethod: 'text' })
     m.extractTextFromBuffer.mockResolvedValue(extRes('A'.repeat(300)))
-    m.generateEmbedding.mockRejectedValue(new Error('embed down'))
+    m.embedContents.mockResolvedValue({ embeddings: [null], embedded: 0, failed: 1 })
     m.createDocumentRevision.mockResolvedValue([{ id: 1 }])
     m.commitDocumentReplacement.mockResolvedValue(undefined)
     const POST = await importRoute()
@@ -193,5 +197,39 @@ describe('POST /api/documents/process', () => {
     const res = await POST(req(13) as never)
     expect(res.status).toBe(500)
     expect(m.updateDocumentStatus).toHaveBeenCalledWith(13, 'error', expect.objectContaining({ errorMessage: expect.any(String) }))
+  })
+
+  it('uploads the full extracted text as extracted.txt (best-effort)', async () => {
+    m.getDocumentById.mockResolvedValue({ id: 30, projectId: 1, filename: 'doc.pdf', mimeType: 'application/pdf', storagePath: 'documents/1/30/doc.pdf' })
+    m.extractTextFromBuffer.mockResolvedValue(extRes('A'.repeat(300)))
+    const POST = await importRoute()
+    await POST(req(30) as never)
+    expect(m.uploadBuffer).toHaveBeenCalledWith(expect.stringContaining('extracted.txt'), expect.any(Buffer), 'text/plain')
+  })
+
+  it('threads vision page-cap partial into the status write', async () => {
+    m.getDocumentById.mockResolvedValue({ id: 31, projectId: 1, filename: 'scan.pdf', mimeType: 'application/pdf', storagePath: 'p' })
+    m.extractTextFromBuffer.mockResolvedValue(extRes(''))
+    m.extractViaVision.mockResolvedValue(extRes('V'.repeat(300), { pageCount: 80, pagesExtracted: 60, partial: true }))
+    const POST = await importRoute()
+    await POST(req(31) as never)
+    expect(m.updateDocumentStatus).toHaveBeenCalledWith(31, 'ready', expect.objectContaining({
+      pageCount: 80, pagesExtracted: 60, extractionPartial: true,
+    }))
+  })
+
+  it('replace path threads fidelity fields into commitDocumentReplacement', async () => {
+    m.getDocumentById.mockResolvedValue({ id: 32, projectId: 1, revision: 1, filename: 'old.pdf', mimeType: 'application/pdf', fileSize: 5, storagePath: 'documents/1/32/old.pdf', thumbnailPath: null, charCount: 10, chunkCount: 1, extractionMethod: 'text' })
+    m.extractTextFromBuffer.mockResolvedValue(extRes('A'.repeat(300), { pageCount: 12, pagesExtracted: null, partial: false }))
+    m.createDocumentRevision.mockResolvedValue([{ id: 1 }])
+    m.commitDocumentReplacement.mockResolvedValue(undefined)
+    const POST = await importRoute()
+    await POST(new Request('http://localhost/api/documents/process', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ documentId: 32, filename: 'new.pdf', mimeType: 'application/pdf', fileSize: 9 }),
+    }) as never)
+    expect(m.commitDocumentReplacement).toHaveBeenCalledWith(32, 1, expect.any(Array), expect.objectContaining({
+      pageCount: 12, extractionPartial: false,
+    }))
   })
 })

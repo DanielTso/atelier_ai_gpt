@@ -55,13 +55,14 @@ describe('DELETE /api/documents', () => {
   })
 
   it('removes storage objects then deletes the row', async () => {
-    mockGetDocumentById.mockResolvedValue({ id: 5, storagePath: 'documents/1/5/a.pdf', thumbnailPath: 'documents/1/5/thumb.webp' })
+    mockGetDocumentById.mockResolvedValue({ id: 5, projectId: 1, storagePath: 'documents/1/5/a.pdf', thumbnailPath: 'documents/1/5/thumb.webp' })
     mockRemoveObjects.mockResolvedValue(undefined)
     mockDeleteDocument.mockResolvedValue([{ id: 5 }])
     const { DELETE } = await importRoute()
     const res = await DELETE(new Request('http://localhost/api/documents?id=5', { method: 'DELETE' }) as never)
     expect(res.status).toBe(200)
-    expect(mockRemoveObjects).toHaveBeenCalledWith(['documents/1/5/a.pdf', 'documents/1/5/thumb.webp'])
+    // the current file's extracted.txt is swept alongside the original + thumbnail
+    expect(mockRemoveObjects).toHaveBeenCalledWith(['documents/1/5/a.pdf', 'documents/1/5/thumb.webp', 'documents/1/5/extracted.txt'])
     expect(mockDeleteDocument).toHaveBeenCalledWith(5)
   })
 })

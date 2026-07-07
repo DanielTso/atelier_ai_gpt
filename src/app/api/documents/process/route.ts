@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDocumentById, updateDocumentStatus, createDocumentRevision, commitDocumentReplacement } from '@/app/actions'
-import { generateEmbedding, ensureEmbeddingModel } from '@/lib/embeddings'
+import { ensureEmbeddingModel } from '@/lib/embeddings'
 import { chunkText } from '@/lib/chunking'
+import { embedContents } from '@/lib/embedChunks'
 import { ingestText } from '@/lib/ingest'
 import { MAX_FILE_SIZE, DOCUMENT_MAX_CHARS, getExtension, isImageExtension, isSupported, extractTextFromBuffer } from '@/lib/fileExtraction'
+import type { ExtractionResult } from '@/lib/fileExtraction'
 import { extractViaVision, extractViaVisionImage } from '@/lib/visionExtraction'
 import { downloadToBuffer, uploadBuffer, sanitizeStorageName } from '@/lib/storage'
 import { generatePdfThumbnail, generateImageThumbnail } from '@/lib/thumbnails'
@@ -73,17 +75,19 @@ export async function POST(request: NextRequest) {
 
     let textContent = ''
     let extractionMethod: 'text' | 'vision' = 'text'
+    let extraction: ExtractionResult = { text: '', pageCount: null, pagesExtracted: null, partial: false }
     try {
       if (isImage) {
-        const r = await extractViaVisionImage(buffer, effMimeType)
-        textContent = r.text
+        extraction = await extractViaVisionImage(buffer, effMimeType)
+        textContent = extraction.text
         extractionMethod = 'vision'
       } else {
-        const r = await extractTextFromBuffer(buffer, ext)
-        textContent = r.text
+        extraction = await extractTextFromBuffer(buffer, ext)
+        textContent = extraction.text
         if (ext === 'pdf' && textContent.trim().length < MIN_TEXT) {
           const v = await extractViaVision(buffer)
           if (v.text.trim().length > textContent.trim().length) {
+            extraction = v
             textContent = v.text
             extractionMethod = 'vision'
           }
@@ -98,6 +102,7 @@ export async function POST(request: NextRequest) {
     if (textContent.length > DOCUMENT_MAX_CHARS) {
       console.warn(`[documents/process] ${doc.filename}: content truncated ${textContent.length} -> ${DOCUMENT_MAX_CHARS}`)
       textContent = textContent.slice(0, DOCUMENT_MAX_CHARS)
+      extraction = { ...extraction, partial: true }
     }
     if (!textContent.trim()) {
       await updateDocumentStatus(doc.id, 'error', { errorMessage: 'No text content could be extracted.' })
@@ -119,21 +124,27 @@ export async function POST(request: NextRequest) {
       thumbnailPath = undefined
     }
 
+    // Persist the FULL extracted text as a faithful artifact (also Phase 2's whole-doc input).
+    // Best-effort: chunks are the retrieval path, so a failure here never fails ingestion.
+    try {
+      const extractedTxtPath = `documents/${doc.projectId}/${doc.id}/${isReplace ? `rev${nextRevision}/` : ''}extracted.txt`
+      await uploadBuffer(extractedTxtPath, Buffer.from(textContent, 'utf-8'), 'text/plain')
+    } catch (e) {
+      console.warn('[documents/process] extracted.txt upload failed:', e instanceof Error ? e.message : e)
+    }
+
     if (isReplace) {
       const textChunks = chunkText(textContent)
       // Replace: embed FIRST (no destructive writes yet), then snapshot the old
       // revision and atomically swap (delete old chunks + insert new + update row).
       // If embedding/commit fails the prior revision stays fully intact.
-      const embRes = await Promise.allSettled(textChunks.map(c => generateEmbedding(c.content, 'document')))
-      const chunkRows = textChunks.map((c, i) => {
-        const r = embRes[i]
-        return { chunkIndex: c.index, content: c.content, embedding: r && r.status === 'fulfilled' ? r.value : null }
-      })
-      const embedded = embRes.filter(r => r.status === 'fulfilled').length
-      if (textChunks.length - embedded > 0) {
-        console.warn(`[documents/process] ${textChunks.length - embedded}/${textChunks.length} chunks failed to embed`)
-      }
+      const { embeddings, embedded, failed } = await embedContents(textChunks.map(c => c.content))
+      const chunkRows = textChunks.map((c, i) => ({ chunkIndex: c.index, content: c.content, embedding: embeddings[i] }))
+      if (failed > 0) console.warn(`[documents/process] ${failed}/${textChunks.length} chunks failed to embed`)
       const status: 'ready' | 'error' = embedded === 0 && textChunks.length > 0 ? 'error' : 'ready'
+      // A partial extraction (char-truncation / page-capping) OR any post-retry embed
+      // failure is a fidelity hole — surface it, never hide it.
+      const extractionPartial = extraction.partial || failed > 0
 
       await createDocumentRevision({
         documentId: doc.id, projectId: doc.projectId, revision: doc.revision,
@@ -146,12 +157,16 @@ export async function POST(request: NextRequest) {
         thumbnailPath, charCount: textContent.length, chunkCount: chunkRows.length, extractionMethod,
         revision: nextRevision, status,
         errorMessage: status === 'error' ? 'New revision saved but embeddings failed.' : null,
+        pageCount: extraction.pageCount, pagesExtracted: extraction.pagesExtracted, extractionPartial,
       })
       return NextResponse.json({ documentId: doc.id, status, revision: nextRevision, chunkCount: chunkRows.length, charCount: textContent.length })
     }
 
     // New upload: chunk → save → embed → status via the shared ingestion tail.
-    const { status, chunkCount } = await ingestText({ id: doc.id, projectId: doc.projectId }, textContent, { extractionMethod, thumbnailPath })
+    const { status, chunkCount } = await ingestText(
+      { id: doc.id, projectId: doc.projectId }, textContent,
+      { extractionMethod, thumbnailPath, pageCount: extraction.pageCount, pagesExtracted: extraction.pagesExtracted, partial: extraction.partial },
+    )
     return NextResponse.json({ documentId: doc.id, status, revision: doc.revision, chunkCount, charCount: textContent.length })
   } catch (error) {
     return apiError(error, 'Failed to process document', 500)
