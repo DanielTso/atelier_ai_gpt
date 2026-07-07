@@ -10,7 +10,7 @@ import {
 } from '@/app/actions'
 import { extractText } from '@/lib/messageParts'
 import { extractGeneratedImageOutputs } from '@/lib/generatedImages'
-import { SUMMARIZATION_THRESHOLD } from '@/hooks/useSummarization'
+import { SUMMARIZATION_THRESHOLD, SUMMARIZE_EVERY } from '@/hooks/useSummarization'
 import type { ArtifactSummary } from '@/types'
 
 // How many new messages must accumulate in a project chat before triggering
@@ -23,6 +23,7 @@ export interface UseChatPersistenceOpts {
   activeProjectIdRef: RefObject<number | null>
   lastSavedAssistantIdRef: RefObject<string | null>
   lastSuggestedAtRef: RefObject<Map<number, number>>
+  lastSummarizedCountRef: RefObject<Map<number, number>>
   setMessages: React.Dispatch<React.SetStateAction<UIMessage[]>>
   setArtifacts: React.Dispatch<React.SetStateAction<ArtifactSummary[]>>
   triggerSummarization: (chatId: number, messageCount: number) => Promise<void>
@@ -44,6 +45,7 @@ export function useChatPersistence(opts: UseChatPersistenceOpts) {
     activeProjectIdRef,
     lastSavedAssistantIdRef,
     lastSuggestedAtRef,
+    lastSummarizedCountRef,
     setMessages,
     setArtifacts,
     triggerSummarization,
@@ -132,9 +134,13 @@ export function useChatPersistence(opts: UseChatPersistenceOpts) {
         // Increment persona usage message count (best-effort)
         incrementUsageMessageCount(currentChatId).catch(() => {})
 
-        // Check if summarization is needed
+        // Check if summarization is needed. Monotonic delta-gate (mirrors the
+        // auto-memory gate below): past the threshold, fold at most once per
+        // SUMMARIZE_EVERY new messages instead of on every turn.
         const messageCount = await getMessageCount(currentChatId)
-        if (messageCount > SUMMARIZATION_THRESHOLD) {
+        const lastSummarized = lastSummarizedCountRef.current.get(currentChatId) ?? 0
+        if (messageCount > SUMMARIZATION_THRESHOLD && messageCount - lastSummarized >= SUMMARIZE_EVERY) {
+          lastSummarizedCountRef.current.set(currentChatId, messageCount)
           triggerSummarization(currentChatId, messageCount).catch(() => {})
         }
 
@@ -171,6 +177,6 @@ export function useChatPersistence(opts: UseChatPersistenceOpts) {
     // Refs and stable callbacks don't change identity — list them so React can
     // verify the deps array is exhaustive. The returned handler is recreated each
     // render (fine; it closes over current refs).
-    [activeChatIdRef, activeProjectIdRef, lastSavedAssistantIdRef, lastSuggestedAtRef, setMessages, setArtifacts, triggerSummarization, maybeGenerateTitle]
+    [activeChatIdRef, activeProjectIdRef, lastSavedAssistantIdRef, lastSuggestedAtRef, lastSummarizedCountRef, setMessages, setArtifacts, triggerSummarization, maybeGenerateTitle]
   )
 }
