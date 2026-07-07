@@ -487,8 +487,9 @@ export async function getProjectDocuments(projectId: number) {
 // A 'processing' row older than this (by its last status write, falling back to
 // created_at for legacy rows) is treated as stuck — a platform timeout killed the
 // function mid-run, bypassing every catch. 20 min > maxDuration (~13.3 min) so a
-// still-running job is never reaped.
-export const STALE_PROCESSING_MINUTES = 20
+// still-running job is never reaped. Not exported: actions.ts is a 'use server'
+// module, which may only export async functions (a const export fails the build).
+const STALE_PROCESSING_MINUTES = 20
 
 // Opportunistic lazy sweep (no cron infra): flip genuinely-stuck 'processing' rows to
 // a terminal 'error' so a killed function never leaves a row stuck forever. Called from
