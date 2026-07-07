@@ -12,11 +12,14 @@ export async function GET() {
     const models: { name: string; model: string; digest: string }[] = [];
 
     // Claude — primary chat models. Opus first → becomes the default for new
-    // chats via the client's `data.models[0]` fallback.
+    // chats via the client's `data.models[0]` fallback. Fable 5 is the flagship
+    // option (most capable, ~2× Opus token cost); Sonnet 5 supersedes Sonnet 4.6
+    // (4.6 is dropped from the picker but stays allow-listed for existing chats).
     if (anthropicApiKey) {
       models.push(
         { name: 'Claude Opus 4.8', model: 'claude-opus-4-8', digest: 'claude-opus-4-8' },
-        { name: 'Claude Sonnet 4.6', model: 'claude-sonnet-4-6', digest: 'claude-sonnet-4-6' },
+        { name: 'Claude Fable 5', model: 'claude-fable-5', digest: 'claude-fable-5' },
+        { name: 'Claude Sonnet 5', model: 'claude-sonnet-5', digest: 'claude-sonnet-5' },
         { name: 'Claude Haiku 4.5', model: 'claude-haiku-4-5', digest: 'claude-haiku-4-5' },
       );
     }

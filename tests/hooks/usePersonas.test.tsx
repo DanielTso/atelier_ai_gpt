@@ -14,11 +14,11 @@ describe('usePersonas', () => {
     expect(result.current.personas.every(p => p.model.startsWith('claude-'))).toBe(true)
   })
 
-  it('General Assistant is the default — Sonnet 4.6, Medium effort', () => {
+  it('General Assistant is the default — Sonnet 5, Medium effort', () => {
     const { result } = renderHook(() => usePersonas())
     const def = result.current.defaultPersona
     expect(def.id).toBe('general-assistant')
-    expect(def.model).toBe('claude-sonnet-4-6')
+    expect(def.model).toBe('claude-sonnet-5')
     expect(def.effort).toBe('medium')
     expect(def.isDefault).toBe(true)
   })
@@ -49,7 +49,7 @@ describe('usePersonas', () => {
     })
     expect(result.current.personas).toHaveLength(10)
     const custom = result.current.customPersonas[0]
-    expect(custom.model).toBe('claude-sonnet-4-6')
+    expect(custom.model).toBe('claude-sonnet-5')
     expect(custom.effort).toBe('medium')
     expect(custom.id).toMatch(/^custom-/)
   })

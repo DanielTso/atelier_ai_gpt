@@ -10,7 +10,7 @@ import type { ArtifactType, SheetSpec } from '@/lib/artifacts/types'
 import { artifactRegenerateRequestSchema } from '@/lib/validation'
 import { apiError } from '@/lib/errors'
 
-const REGEN_MODEL = 'claude-sonnet-4-6'
+const REGEN_MODEL = 'claude-sonnet-5'
 
 // POST /api/artifacts/:id/regenerate — ask Claude to revise the artifact's source
 // per an instruction, re-render, and append a new version.

@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.42.0] - 2026-07-07 — Claude 5 models in the picker (Fable 5 + Sonnet 5)
+
+Adds the newest Claude 5 models to the model dropdown and persona system.
+
+### Added
+
+- **Claude Fable 5** (`claude-fable-5`) — the flagship option: Anthropic's most capable model, for the most demanding reasoning and long-horizon work. Adaptive thinking is always-on; supports the `effort` control. ~2× Opus token cost ($10/$50 vs $5/$25 per MTok) and requires 30-day data retention (not available under ZDR).
+- **Claude Sonnet 5** (`claude-sonnet-5`) — supersedes Sonnet 4.6; near-Opus quality on coding/agentic work at Sonnet cost.
+
+### Changed
+
+- **Model picker** is now **Opus 4.8 (default) · Fable 5 · Sonnet 5 · Haiku 4.5 · Nano Banana 2**. Opus 4.8 stays the default for new chats (Anthropic's recommended default, ~half Fable's cost).
+- **Sonnet 4.6 retired from the picker** (superseded by Sonnet 5). It stays in the `MODEL_IDS` allow-list so chats already pinned to it keep routing; the four personas that used it (General Assistant, Creative Writing, Teacher, Plan & Spec Reader) and the artifact-regenerate model now use **Sonnet 5**.
+
+### Notes
+
+- No provider/routing change: `claude-fable-5` and `claude-sonnet-5` flow through the existing `claude-*` path (adaptive thinking + `effort`, Haiku-exempt). No DB migration, no UI-layout change. Effort levels unchanged (`low/medium/high/max`); `xhigh` (recommended for coding on Fable/Sonnet 5) is a possible future addition.
+
 ## [4.41.0] - 2026-07-06 — Stability & security hardening (Batch A)
 
 A cohesive hardening release from the 2026-07-06 deep-dive audit: RLS + FK indexes on the two tables added after the June RLS pass, incremental/infrequent summarization, and a guarantee that stuck document rows reach a terminal status. **No UI changes** — the warm palette + Fraunces are untouched.
