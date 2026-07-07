@@ -194,7 +194,7 @@ describe('useChatPersistence', () => {
     expect(opts.triggerSummarization).toHaveBeenCalledTimes(1)
 
     // Once the delta reaches SUMMARIZE_EVERY → fires again.
-    mockGetMessageCount.mockResolvedValue(SUMMARIZATION_THRESHOLD + 21) // 51, delta 20
+    mockGetMessageCount.mockResolvedValue(SUMMARIZATION_THRESHOLD + SUMMARIZE_EVERY + 1) // 51, delta 20 from the first fire
     await act(async () => { await result.current({ message: makeMessage({ id: 'c' }) }) })
     expect(opts.triggerSummarization).toHaveBeenCalledTimes(2)
   })
