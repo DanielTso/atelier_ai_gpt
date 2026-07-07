@@ -473,7 +473,7 @@ export async function updateDocumentStatus(
   updates?: { chunkCount?: number; errorMessage?: string; charCount?: number; thumbnailPath?: string; extractionMethod?: 'text' | 'vision' }
 ) {
   return await db.update(documents)
-    .set({ status, ...updates })
+    .set({ status, ...updates, updatedAt: new Date() })
     .where(eq(documents.id, id))
     .returning()
 }

@@ -10,6 +10,11 @@ import { generatePdfThumbnail, generateImageThumbnail } from '@/lib/thumbnails'
 import { processDocumentRequestSchema } from '@/lib/validation'
 import { apiError } from '@/lib/errors'
 
+// A 30-page vision run is serial (bounded concurrency deferred to Batch B), so give
+// the function a generous budget. Pairs with the stale-processing reaper: even if the
+// platform still kills the function, a stuck row is flipped to error on the next list.
+export const maxDuration = 800
+
 const MIN_TEXT = Number(process.env.EXTRACTION_MIN_TEXT_CHARS) || 100
 
 export async function POST(request: NextRequest) {
