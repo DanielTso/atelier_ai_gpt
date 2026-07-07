@@ -1,6 +1,6 @@
 'use client'
 import { memo, useRef } from 'react'
-import { Loader2, CheckCircle2, AlertCircle, Trash2, Sparkles, RefreshCw } from 'lucide-react'
+import { Loader2, CheckCircle2, AlertCircle, Trash2, Sparkles, RefreshCw, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatFileSize, getFileTypeBadge } from '@/lib/fileUtils'
 import type { DocumentSummary } from '@/types'
@@ -62,6 +62,16 @@ export const DocumentCard = memo(function DocumentCard({ doc, onOpen, onDelete, 
           )}
           {doc.extractionMethod === 'vision' && (
             <span className="flex items-center gap-0.5 text-[10px] text-primary"><Sparkles className="h-2.5 w-2.5" />vision</span>
+          )}
+          {doc.extractionPartial && (
+            <span
+              className="flex items-center gap-0.5 text-[10px] text-amber-500"
+              title={doc.pagesExtracted != null && doc.pageCount != null && doc.pagesExtracted < doc.pageCount
+                ? `Extracted ${doc.pagesExtracted} of ${doc.pageCount} pages`
+                : 'Partial extraction — some content may be missing'}
+            >
+              <AlertTriangle className="h-2.5 w-2.5" />Partial
+            </span>
           )}
           <span className="ml-auto">{formatFileSize(doc.fileSize)}</span>
         </div>

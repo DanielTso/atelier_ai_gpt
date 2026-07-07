@@ -47,6 +47,18 @@ describe('GET /api/documents', () => {
     expect(mockCreateSignedDownloadUrls).toHaveBeenCalledWith(['documents/1/1/a.pdf'], 3600)
     expect(mockCreateSignedDownloadUrls).toHaveBeenCalledWith(['documents/1/1/thumb.webp'], 3600)
   })
+
+  it('passes through fidelity fields (pageCount/pagesExtracted/extractionPartial)', async () => {
+    mockGetProjectDocuments.mockResolvedValue([
+      { id: 1, projectId: 1, filename: 'a.pdf', storagePath: null, thumbnailPath: null, status: 'ready', pageCount: 80, pagesExtracted: 60, extractionPartial: true },
+    ])
+    const { GET } = await importRoute()
+    const res = await GET(new Request('http://localhost/api/documents?projectId=1') as never)
+    const data = await res.json()
+    expect(data.documents[0].extractionPartial).toBe(true)
+    expect(data.documents[0].pageCount).toBe(80)
+    expect(data.documents[0].pagesExtracted).toBe(60)
+  })
 })
 
 describe('DELETE /api/documents', () => {
