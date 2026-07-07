@@ -48,10 +48,18 @@ describe('embedChunks', () => {
     expect(res).toEqual({ embedded: 0, failed: 2 })
     expect(mockUpdateChunkEmbedding).not.toHaveBeenCalled()
   })
+
+  it('counts a persist failure as failed and does not throw (never crashes the ingest)', async () => {
+    mockGenerateEmbedding.mockResolvedValue(vec())
+    mockUpdateChunkEmbedding.mockRejectedValueOnce(new Error('db write failed')).mockResolvedValue(undefined)
+    const { embedChunks } = await load()
+    const res = await embedChunks([{ id: 1, content: 'a' }, { id: 2, content: 'b' }], { concurrency: 1, retries: 0 })
+    expect(res).toEqual({ embedded: 1, failed: 1 })
+  })
 })
 
 describe('embedContents', () => {
-  beforeEach(() => { mockGenerateEmbedding.mockReset() })
+  beforeEach(() => { mockGenerateEmbedding.mockReset(); mockUpdateChunkEmbedding.mockReset() })
 
   it('returns embeddings in order with null for failures, and does not persist', async () => {
     mockGenerateEmbedding

@@ -58,8 +58,15 @@ export async function embedChunks(
   await mapWithConcurrency(chunks, opts.concurrency ?? DEFAULT_CONCURRENCY, async (chunk) => {
     const embedding = await embedWithRetry(chunk.content, retries)
     if (embedding) {
-      await updateChunkEmbedding(chunk.id, embedding)
-      embedded++
+      try {
+        await updateChunkEmbedding(chunk.id, embedding)
+        embedded++
+      } catch (err) {
+        // The embedding generated fine but persisting it failed (DB hiccup). Count it as a
+        // failure — never let one chunk's write error reject the pool and crash the ingest.
+        console.warn(`[embedChunks] persist failed for chunk ${chunk.id}:`, err instanceof Error ? err.message : err)
+        failed++
+      }
     } else {
       failed++
     }
