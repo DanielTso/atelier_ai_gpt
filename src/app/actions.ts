@@ -484,6 +484,26 @@ export async function getProjectDocuments(projectId: number) {
     .orderBy(desc(documents.createdAt))
 }
 
+// A 'processing' row older than this (by its last status write, falling back to
+// created_at for legacy rows) is treated as stuck — a platform timeout killed the
+// function mid-run, bypassing every catch. 20 min > maxDuration (~13.3 min) so a
+// still-running job is never reaped.
+export const STALE_PROCESSING_MINUTES = 20
+
+// Opportunistic lazy sweep (no cron infra): flip genuinely-stuck 'processing' rows to
+// a terminal 'error' so a killed function never leaves a row stuck forever. Called from
+// GET /api/documents before listing; one indexed UPDATE, negligible cost.
+export async function reapStaleProcessing(projectId?: number) {
+  return await db.update(documents)
+    .set({ status: 'error', errorMessage: 'Processing timed out', updatedAt: new Date() })
+    .where(and(
+      eq(documents.status, 'processing'),
+      sql`coalesce(${documents.updatedAt}, ${documents.createdAt}) < now() - make_interval(mins => ${STALE_PROCESSING_MINUTES})`,
+      projectId ? eq(documents.projectId, projectId) : undefined,
+    ))
+    .returning()
+}
+
 export async function deleteDocument(id: number) {
   return await db.delete(documents).where(eq(documents.id, id)).returning()
 }

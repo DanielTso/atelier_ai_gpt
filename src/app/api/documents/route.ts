@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getProjectDocuments, getDocumentById, deleteDocument, getDocumentRevisions } from '@/app/actions'
+import { getProjectDocuments, getDocumentById, deleteDocument, getDocumentRevisions, reapStaleProcessing } from '@/app/actions'
 import { createSignedDownloadUrls, removeObjects, DOCUMENT_URL_TTL_SECONDS } from '@/lib/storage'
 import { apiError } from '@/lib/errors'
 
@@ -10,6 +10,9 @@ export async function GET(request: NextRequest) {
     if (!projectId || isNaN(projectId)) {
       return NextResponse.json({ error: 'Invalid projectId' }, { status: 400 })
     }
+    // Lazy reaper: surface genuinely-stuck 'processing' rows as 'error' the next time
+    // this project's documents are listed (a platform timeout can bypass every catch).
+    await reapStaleProcessing(projectId)
     const docs = await getProjectDocuments(projectId)
     const originalPaths = docs.map(d => d.storagePath).filter((p): p is string => Boolean(p))
     const thumbnailPaths = docs.map(d => d.thumbnailPath).filter((p): p is string => Boolean(p))
