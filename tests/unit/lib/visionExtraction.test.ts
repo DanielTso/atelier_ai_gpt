@@ -26,8 +26,10 @@ describe('extractViaVision', () => {
       .mockResolvedValueOnce({ text: 'PAGE TWO TEXT' })
     const { extractViaVision } = await import('@/lib/visionExtraction')
     const out = await extractViaVision(Buffer.from('pdf'))
-    expect(out).toContain('PAGE ONE TEXT')
-    expect(out).toContain('PAGE TWO TEXT')
+    expect(out.text).toContain('PAGE ONE TEXT')
+    expect(out.text).toContain('PAGE TWO TEXT')
+    expect(out.partial).toBe(false)
+    expect(out.pagesExtracted).toBe(2)
     expect(mockRender).toHaveBeenCalledTimes(2)
     // Each render must get its OWN buffer copy — pdfjs detaches the array it parses,
     // so reusing one instance breaks page 2+ with a DataCloneError.
@@ -37,18 +39,21 @@ describe('extractViaVision', () => {
   it('returns empty string when no API key', async () => {
     setup(null, 2)
     const { extractViaVision } = await import('@/lib/visionExtraction')
-    expect(await extractViaVision(Buffer.from('pdf'))).toBe('')
+    expect((await extractViaVision(Buffer.from('pdf'))).text).toBe('')
     expect(mockRender).not.toHaveBeenCalled()
   })
 
-  it('caps pages at EXTRACTION_MAX_PAGES', async () => {
+  it('caps pages at EXTRACTION_MAX_PAGES and reports partial', async () => {
     process.env.EXTRACTION_MAX_PAGES = '1'
     setup('k', 5)
     mockRender.mockResolvedValue(new ArrayBuffer(8))
     mockGenerateText.mockResolvedValue({ text: 'X' })
     const { extractViaVision } = await import('@/lib/visionExtraction')
-    await extractViaVision(Buffer.from('pdf'))
+    const out = await extractViaVision(Buffer.from('pdf'))
     expect(mockRender).toHaveBeenCalledTimes(1)
+    expect(out.pageCount).toBe(5)
+    expect(out.pagesExtracted).toBe(1)
+    expect(out.partial).toBe(true)
     delete process.env.EXTRACTION_MAX_PAGES
   })
 
@@ -60,7 +65,7 @@ describe('extractViaVision', () => {
       .mockResolvedValueOnce({ text: 'PAGE TWO OK' })
     const { extractViaVision } = await import('@/lib/visionExtraction')
     const out = await extractViaVision(Buffer.from('pdf'))
-    expect(out).toContain('PAGE TWO OK')
+    expect(out.text).toContain('PAGE TWO OK')
   })
 
   it('extractViaVisionImage sends a single image directly', async () => {
@@ -68,7 +73,8 @@ describe('extractViaVision', () => {
     mockGenerateText.mockResolvedValue({ text: 'IMAGE TEXT' })
     const { extractViaVisionImage } = await import('@/lib/visionExtraction')
     const out = await extractViaVisionImage(Buffer.from('img'), 'image/png')
-    expect(out).toBe('IMAGE TEXT')
+    expect(out.text).toBe('IMAGE TEXT')
+    expect(out.pageCount).toBe(1)
     expect(mockRender).not.toHaveBeenCalled()
   })
 })

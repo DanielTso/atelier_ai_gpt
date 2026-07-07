@@ -33,6 +33,9 @@ function req(documentId: number) {
 }
 
 describe('POST /api/documents/process', () => {
+  const extRes = (text: string, extra: Partial<{ pageCount: number | null; pagesExtracted: number | null; partial: boolean }> = {}) =>
+    ({ text, pageCount: null, pagesExtracted: null, partial: false, ...extra })
+
   beforeEach(() => {
     Object.values(m).forEach(f => f.mockReset())
     m.ensureEmbeddingModel.mockResolvedValue({ available: true })
@@ -45,8 +48,8 @@ describe('POST /api/documents/process', () => {
     m.uploadBuffer.mockResolvedValue(undefined)
     m.generatePdfThumbnail.mockResolvedValue(Buffer.from('thumb'))
     m.generateImageThumbnail.mockResolvedValue(Buffer.from('thumb'))
-    m.extractViaVision.mockResolvedValue('')
-    m.extractViaVisionImage.mockResolvedValue('')
+    m.extractViaVision.mockResolvedValue(extRes(''))
+    m.extractViaVisionImage.mockResolvedValue(extRes(''))
   })
 
   it('404 when the document or its storagePath is missing', async () => {
@@ -57,7 +60,7 @@ describe('POST /api/documents/process', () => {
 
   it('text PDF: downloads, extracts text, uploads thumbnail, embeds, status ready', async () => {
     m.getDocumentById.mockResolvedValue({ id: 7, projectId: 1, filename: 'doc.pdf', mimeType: 'application/pdf', storagePath: 'documents/1/7/doc.pdf' })
-    m.extractTextFromBuffer.mockResolvedValue('A'.repeat(300))
+    m.extractTextFromBuffer.mockResolvedValue(extRes('A'.repeat(300)))
     const POST = await importRoute()
     const res = await POST(req(7) as never)
     const data = await res.json()
@@ -72,8 +75,8 @@ describe('POST /api/documents/process', () => {
 
   it('thin-text PDF falls back to vision', async () => {
     m.getDocumentById.mockResolvedValue({ id: 8, projectId: 1, filename: 'scan.pdf', mimeType: 'application/pdf', storagePath: 'p' })
-    m.extractTextFromBuffer.mockResolvedValue('')
-    m.extractViaVision.mockResolvedValue('V'.repeat(300))
+    m.extractTextFromBuffer.mockResolvedValue(extRes(''))
+    m.extractViaVision.mockResolvedValue(extRes('V'.repeat(300)))
     const POST = await importRoute()
     const res = await POST(req(8) as never)
     expect(res.status).toBe(200)
@@ -83,7 +86,7 @@ describe('POST /api/documents/process', () => {
 
   it('image upload uses extractViaVisionImage + image thumbnail', async () => {
     m.getDocumentById.mockResolvedValue({ id: 9, projectId: 1, filename: 'p.png', mimeType: 'image/png', storagePath: 'p' })
-    m.extractViaVisionImage.mockResolvedValue('image text here')
+    m.extractViaVisionImage.mockResolvedValue(extRes('image text here'))
     const POST = await importRoute()
     const res = await POST(req(9) as never)
     expect(res.status).toBe(200)
@@ -95,7 +98,7 @@ describe('POST /api/documents/process', () => {
 
   it('thumbnail failure is non-fatal (still ready, no thumbnailPath)', async () => {
     m.getDocumentById.mockResolvedValue({ id: 10, projectId: 1, filename: 'doc.pdf', mimeType: 'application/pdf', storagePath: 'p' })
-    m.extractTextFromBuffer.mockResolvedValue('A'.repeat(300))
+    m.extractTextFromBuffer.mockResolvedValue(extRes('A'.repeat(300)))
     m.generatePdfThumbnail.mockRejectedValue(new Error('render boom'))
     const POST = await importRoute()
     const res = await POST(req(10) as never)
@@ -105,8 +108,8 @@ describe('POST /api/documents/process', () => {
 
   it('empty extraction → error status + 400', async () => {
     m.getDocumentById.mockResolvedValue({ id: 12, projectId: 1, filename: 'doc.pdf', mimeType: 'application/pdf', storagePath: 'p' })
-    m.extractTextFromBuffer.mockResolvedValue('')
-    m.extractViaVision.mockResolvedValue('')
+    m.extractTextFromBuffer.mockResolvedValue(extRes(''))
+    m.extractViaVision.mockResolvedValue(extRes(''))
     const POST = await importRoute()
     const res = await POST(req(12) as never)
     expect(res.status).toBe(400)
@@ -115,8 +118,8 @@ describe('POST /api/documents/process', () => {
 
   it('thin-text PDF that falls back to vision records extractionMethod vision', async () => {
     m.getDocumentById.mockResolvedValue({ id: 14, projectId: 1, filename: 'scan.pdf', mimeType: 'application/pdf', storagePath: 'p' })
-    m.extractTextFromBuffer.mockResolvedValue('')
-    m.extractViaVision.mockResolvedValue('V'.repeat(300))
+    m.extractTextFromBuffer.mockResolvedValue(extRes(''))
+    m.extractViaVision.mockResolvedValue(extRes('V'.repeat(300)))
     const POST = await importRoute()
     await POST(req(14) as never)
     expect(m.updateDocumentStatus).toHaveBeenCalledWith(14, 'ready', expect.objectContaining({ extractionMethod: 'vision' }))
@@ -124,7 +127,7 @@ describe('POST /api/documents/process', () => {
 
   it('replace path: embeds first, then atomically commits (no pre-delete of old chunks)', async () => {
     m.getDocumentById.mockResolvedValue({ id: 20, projectId: 1, revision: 1, filename: 'old.pdf', mimeType: 'application/pdf', fileSize: 5, storagePath: 'documents/1/20/old.pdf', thumbnailPath: null, charCount: 10, chunkCount: 1, extractionMethod: 'text' })
-    m.extractTextFromBuffer.mockResolvedValue('A'.repeat(300))
+    m.extractTextFromBuffer.mockResolvedValue(extRes('A'.repeat(300)))
     m.createDocumentRevision.mockResolvedValue([{ id: 1 }])
     m.commitDocumentReplacement.mockResolvedValue(undefined)
     const POST = await importRoute()
@@ -147,7 +150,7 @@ describe('POST /api/documents/process', () => {
 
   it('replace path: all embeddings fail → committed with status error (old revision not lost mid-flight)', async () => {
     m.getDocumentById.mockResolvedValue({ id: 21, projectId: 1, revision: 3, filename: 'old.pdf', mimeType: 'application/pdf', fileSize: 5, storagePath: 'p', thumbnailPath: null, charCount: 10, chunkCount: 1, extractionMethod: 'text' })
-    m.extractTextFromBuffer.mockResolvedValue('A'.repeat(300))
+    m.extractTextFromBuffer.mockResolvedValue(extRes('A'.repeat(300)))
     m.generateEmbedding.mockRejectedValue(new Error('embed down'))
     m.createDocumentRevision.mockResolvedValue([{ id: 1 }])
     m.commitDocumentReplacement.mockResolvedValue(undefined)

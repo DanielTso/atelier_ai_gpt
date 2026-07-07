@@ -19,7 +19,7 @@ async function importRoute() {
     isStorageConfigured: m.isStorageConfigured, uploadBuffer: m.uploadBuffer,
     createSignedDownloadUrl: m.createSignedDownloadUrl, DOCUMENT_URL_TTL_SECONDS: 3600,
   }))
-  vi.doMock('@/lib/fileExtraction', () => ({ MAX_TEXT_LENGTH: 100_000 }))
+  vi.doMock('@/lib/fileExtraction', () => ({ DOCUMENT_MAX_CHARS: 100_000 }))
   return (await import('@/app/api/documents/web-ingest/route')).POST
 }
 

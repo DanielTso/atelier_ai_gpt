@@ -5,7 +5,14 @@
 // AND the project-global Storage upload limit must be >= this value, or the
 // signed upload is rejected server-side regardless of this constant.
 export const MAX_FILE_SIZE = 200 * 1024 * 1024 // 200MB
-export const MAX_TEXT_LENGTH = 100_000 // 100K characters
+export const DOCUMENT_MAX_CHARS = Number(process.env.DOCUMENT_MAX_CHARS) || 2_000_000 // char ceiling; text past this is dropped + flagged partial
+
+export interface ExtractionResult {
+  text: string
+  pageCount: number | null
+  pagesExtracted: number | null
+  partial: boolean
+}
 
 export const SUPPORTED_EXTENSIONS = new Set([
   'pdf', 'docx', 'xlsx',
@@ -52,31 +59,38 @@ export function validateUploadedFile(filename: string, mimeType: string, size: n
   return null
 }
 
-export async function extractTextFromBuffer(buffer: Buffer, extension: string): Promise<string> {
+export async function extractTextFromBuffer(buffer: Buffer, extension: string): Promise<ExtractionResult> {
+  let text = ''
+  let pageCount: number | null = null
+  let truncated = false
   if (extension === 'pdf') {
     const { extractText } = await import('unpdf')
     const result = await extractText(new Uint8Array(buffer))
-    // Bound the joined output: accumulate page-by-page and stop at MAX_TEXT_LENGTH so
-    // a very large PDF (sets can be 200MB) can't build a multi-megabyte string on top
-    // of the buffer already in memory. Downstream truncates too, but bounding here
-    // avoids the extra full-size copy and the unbounded join.
+    pageCount = typeof result.totalPages === 'number' ? result.totalPages : null
+    // Accumulate page-by-page and stop at DOCUMENT_MAX_CHARS so a huge PDF can't build a
+    // multi-megabyte string on top of the ≤200MB buffer already in memory.
     const pages = Array.isArray(result.text) ? result.text : [String(result.text)]
-    let out = ''
-    for (const page of pages) {
-      out += (out ? '\n' : '') + page
-      if (out.length >= MAX_TEXT_LENGTH) { out = out.slice(0, MAX_TEXT_LENGTH); break }
+    for (let i = 0; i < pages.length; i++) {
+      text += (text ? '\n' : '') + pages[i]
+      if (text.length >= DOCUMENT_MAX_CHARS) {
+        // Broke on the cap: partial if we overshot OR there are still pages left. This catches
+        // the exact-boundary case (text lands on the cap with more pages) that a bare
+        // `length > MAX` check would silently drop — no silent loss.
+        truncated = text.length > DOCUMENT_MAX_CHARS || i < pages.length - 1
+        break
+      }
     }
-    return out
   } else if (extension === 'docx') {
     const mammoth = await import('mammoth')
-    const result = await mammoth.extractRawText({ buffer })
-    return result.value
+    text = (await mammoth.extractRawText({ buffer })).value
   } else if (extension === 'xlsx') {
-    return extractTextFromXlsx(buffer)
+    text = await extractTextFromXlsx(buffer)
   } else {
-    // Plain text / code files
-    return buffer.toString('utf-8')
+    text = buffer.toString('utf-8')
   }
+  if (text.length > DOCUMENT_MAX_CHARS) { text = text.slice(0, DOCUMENT_MAX_CHARS); truncated = true }
+  // Text path partial = char-truncation only; it doesn't page-cap, so pagesExtracted stays null.
+  return { text, pageCount, pagesExtracted: null, partial: truncated }
 }
 
 /**

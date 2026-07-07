@@ -3,7 +3,7 @@ import { getDocumentById, updateDocumentStatus, createDocumentRevision, commitDo
 import { generateEmbedding, ensureEmbeddingModel } from '@/lib/embeddings'
 import { chunkText } from '@/lib/chunking'
 import { ingestText } from '@/lib/ingest'
-import { MAX_FILE_SIZE, MAX_TEXT_LENGTH, getExtension, isImageExtension, isSupported, extractTextFromBuffer } from '@/lib/fileExtraction'
+import { MAX_FILE_SIZE, DOCUMENT_MAX_CHARS, getExtension, isImageExtension, isSupported, extractTextFromBuffer } from '@/lib/fileExtraction'
 import { extractViaVision, extractViaVisionImage } from '@/lib/visionExtraction'
 import { downloadToBuffer, uploadBuffer, sanitizeStorageName } from '@/lib/storage'
 import { generatePdfThumbnail, generateImageThumbnail } from '@/lib/thumbnails'
@@ -75,14 +75,16 @@ export async function POST(request: NextRequest) {
     let extractionMethod: 'text' | 'vision' = 'text'
     try {
       if (isImage) {
-        textContent = await extractViaVisionImage(buffer, effMimeType)
+        const r = await extractViaVisionImage(buffer, effMimeType)
+        textContent = r.text
         extractionMethod = 'vision'
       } else {
-        textContent = await extractTextFromBuffer(buffer, ext)
+        const r = await extractTextFromBuffer(buffer, ext)
+        textContent = r.text
         if (ext === 'pdf' && textContent.trim().length < MIN_TEXT) {
-          const vision = await extractViaVision(buffer)
-          if (vision.trim().length > textContent.trim().length) {
-            textContent = vision
+          const v = await extractViaVision(buffer)
+          if (v.text.trim().length > textContent.trim().length) {
+            textContent = v.text
             extractionMethod = 'vision'
           }
         }
@@ -93,9 +95,9 @@ export async function POST(request: NextRequest) {
       await updateDocumentStatus(doc.id, 'error', { errorMessage: 'Failed to extract document content.' })
       return apiError(e, 'Failed to extract document content', 500, false)
     }
-    if (textContent.length > MAX_TEXT_LENGTH) {
-      console.warn(`[documents/process] ${doc.filename}: content truncated ${textContent.length} -> ${MAX_TEXT_LENGTH}`)
-      textContent = textContent.slice(0, MAX_TEXT_LENGTH)
+    if (textContent.length > DOCUMENT_MAX_CHARS) {
+      console.warn(`[documents/process] ${doc.filename}: content truncated ${textContent.length} -> ${DOCUMENT_MAX_CHARS}`)
+      textContent = textContent.slice(0, DOCUMENT_MAX_CHARS)
     }
     if (!textContent.trim()) {
       await updateDocumentStatus(doc.id, 'error', { errorMessage: 'No text content could be extracted.' })

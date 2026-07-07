@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import ExcelJS from 'exceljs'
 import { extractTextFromBuffer, isSupported, getExtension } from '@/lib/fileExtraction'
 
@@ -15,7 +15,7 @@ async function buildXlsx(): Promise<Buffer> {
 
 describe('fileExtraction — xlsx', () => {
   it('extracts each sheet as tab-separated rows with a sheet header', async () => {
-    const text = await extractTextFromBuffer(await buildXlsx(), 'xlsx')
+    const { text } = await extractTextFromBuffer(await buildXlsx(), 'xlsx')
     expect(text).toContain('# Sheet: Budget')
     expect(text).toContain('Item\tCost\tDate')
     expect(text).toContain('# Sheet: Notes')
@@ -23,7 +23,7 @@ describe('fileExtraction — xlsx', () => {
   })
 
   it('formats dates and resolves formulas to their cached result', async () => {
-    const text = await extractTextFromBuffer(await buildXlsx(), 'xlsx')
+    const { text } = await extractTextFromBuffer(await buildXlsx(), 'xlsx')
     expect(text).toContain('2026-01-15') // Date → ISO date
     expect(text).toContain('Widget\t19.99\t2026-01-15')
     expect(text).toContain('Total\t19.99') // formula B2 → cached 19.99
@@ -38,23 +38,29 @@ describe('fileExtraction — xlsx', () => {
 // The PDF text path is bounded so a very large document can't build an unbounded
 // joined string on top of the buffer already in memory. We mock unpdf to control
 // the page array and re-import the real module so its dynamic import resolves the mock.
-describe('fileExtraction — pdf text bounding', () => {
-  async function loadWithPdfPages(pages: string[]) {
+describe('fileExtraction — pdf text bounding + partial', () => {
+  async function loadWithPdfPages(pages: string[], maxChars = 1000) {
+    process.env.DOCUMENT_MAX_CHARS = String(maxChars)
     vi.resetModules()
     vi.doMock('unpdf', () => ({ extractText: async () => ({ totalPages: pages.length, text: pages }) }))
-    return await import('@/lib/fileExtraction')
+    const mod = await import('@/lib/fileExtraction')
+    return mod
   }
+  afterEach(() => { delete process.env.DOCUMENT_MAX_CHARS })
 
-  it('caps output at MAX_TEXT_LENGTH for a very large PDF', async () => {
-    const { extractTextFromBuffer: extract, MAX_TEXT_LENGTH } = await loadWithPdfPages([
-      'A'.repeat(80_000), 'B'.repeat(80_000), 'C'.repeat(80_000),
-    ])
-    const out = await extract(Buffer.from('x'), 'pdf')
-    expect(out.length).toBe(MAX_TEXT_LENGTH)
+  it('caps at DOCUMENT_MAX_CHARS and flags partial for an over-ceiling PDF', async () => {
+    const { extractTextFromBuffer, DOCUMENT_MAX_CHARS } = await loadWithPdfPages(['A'.repeat(800), 'B'.repeat(800), 'C'.repeat(800)], 1000)
+    const out = await extractTextFromBuffer(Buffer.from('x'), 'pdf')
+    expect(out.text.length).toBe(DOCUMENT_MAX_CHARS)
+    expect(out.partial).toBe(true)
+    expect(out.pageCount).toBe(3)
   })
 
-  it('returns the full joined text when under the cap', async () => {
-    const { extractTextFromBuffer: extract } = await loadWithPdfPages(['hello', 'world'])
-    expect(await extract(Buffer.from('x'), 'pdf')).toBe('hello\nworld')
+  it('returns full text with partial false when under the ceiling', async () => {
+    const { extractTextFromBuffer } = await loadWithPdfPages(['hello', 'world'], 1000)
+    const out = await extractTextFromBuffer(Buffer.from('x'), 'pdf')
+    expect(out.text).toBe('hello\nworld')
+    expect(out.partial).toBe(false)
+    expect(out.pageCount).toBe(2)
   })
 })

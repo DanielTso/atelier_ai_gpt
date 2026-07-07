@@ -4,7 +4,7 @@ import { ingestText } from '@/lib/ingest'
 import { createUploadingDocument, updateDocumentStatus, updateDocumentStoragePath, getDocumentById } from '@/app/actions'
 import { ensureEmbeddingModel } from '@/lib/embeddings'
 import { isStorageConfigured, uploadBuffer, createSignedDownloadUrl, DOCUMENT_URL_TTL_SECONDS } from '@/lib/storage'
-import { MAX_TEXT_LENGTH } from '@/lib/fileExtraction'
+import { DOCUMENT_MAX_CHARS } from '@/lib/fileExtraction'
 import { webIngestRequestSchema } from '@/lib/validation'
 import { apiError } from '@/lib/errors'
 
@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
     }
 
     let text = `Source: ${url}\n\n${markdown}`
-    if (text.length > MAX_TEXT_LENGTH) text = text.slice(0, MAX_TEXT_LENGTH)
+    if (text.length > DOCUMENT_MAX_CHARS) text = text.slice(0, DOCUMENT_MAX_CHARS)
 
     const [doc] = await createUploadingDocument({
       projectId, filename: title, mimeType: 'text/markdown', fileSize: Buffer.byteLength(text, 'utf-8'),
