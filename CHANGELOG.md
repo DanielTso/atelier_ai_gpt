@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.43.0] - 2026-07-07 — Fable 5 flagship personas
+
+Four new personas on Claude Fable 5, tuned for the hardest, expensive-if-wrong reasoning (act don't over-plan, lead with the outcome, cite every claim to a source, never invent a value, report assessment vs action):
+
+### Added
+
+- **⚖️ Claims & Delay Analyst** (`max` effort) — time-impact/delay analysis, causation & concurrency, entitlement, notice, contemporaneous-record gaps.
+- **📜 Contract & Spec Analyst** (`max`) — interprets contract obligations, conflicts between documents, order-of-precedence, scope gaps, and deadlines (vs Plan & Spec Reader, which extracts).
+- **🧩 Constructability Reviewer** (`high`) — proactive clash/coordination/sequencing/VE review of plans + specs before the field.
+- **🧠 Deep Reasoner** (`high`) — general flagship reasoning for hard, high-stakes problems (sits alongside the existing Opus-based Deep Analysis).
+
+### Notes
+
+- Roster grows 9 → 13 personas; all four use `claude-fable-5`. No provider/DB/UI-layout change. Fable 5's ~2× token cost and 30-day-data-retention requirement apply when these personas are used.
+
 ## [4.42.0] - 2026-07-07 — Claude 5 models in the picker (Fable 5 + Sonnet 5)
 
 Adds the newest Claude 5 models to the model dropdown and persona system.
