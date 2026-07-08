@@ -88,6 +88,42 @@ describe('POST /api/documents/process', () => {
     expect(m.chunkText).toHaveBeenCalledWith('V'.repeat(300))
   })
 
+  it('sparse-per-page PDF (plan set) falls back to vision via the density gate', async () => {
+    // 120 pages, 5000 chars total ≈ 42 chars/page — passes the absolute floor (>=100)
+    // but fails the 200 chars/page density gate.
+    m.getDocumentById.mockResolvedValue({ id: 9, projectId: 1, filename: 'plans.pdf', mimeType: 'application/pdf', storagePath: 'p' })
+    m.extractTextFromBuffer.mockResolvedValue(extRes('T'.repeat(5000), { pageCount: 120 }))
+    m.extractViaVision.mockResolvedValue(extRes('V'.repeat(6000), { pageCount: 120, pagesExtracted: 120 }))
+    const POST = await importRoute()
+    const res = await POST(req(9) as never)
+    expect(res.status).toBe(200)
+    expect(m.extractViaVision).toHaveBeenCalled()
+    expect(m.updateDocumentStatus).toHaveBeenCalledWith(9, 'ready', expect.objectContaining({ extractionMethod: 'vision' }))
+  })
+
+  it('vision fallback throwing keeps the usable text extraction (does not error the doc)', async () => {
+    // pdf-lib is a stricter parser than pdfjs: a construction PDF pdfjs reads fine can
+    // make the segmented vision fallback throw. That must NOT discard the usable text.
+    m.getDocumentById.mockResolvedValue({ id: 15, projectId: 1, filename: 'plans.pdf', mimeType: 'application/pdf', storagePath: 'p' })
+    m.extractTextFromBuffer.mockResolvedValue(extRes('T'.repeat(5000), { pageCount: 120 }))
+    m.extractViaVision.mockRejectedValue(new Error('pdf-lib choked'))
+    const POST = await importRoute()
+    const res = await POST(req(15) as never)
+    expect(res.status).toBe(200)
+    expect(m.extractViaVision).toHaveBeenCalled()
+    expect(m.updateDocumentStatus).toHaveBeenCalledWith(15, 'ready', expect.objectContaining({ extractionMethod: 'text' }))
+  })
+
+  it('dense text PDF (contract) does NOT trigger the vision fallback', async () => {
+    // 10 pages, 20000 chars ≈ 2000 chars/page — clears both gates.
+    m.getDocumentById.mockResolvedValue({ id: 9, projectId: 1, filename: 'contract.pdf', mimeType: 'application/pdf', storagePath: 'p' })
+    m.extractTextFromBuffer.mockResolvedValue(extRes('T'.repeat(20000), { pageCount: 10 }))
+    const POST = await importRoute()
+    const res = await POST(req(9) as never)
+    expect(res.status).toBe(200)
+    expect(m.extractViaVision).not.toHaveBeenCalled()
+  })
+
   it('image upload uses extractViaVisionImage + image thumbnail', async () => {
     m.getDocumentById.mockResolvedValue({ id: 9, projectId: 1, filename: 'p.png', mimeType: 'image/png', storagePath: 'p' })
     m.extractViaVisionImage.mockResolvedValue(extRes('image text here'))

@@ -12,12 +12,14 @@ import { generatePdfThumbnail, generateImageThumbnail } from '@/lib/thumbnails'
 import { processDocumentRequestSchema } from '@/lib/validation'
 import { apiError } from '@/lib/errors'
 
-// A 30-page vision run is serial (bounded concurrency deferred to Batch B), so give
-// the function a generous budget. Pairs with the stale-processing reaper: even if the
-// platform still kills the function, a stuck row is flipped to error on the next list.
+// Vision extraction is now segmented (≤500 pages → up to 25 segment calls, 2
+// concurrent); this budget covers the worst case. Pairs with the stale-processing
+// reaper: even if the platform still kills the function, a stuck row is flipped to
+// error on the next list.
 export const maxDuration = 800
 
 const MIN_TEXT = Number(process.env.EXTRACTION_MIN_TEXT_CHARS) || 100
+const MIN_CHARS_PER_PAGE = Number(process.env.EXTRACTION_MIN_CHARS_PER_PAGE) || 200
 
 export async function POST(request: NextRequest) {
   try {
@@ -84,12 +86,25 @@ export async function POST(request: NextRequest) {
       } else {
         extraction = await extractTextFromBuffer(buffer, ext)
         textContent = extraction.text
-        if (ext === 'pdf' && textContent.trim().length < MIN_TEXT) {
-          const v = await extractViaVision(buffer)
-          if (v.text.trim().length > textContent.trim().length) {
-            extraction = v
-            textContent = v.text
-            extractionMethod = 'vision'
+        // Vision fallback when the text layer is thin ABSOLUTELY (scanned doc) or thin
+        // PER PAGE (CAD plan set: 120 pages of drawings with only title-block text —
+        // enough chars to pass an absolute floor, but the drawings were never read).
+        const trimmedLen = textContent.trim().length
+        const sparsePerPage = extraction.pageCount != null && extraction.pageCount > 0 &&
+          trimmedLen / extraction.pageCount < MIN_CHARS_PER_PAGE
+        if (ext === 'pdf' && (trimmedLen < MIN_TEXT || sparsePerPage)) {
+          // Vision is a stricter parser (pdf-lib): a PDF pdfjs read fine can throw
+          // here. Isolate the fallback so a vision failure never discards usable text
+          // — keep the existing textContent/extraction and ingest that instead.
+          try {
+            const v = await extractViaVision(buffer)
+            if (v.text.trim().length > textContent.trim().length) {
+              extraction = v
+              textContent = v.text
+              extractionMethod = 'vision'
+            }
+          } catch (e) {
+            console.warn('[documents/process] vision fallback failed:', e instanceof Error ? e.message : e)
           }
         }
       }

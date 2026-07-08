@@ -1,65 +1,109 @@
 import { generateText } from 'ai'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { getGeminiApiKey } from './settings'
+import { splitPdfIntoSegments } from './pdfSegments'
+import { mapWithConcurrency } from './concurrency'
 import type { ExtractionResult } from './fileExtraction'
 
-const EXTRACTION_PROMPT =
+const IMAGE_PROMPT =
   'You are reading a single page of a construction document (plan/drawing/schedule). ' +
   'Transcribe ALL legible text verbatim — sheet numbers, titles, room names/numbers, dimensions, ' +
   'notes, callouts, and any schedule/table contents (preserve table structure as markdown). ' +
   'Then add a short paragraph describing what the drawing depicts. Do not invent content.'
+
+function segmentPrompt(firstPage: number, lastPage: number): string {
+  return (
+    `You are reading pages ${firstPage}-${lastPage} of a construction document (plans/drawings/schedules/contract). ` +
+    'For EACH page: transcribe ALL legible text verbatim — sheet numbers, titles, room names/numbers, dimensions, ' +
+    'notes, callouts, and any schedule/table contents (preserve table structure as markdown) — then add a short ' +
+    'paragraph describing what the page depicts. ' +
+    `Start each page with a heading line "# Page <n>" using the page's ABSOLUTE number: the first page of this file is page ${firstPage}. ` +
+    'Do not invent content.'
+  )
+}
 
 function num(v: string | undefined, d: number) { const n = v ? Number(v) : NaN; return Number.isFinite(n) ? n : d }
 
 function cfg() {
   return {
     model: process.env.EXTRACTION_MODEL || 'gemini-3.5-flash',
-    maxPages: num(process.env.EXTRACTION_MAX_PAGES, 60),
-    scale: num(process.env.EXTRACTION_RENDER_SCALE, 3),
-    maxOutputTokens: num(process.env.EXTRACTION_MAX_OUTPUT_TOKENS, 8000),
+    maxPages: num(process.env.EXTRACTION_MAX_PAGES, 500),
+    segmentPages: num(process.env.EXTRACTION_SEGMENT_PAGES, 20),
+    segmentConcurrency: num(process.env.EXTRACTION_SEGMENT_CONCURRENCY, 2),
+    segmentMaxBytes: num(process.env.EXTRACTION_SEGMENT_MAX_BYTES, 45 * 1024 * 1024),
+    maxOutputTokens: num(process.env.EXTRACTION_MAX_OUTPUT_TOKENS, 60000),
+    retries: num(process.env.EXTRACTION_SEGMENT_RETRIES, 2),
   }
 }
+
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
 async function extractImage(image: Uint8Array, model: string, maxOutputTokens: number, apiKey: string): Promise<string> {
   const google = createGoogleGenerativeAI({ apiKey })
   const { text } = await generateText({
     model: google(model),
-    messages: [{ role: 'user', content: [{ type: 'text', text: EXTRACTION_PROMPT }, { type: 'image', image }] }],
+    messages: [{ role: 'user', content: [{ type: 'text', text: IMAGE_PROMPT }, { type: 'image', image }] }],
     maxOutputTokens,
   })
   return text.trim()
 }
 
-/** Render each PDF page and vision-extract it. Best-effort; empty result if no key. */
+/**
+ * Native-PDF segment extraction: split into page-range segments (each far under
+ * Gemini's 50MB-per-request PDF cap), one generateText call per segment with the
+ * segment inline as a file part, bounded-concurrent with retry. Gemini reads the
+ * embedded text layer natively AND sees each page as an image — no rasterizing.
+ * Best-effort; empty result if no key. Fidelity: a failed segment, a skipped
+ * oversize page, output truncation, or the page cap all surface as partial.
+ */
 export async function extractViaVision(buffer: Buffer): Promise<ExtractionResult> {
   const apiKey = await getGeminiApiKey()
   if (!apiKey) return { text: '', pageCount: null, pagesExtracted: null, partial: false }
-  const { model, maxPages, scale, maxOutputTokens } = cfg()
-  const { definePDFJSModule, getDocumentProxy, renderPageAsImage } = await import('unpdf')
-  await definePDFJSModule(() => import('pdfjs-dist/legacy/build/pdf.mjs'))
-  // pdfjs TRANSFERS (detaches) the ArrayBuffer it parses, so every pdfjs call must
-  // get its own fresh copy. Keep `source` pristine and copy from it each time —
-  // reusing one array detaches it after the first call and breaks page 2+.
-  const source = new Uint8Array(buffer)
-  const pdf = await getDocumentProxy(new Uint8Array(source))
-  try {
-    const pageCount = pdf.numPages
-    const total = Math.min(pageCount, maxPages)
-    if (pageCount > maxPages) console.warn(`[visionExtraction] capping at ${maxPages}/${pageCount} pages`)
-    const parts: string[] = []
-    for (let page = 1; page <= total; page++) {
+  const { model, maxPages, segmentPages, segmentConcurrency, segmentMaxBytes, maxOutputTokens, retries } = cfg()
+  const { segments, pageCount, skippedPages } = await splitPdfIntoSegments(buffer, segmentPages, {
+    maxPages, maxSegmentBytes: segmentMaxBytes,
+  })
+  if (pageCount > maxPages) console.warn(`[visionExtraction] capping at ${maxPages}/${pageCount} pages`)
+  const google = createGoogleGenerativeAI({ apiKey })
+
+  let truncated = false
+  const results = await mapWithConcurrency(segments, segmentConcurrency, async seg => {
+    for (let attempt = 0; attempt <= retries; attempt++) {
       try {
-        const ab = await renderPageAsImage(new Uint8Array(source), page, { canvasImport: () => import('@napi-rs/canvas'), scale })
-        const text = await extractImage(new Uint8Array(ab), model, maxOutputTokens, apiKey)
-        if (text) parts.push(`# Page ${page}\n${text}`)
+        const { text, finishReason } = await generateText({
+          model: google(model),
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'text', text: segmentPrompt(seg.firstPage, seg.lastPage) },
+              { type: 'file', data: seg.bytes, mediaType: 'application/pdf' },
+            ],
+          }],
+          maxOutputTokens,
+        })
+        if (finishReason === 'length') {
+          console.warn(`[visionExtraction] segment ${seg.firstPage}-${seg.lastPage} hit the output cap`)
+          truncated = true
+        }
+        return { seg, text: text.trim() }
       } catch (err) {
-        console.warn(`[visionExtraction] page ${page} failed:`, err instanceof Error ? err.message : err)
+        if (attempt === retries) {
+          console.warn(`[visionExtraction] segment ${seg.firstPage}-${seg.lastPage} failed:`, err instanceof Error ? err.message : err)
+          return { seg, text: '' }
+        }
+        await sleep(500 * 2 ** attempt)
       }
     }
-    return { text: parts.join('\n\n'), pageCount, pagesExtracted: total, partial: total < pageCount }
-  } finally {
-    // Release pdfjs worker + page caches so they don't accumulate on a warm instance.
-    await pdf.destroy?.()
+    return { seg, text: '' }
+  })
+
+  const ok = results.filter(r => r.text)
+  const pagesExtracted = ok.reduce((n, r) => n + (r.seg.lastPage - r.seg.firstPage + 1), 0)
+  return {
+    text: ok.map(r => r.text).join('\n\n'),
+    pageCount,
+    pagesExtracted,
+    partial: truncated || skippedPages > 0 || pagesExtracted < pageCount,
   }
 }
 

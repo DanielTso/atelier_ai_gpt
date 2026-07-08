@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.45.0] - 2026-07-07 — RAG Phase 2: segmented native-PDF vision extraction
+
+Phase 2 of the RAG overhaul. Replaces the per-page-rasterize vision fallback with segmented native-PDF extraction — faster, cheaper, and reliable at scale for large CAD/plan sets.
+
+### Changed
+
+- **Native-PDF segment extraction.** `extractViaVision` no longer rasterizes each page via `pdfjs-dist`/`@napi-rs/canvas` and calls Gemini once per page. It now splits the PDF into page-range segments with **pdf-lib** (new `src/lib/pdfSegments.ts`, default 20 pages/segment, recursive halving to stay under Gemini's 50MB-per-request PDF cap) and sends each segment inline as a native PDF `file` part in one Gemini call, bounded-concurrent with retry via the new shared pool (`src/lib/concurrency.ts`). Gemini reads the embedded text layer natively and sees each page as an image; the per-page raster loop is gone (`pdfjs-dist`/`@napi-rs/canvas` remain only for thumbnails).
+- **Page cap 60 → 500** (`EXTRACTION_MAX_PAGES`) — segmented extraction makes large plan sets tractable.
+- **Output cap 8,000 → 60,000 tokens per segment** (`EXTRACTION_MAX_OUTPUT_TOKENS`) — a segment that hits the cap (`finishReason==='length'`) still flags the doc partial.
+- **`EXTRACTION_RENDER_SCALE` removed** — no longer applicable now that rasterization is out of the extraction path.
+
+### Added
+
+- **Per-page density vision gate.** The vision fallback now also triggers when average extracted text per page falls below `EXTRACTION_MIN_CHARS_PER_PAGE` (default **200**), catching CAD/plan sets whose only text layer is title blocks — previously only the absolute `EXTRACTION_MIN_TEXT_CHARS` threshold applied.
+- New env knobs: `EXTRACTION_SEGMENT_PAGES` (default `20`), `EXTRACTION_SEGMENT_CONCURRENCY` (default `2`), `EXTRACTION_SEGMENT_MAX_BYTES` (default 45MB), `EXTRACTION_SEGMENT_RETRIES` (default `2`).
+
+### Notes
+
+- No migration. A failed segment, a skipped oversize page, output truncation, or page-capping all surface as `extraction_partial` (the fidelity schema from 4.44.0) — never silent.
+
 ## [4.44.0] - 2026-07-07 — RAG Phase 1: ingestion reliability & fidelity
 
 Phase 1 of the RAG overhaul. Kills three silent-loss bugs in document ingestion and makes fidelity visible — every document now ends complete, explicitly **partial**, or error. Groundwork for running full contracts and plans reliably.
