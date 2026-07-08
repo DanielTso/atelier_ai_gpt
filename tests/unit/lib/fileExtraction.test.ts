@@ -64,3 +64,24 @@ describe('fileExtraction — pdf text bounding + partial', () => {
     expect(out.pageCount).toBe(2)
   })
 })
+
+describe('extractTextFromBuffer pageTexts', () => {
+  it('attaches raw per-page text for PDFs', async () => {
+    vi.resetModules()
+    vi.doMock('unpdf', () => ({
+      extractText: () => Promise.resolve({ totalPages: 3, text: ['page one text', 'p2', 'page three text'] }),
+    }))
+    const { extractTextFromBuffer } = await import('@/lib/fileExtraction')
+    const out = await extractTextFromBuffer(Buffer.from('pdf'), 'pdf')
+    expect(out.pageTexts).toEqual(['page one text', 'p2', 'page three text'])
+    expect(out.text).toContain('page one text')
+    expect(out.pageCount).toBe(3)
+  })
+
+  it('leaves pageTexts undefined for non-PDF', async () => {
+    vi.resetModules()
+    const { extractTextFromBuffer } = await import('@/lib/fileExtraction')
+    const out = await extractTextFromBuffer(Buffer.from('plain text'), 'txt')
+    expect(out.pageTexts).toBeUndefined()
+  })
+})
