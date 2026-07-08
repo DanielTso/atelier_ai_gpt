@@ -12,6 +12,7 @@ export interface ExtractionResult {
   pageCount: number | null
   pagesExtracted: number | null
   partial: boolean
+  pageTexts?: string[] // raw per-page text, index 0 = page 1; PDF text path only, set before char-cap truncation
 }
 
 export const SUPPORTED_EXTENSIONS = new Set([
@@ -63,6 +64,7 @@ export async function extractTextFromBuffer(buffer: Buffer, extension: string): 
   let text = ''
   let pageCount: number | null = null
   let truncated = false
+  let pageTexts: string[] | undefined
   if (extension === 'pdf') {
     const { extractText } = await import('unpdf')
     const result = await extractText(new Uint8Array(buffer))
@@ -70,6 +72,7 @@ export async function extractTextFromBuffer(buffer: Buffer, extension: string): 
     // Accumulate page-by-page and stop at DOCUMENT_MAX_CHARS so a huge PDF can't build a
     // multi-megabyte string on top of the ≤200MB buffer already in memory.
     const pages = Array.isArray(result.text) ? result.text : [String(result.text)]
+    pageTexts = pages // raw per-page text, captured before any char-cap truncation below
     for (let i = 0; i < pages.length; i++) {
       text += (text ? '\n' : '') + pages[i]
       if (text.length >= DOCUMENT_MAX_CHARS) {
@@ -90,7 +93,7 @@ export async function extractTextFromBuffer(buffer: Buffer, extension: string): 
   }
   if (text.length > DOCUMENT_MAX_CHARS) { text = text.slice(0, DOCUMENT_MAX_CHARS); truncated = true }
   // Text path partial = char-truncation only; it doesn't page-cap, so pagesExtracted stays null.
-  return { text, pageCount, pagesExtracted: null, partial: truncated }
+  return { text, pageCount, pagesExtracted: null, partial: truncated, pageTexts }
 }
 
 /**

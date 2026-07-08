@@ -470,7 +470,7 @@ export async function getDocumentById(id: number) {
 export async function updateDocumentStatus(
   id: number,
   status: 'uploading' | 'processing' | 'ready' | 'error',
-  updates?: { chunkCount?: number; errorMessage?: string; charCount?: number; thumbnailPath?: string; extractionMethod?: 'text' | 'vision'; pageCount?: number | null; pagesExtracted?: number | null; extractionPartial?: boolean }
+  updates?: { chunkCount?: number; errorMessage?: string; charCount?: number; thumbnailPath?: string; extractionMethod?: 'text' | 'vision' | 'hybrid'; pageCount?: number | null; pagesExtracted?: number | null; extractionPartial?: boolean }
 ) {
   return await db.update(documents)
     .set({ status, ...updates, updatedAt: new Date() })
@@ -559,7 +559,7 @@ export async function commitDocumentReplacement(
     thumbnailPath?: string | null
     charCount: number
     chunkCount: number
-    extractionMethod: 'text' | 'vision'
+    extractionMethod: 'text' | 'vision' | 'hybrid'
     revision: number
     status: 'ready' | 'error'
     errorMessage?: string | null

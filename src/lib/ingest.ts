@@ -7,7 +7,7 @@ import { embedChunks } from '@/lib/embedChunks'
 export async function ingestText(
   doc: { id: number; projectId: number },
   textContent: string,
-  opts: { extractionMethod: 'text' | 'vision'; thumbnailPath?: string; pageCount?: number | null; pagesExtracted?: number | null; partial?: boolean },
+  opts: { extractionMethod: 'text' | 'vision' | 'hybrid'; thumbnailPath?: string; pageCount?: number | null; pagesExtracted?: number | null; partial?: boolean },
 ): Promise<{ status: 'ready' | 'error'; chunkCount: number }> {
   const textChunks = chunkText(textContent)
   const saved = await saveDocumentChunks(textChunks.map(c => ({

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const mockGenerateText = vi.fn()
 const mockSplit = vi.fn()
+const mockSplitRuns = vi.fn()
 
 const seg = (firstPage: number, lastPage: number) => ({ bytes: new Uint8Array([1]), firstPage, lastPage })
 
@@ -10,7 +11,10 @@ function setup(key: string | null = 'k') {
   vi.doMock('ai', () => ({ generateText: (...a: unknown[]) => mockGenerateText(...a) }))
   vi.doMock('@ai-sdk/google', () => ({ createGoogleGenerativeAI: () => (m: string) => ({ modelId: m }) }))
   vi.doMock('@/lib/settings', () => ({ getGeminiApiKey: () => Promise.resolve(key) }))
-  vi.doMock('@/lib/pdfSegments', () => ({ splitPdfIntoSegments: (...a: unknown[]) => mockSplit(...a) }))
+  vi.doMock('@/lib/pdfSegments', () => ({
+    splitPdfIntoSegments: (...a: unknown[]) => mockSplit(...a),
+    splitPdfPageRuns: (...a: unknown[]) => mockSplitRuns(...a),
+  }))
 }
 
 describe('extractViaVision (segmented)', () => {
@@ -87,6 +91,60 @@ describe('extractViaVision (segmented)', () => {
     const { extractViaVision } = await import('@/lib/visionExtraction')
     const out = await extractViaVision(Buffer.from('pdf'))
     expect(out).toMatchObject({ pageCount: 3, pagesExtracted: 2, partial: true })
+  })
+})
+
+describe('extractPagesViaVision', () => {
+  beforeEach(() => { mockGenerateText.mockReset(); mockSplitRuns.mockReset(); process.env.EXTRACTION_SEGMENT_RETRIES = '0' })
+
+  it('extracts each run segment and returns per-segment text', async () => {
+    setup()
+    mockSplitRuns.mockResolvedValue({ segments: [seg(2, 3), seg(7, 9)], skippedPages: 0 })
+    mockGenerateText
+      .mockResolvedValueOnce({ text: 'NOTES A', finishReason: 'stop' })
+      .mockResolvedValueOnce({ text: 'NOTES B', finishReason: 'stop' })
+    const { extractPagesViaVision } = await import('@/lib/visionExtraction')
+    const out = await extractPagesViaVision(Buffer.from('pdf'), [2, 3, 7, 8, 9])
+    expect(out.segments).toEqual([
+      { firstPage: 2, lastPage: 3, text: 'NOTES A' },
+      { firstPage: 7, lastPage: 9, text: 'NOTES B' },
+    ])
+    expect(out.failed).toBe(0)
+  })
+
+  it('counts a failed run and omits it', async () => {
+    setup()
+    mockSplitRuns.mockResolvedValue({ segments: [seg(2, 3), seg(7, 9)], skippedPages: 0 })
+    mockGenerateText
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValueOnce({ text: 'NOTES B', finishReason: 'stop' })
+    const { extractPagesViaVision } = await import('@/lib/visionExtraction')
+    const out = await extractPagesViaVision(Buffer.from('pdf'), [2, 3, 7, 8, 9])
+    expect(out.segments).toEqual([{ firstPage: 7, lastPage: 9, text: 'NOTES B' }])
+    expect(out.failed).toBe(1)
+  })
+
+  it('flags truncation', async () => {
+    setup()
+    mockSplitRuns.mockResolvedValue({ segments: [seg(2, 3)], skippedPages: 0 })
+    mockGenerateText.mockResolvedValue({ text: 'PARTIAL NOTES', finishReason: 'length' })
+    const { extractPagesViaVision } = await import('@/lib/visionExtraction')
+    expect((await extractPagesViaVision(Buffer.from('pdf'), [2, 3])).truncated).toBe(true)
+  })
+
+  it('surfaces oversize pages the splitter skipped', async () => {
+    setup()
+    mockSplitRuns.mockResolvedValue({ segments: [], skippedPages: 2 })
+    const { extractPagesViaVision } = await import('@/lib/visionExtraction')
+    const out = await extractPagesViaVision(Buffer.from('pdf'), [2, 3])
+    expect(out).toEqual({ segments: [], failed: 0, truncated: false, skippedPages: 2 })
+  })
+
+  it('returns empty without a key', async () => {
+    setup(null)
+    const { extractPagesViaVision } = await import('@/lib/visionExtraction')
+    expect(await extractPagesViaVision(Buffer.from('pdf'), [2])).toEqual({ segments: [], failed: 0, truncated: false, skippedPages: 0 })
+    expect(mockSplitRuns).not.toHaveBeenCalled()
   })
 })
 

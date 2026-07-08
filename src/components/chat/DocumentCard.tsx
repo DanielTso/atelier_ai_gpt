@@ -63,6 +63,9 @@ export const DocumentCard = memo(function DocumentCard({ doc, onOpen, onDelete, 
           {doc.extractionMethod === 'vision' && (
             <span className="flex items-center gap-0.5 text-[10px] text-primary"><Sparkles className="h-2.5 w-2.5" />vision</span>
           )}
+          {doc.extractionMethod === 'hybrid' && (
+            <span className="flex items-center gap-0.5 text-[10px] text-primary"><Sparkles className="h-2.5 w-2.5" />hybrid</span>
+          )}
           {doc.extractionPartial && (
             <span
               className="flex items-center gap-0.5 text-[10px] text-amber-500"
