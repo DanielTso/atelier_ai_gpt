@@ -1,7 +1,8 @@
 import { generateText } from 'ai'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { getGeminiApiKey } from './settings'
-import { splitPdfIntoSegments } from './pdfSegments'
+import { splitPdfIntoSegments, splitPdfPageRuns } from './pdfSegments'
+import type { PdfSegment } from './pdfSegments'
 import { mapWithConcurrency } from './concurrency'
 import type { ExtractionResult } from './fileExtraction'
 
@@ -38,6 +39,48 @@ function cfg() {
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
+/** One generateText call per segment (inline PDF file part), bounded-concurrent
+ * with retry/backoff. A segment that fails after retries yields text ''. Shared
+ * by extractViaVision and extractPagesViaVision. */
+async function extractSegments(
+  segments: PdfSegment[],
+  c: ReturnType<typeof cfg>,
+  apiKey: string,
+): Promise<{ results: { seg: PdfSegment; text: string }[]; truncated: boolean }> {
+  const google = createGoogleGenerativeAI({ apiKey })
+  let truncated = false
+  const results = await mapWithConcurrency(segments, c.segmentConcurrency, async seg => {
+    for (let attempt = 0; attempt <= c.retries; attempt++) {
+      try {
+        const { text, finishReason } = await generateText({
+          model: google(c.model),
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'text', text: segmentPrompt(seg.firstPage, seg.lastPage) },
+              { type: 'file', data: seg.bytes, mediaType: 'application/pdf' },
+            ],
+          }],
+          maxOutputTokens: c.maxOutputTokens,
+        })
+        if (finishReason === 'length') {
+          console.warn(`[visionExtraction] segment ${seg.firstPage}-${seg.lastPage} hit the output cap`)
+          truncated = true
+        }
+        return { seg, text: text.trim() }
+      } catch (err) {
+        if (attempt === c.retries) {
+          console.warn(`[visionExtraction] segment ${seg.firstPage}-${seg.lastPage} failed:`, err instanceof Error ? err.message : err)
+          return { seg, text: '' }
+        }
+        await sleep(500 * 2 ** attempt)
+      }
+    }
+    return { seg, text: '' }
+  })
+  return { results, truncated }
+}
+
 async function extractImage(image: Uint8Array, model: string, maxOutputTokens: number, apiKey: string): Promise<string> {
   const google = createGoogleGenerativeAI({ apiKey })
   const { text } = await generateText({
@@ -59,43 +102,12 @@ async function extractImage(image: Uint8Array, model: string, maxOutputTokens: n
 export async function extractViaVision(buffer: Buffer): Promise<ExtractionResult> {
   const apiKey = await getGeminiApiKey()
   if (!apiKey) return { text: '', pageCount: null, pagesExtracted: null, partial: false }
-  const { model, maxPages, segmentPages, segmentConcurrency, segmentMaxBytes, maxOutputTokens, retries } = cfg()
-  const { segments, pageCount, skippedPages } = await splitPdfIntoSegments(buffer, segmentPages, {
-    maxPages, maxSegmentBytes: segmentMaxBytes,
+  const c = cfg()
+  const { segments, pageCount, skippedPages } = await splitPdfIntoSegments(buffer, c.segmentPages, {
+    maxPages: c.maxPages, maxSegmentBytes: c.segmentMaxBytes,
   })
-  if (pageCount > maxPages) console.warn(`[visionExtraction] capping at ${maxPages}/${pageCount} pages`)
-  const google = createGoogleGenerativeAI({ apiKey })
-
-  let truncated = false
-  const results = await mapWithConcurrency(segments, segmentConcurrency, async seg => {
-    for (let attempt = 0; attempt <= retries; attempt++) {
-      try {
-        const { text, finishReason } = await generateText({
-          model: google(model),
-          messages: [{
-            role: 'user',
-            content: [
-              { type: 'text', text: segmentPrompt(seg.firstPage, seg.lastPage) },
-              { type: 'file', data: seg.bytes, mediaType: 'application/pdf' },
-            ],
-          }],
-          maxOutputTokens,
-        })
-        if (finishReason === 'length') {
-          console.warn(`[visionExtraction] segment ${seg.firstPage}-${seg.lastPage} hit the output cap`)
-          truncated = true
-        }
-        return { seg, text: text.trim() }
-      } catch (err) {
-        if (attempt === retries) {
-          console.warn(`[visionExtraction] segment ${seg.firstPage}-${seg.lastPage} failed:`, err instanceof Error ? err.message : err)
-          return { seg, text: '' }
-        }
-        await sleep(500 * 2 ** attempt)
-      }
-    }
-    return { seg, text: '' }
-  })
+  if (pageCount > c.maxPages) console.warn(`[visionExtraction] capping at ${c.maxPages}/${pageCount} pages`)
+  const { results, truncated } = await extractSegments(segments, c, apiKey)
 
   const ok = results.filter(r => r.text)
   const pagesExtracted = ok.reduce((n, r) => n + (r.seg.lastPage - r.seg.firstPage + 1), 0)
@@ -104,6 +116,27 @@ export async function extractViaVision(buffer: Buffer): Promise<ExtractionResult
     pageCount,
     pagesExtracted,
     partial: truncated || skippedPages > 0 || pagesExtracted < pageCount,
+  }
+}
+
+/** Vision-extract specific pages (contiguous runs) of a PDF — the hybrid path for
+ * SHX/thin-text-layer sheets inside otherwise text-rich sets. Best-effort. */
+export async function extractPagesViaVision(
+  buffer: Buffer,
+  pages: number[],
+): Promise<{ segments: { firstPage: number; lastPage: number; text: string }[]; failed: number; truncated: boolean }> {
+  const apiKey = await getGeminiApiKey()
+  if (!apiKey || pages.length === 0) return { segments: [], failed: 0, truncated: false }
+  const c = cfg()
+  const { segments } = await splitPdfPageRuns(buffer, pages, {
+    pagesPerSegment: c.segmentPages, maxSegmentBytes: c.segmentMaxBytes,
+  })
+  const { results, truncated } = await extractSegments(segments, c, apiKey)
+  const ok = results.filter(r => r.text)
+  return {
+    segments: ok.map(r => ({ firstPage: r.seg.firstPage, lastPage: r.seg.lastPage, text: r.text })),
+    failed: results.length - ok.length,
+    truncated,
   }
 }
 
