@@ -8,7 +8,7 @@ Follow-up to Phase 2 (v4.45.0). Fixes a hole the per-document density gate can't
 
 ### Problem
 
-- Live diagnosis on the Drover 90% DD set (259 pages, 184 MB): ingested `ready` via the **text** path at ~4,900 chars/page average, sailing past the 200 chars/page document-level density gate — but its Civil General Notes sheets (pages 2–5) are plotted with **AutoCAD SHX fonts**, whose notes text is stroke geometry, not text objects. Measured per-page text-layer chars: median 2,517; pages 2–5 = 401/375/317/444 (title block alone ≈ 300); 63 of 259 pages under 600 chars. Chat correctly reported the notes body text as missing — a document-level average can never catch a locally-sparse sheet.
+- Live diagnosis on the Drover 90% DD set (259 pages, 184 MB): ingested `ready` via the **text** path at ~4,900 chars/page average, sailing past the 200 chars/page document-level density gate — but its Civil General Notes sheets (pages 2–3, with pages 4–5 also title-block-thin) are plotted with **AutoCAD SHX fonts**, whose notes text is stroke geometry, not text objects. Measured per-page text-layer chars: median 2,517; pages 2–5 = 401/375/317/444 (title block alone ≈ 300); 63 of 259 pages under 600 chars. Chat correctly reported the notes body text as missing — a document-level average can never catch a locally-sparse sheet.
 
 ### Added
 

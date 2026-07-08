@@ -142,7 +142,7 @@ export async function POST(request: NextRequest) {
             textContent = parts.join('\n')
             extractionMethod = 'hybrid'
           }
-          if (hybrid.failed > 0 || hybrid.truncated) extraction = { ...extraction, partial: true }
+          if (hybrid.failed > 0 || hybrid.truncated || hybrid.skippedPages > 0) extraction = { ...extraction, partial: true }
         } catch (e) {
           console.warn('[documents/process] hybrid extraction failed:', e instanceof Error ? e.message : e)
         }

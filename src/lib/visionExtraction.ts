@@ -124,11 +124,11 @@ export async function extractViaVision(buffer: Buffer): Promise<ExtractionResult
 export async function extractPagesViaVision(
   buffer: Buffer,
   pages: number[],
-): Promise<{ segments: { firstPage: number; lastPage: number; text: string }[]; failed: number; truncated: boolean }> {
+): Promise<{ segments: { firstPage: number; lastPage: number; text: string }[]; failed: number; truncated: boolean; skippedPages: number }> {
   const apiKey = await getGeminiApiKey()
-  if (!apiKey || pages.length === 0) return { segments: [], failed: 0, truncated: false }
+  if (!apiKey || pages.length === 0) return { segments: [], failed: 0, truncated: false, skippedPages: 0 }
   const c = cfg()
-  const { segments } = await splitPdfPageRuns(buffer, pages, {
+  const { segments, skippedPages } = await splitPdfPageRuns(buffer, pages, {
     pagesPerSegment: c.segmentPages, maxSegmentBytes: c.segmentMaxBytes,
   })
   const { results, truncated } = await extractSegments(segments, c, apiKey)
@@ -137,6 +137,7 @@ export async function extractPagesViaVision(
     segments: ok.map(r => ({ firstPage: r.seg.firstPage, lastPage: r.seg.lastPage, text: r.text })),
     failed: results.length - ok.length,
     truncated,
+    skippedPages,
   }
 }
 

@@ -55,7 +55,7 @@ describe('POST /api/documents/process', () => {
     m.generateImageThumbnail.mockResolvedValue(Buffer.from('thumb'))
     m.extractViaVision.mockResolvedValue(extRes(''))
     m.extractViaVisionImage.mockResolvedValue(extRes(''))
-    m.extractPagesViaVision.mockResolvedValue({ segments: [], failed: 0, truncated: false })
+    m.extractPagesViaVision.mockResolvedValue({ segments: [], failed: 0, truncated: false, skippedPages: 0 })
   })
 
   it('404 when the document or its storagePath is missing', async () => {
@@ -277,13 +277,19 @@ describe('POST /api/documents/process', () => {
     m.extractTextFromBuffer.mockResolvedValue(extRes('D'.repeat(4000), {
       pageCount: 3, pageTexts: ['D'.repeat(2000), 'thin', 'E'.repeat(2000)],
     }))
-    m.extractPagesViaVision.mockResolvedValue({ segments: [{ firstPage: 2, lastPage: 2, text: 'VISION NOTES BODY' }], failed: 0, truncated: false })
+    m.extractPagesViaVision.mockResolvedValue({ segments: [{ firstPage: 2, lastPage: 2, text: 'VISION NOTES BODY' }], failed: 0, truncated: false, skippedPages: 0 })
     const POST = await importRoute()
     const res = await POST(req(40) as never)
     expect(res.status).toBe(200)
     expect(m.extractPagesViaVision).toHaveBeenCalledWith(expect.anything(), [2])
     const call = m.updateDocumentStatus.mock.calls.find((c: unknown[]) => c[1] === 'ready')
     expect(call?.[2]).toMatchObject({ extractionMethod: 'hybrid' })
+    // The spliced text handed downstream (real ingestText → chunkText) must carry the
+    // vision body and the dense page text, but NOT the replaced thin page text.
+    const spliced = m.chunkText.mock.calls[0][0] as string
+    expect(spliced).toContain('VISION NOTES BODY')
+    expect(spliced).toContain('E'.repeat(2000))
+    expect(spliced).not.toContain('thin')
   })
 
   it('hybrid: a failed run keeps the thin text and flags partial', async () => {
@@ -291,9 +297,22 @@ describe('POST /api/documents/process', () => {
     m.extractTextFromBuffer.mockResolvedValue(extRes('D'.repeat(4000), {
       pageCount: 3, pageTexts: ['D'.repeat(2000), 'thin', 'E'.repeat(2000)],
     }))
-    m.extractPagesViaVision.mockResolvedValue({ segments: [], failed: 1, truncated: false })
+    m.extractPagesViaVision.mockResolvedValue({ segments: [], failed: 1, truncated: false, skippedPages: 0 })
     const POST = await importRoute()
     const res = await POST(req(41) as never)
+    expect(res.status).toBe(200)
+    const call = m.updateDocumentStatus.mock.calls.find((c: unknown[]) => c[1] === 'ready')
+    expect(call?.[2]).toMatchObject({ extractionMethod: 'text', extractionPartial: true })
+  })
+
+  it('hybrid: an oversize page the splitter skipped flags partial, method stays text', async () => {
+    m.getDocumentById.mockResolvedValue({ id: 42, projectId: 1, filename: 'plans.pdf', mimeType: 'application/pdf', storagePath: 'p' })
+    m.extractTextFromBuffer.mockResolvedValue(extRes('D'.repeat(4000), {
+      pageCount: 3, pageTexts: ['D'.repeat(2000), 'thin', 'E'.repeat(2000)],
+    }))
+    m.extractPagesViaVision.mockResolvedValue({ segments: [], failed: 0, truncated: false, skippedPages: 1 })
+    const POST = await importRoute()
+    const res = await POST(req(42) as never)
     expect(res.status).toBe(200)
     const call = m.updateDocumentStatus.mock.calls.find((c: unknown[]) => c[1] === 'ready')
     expect(call?.[2]).toMatchObject({ extractionMethod: 'text', extractionPartial: true })

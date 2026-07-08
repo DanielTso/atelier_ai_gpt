@@ -132,10 +132,18 @@ describe('extractPagesViaVision', () => {
     expect((await extractPagesViaVision(Buffer.from('pdf'), [2, 3])).truncated).toBe(true)
   })
 
+  it('surfaces oversize pages the splitter skipped', async () => {
+    setup()
+    mockSplitRuns.mockResolvedValue({ segments: [], skippedPages: 2 })
+    const { extractPagesViaVision } = await import('@/lib/visionExtraction')
+    const out = await extractPagesViaVision(Buffer.from('pdf'), [2, 3])
+    expect(out).toEqual({ segments: [], failed: 0, truncated: false, skippedPages: 2 })
+  })
+
   it('returns empty without a key', async () => {
     setup(null)
     const { extractPagesViaVision } = await import('@/lib/visionExtraction')
-    expect(await extractPagesViaVision(Buffer.from('pdf'), [2])).toEqual({ segments: [], failed: 0, truncated: false })
+    expect(await extractPagesViaVision(Buffer.from('pdf'), [2])).toEqual({ segments: [], failed: 0, truncated: false, skippedPages: 0 })
     expect(mockSplitRuns).not.toHaveBeenCalled()
   })
 })
