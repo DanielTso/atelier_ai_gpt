@@ -8,6 +8,7 @@ const m = {
   downloadToBuffer: vi.fn(), uploadBuffer: vi.fn(),
   generatePdfThumbnail: vi.fn(), generateImageThumbnail: vi.fn(),
   extractTextFromBuffer: vi.fn(), extractViaVision: vi.fn(), extractViaVisionImage: vi.fn(),
+  extractPagesViaVision: vi.fn(),
 }
 
 async function importRoute() {
@@ -22,7 +23,7 @@ async function importRoute() {
   vi.doMock('@/lib/chunking', () => ({ chunkText: m.chunkText }))
   vi.doMock('@/lib/storage', () => ({ downloadToBuffer: m.downloadToBuffer, uploadBuffer: m.uploadBuffer, sanitizeStorageName: (s: string) => s.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/^\.+$/, '_') }))
   vi.doMock('@/lib/thumbnails', () => ({ generatePdfThumbnail: m.generatePdfThumbnail, generateImageThumbnail: m.generateImageThumbnail }))
-  vi.doMock('@/lib/visionExtraction', () => ({ extractViaVision: m.extractViaVision, extractViaVisionImage: m.extractViaVisionImage }))
+  vi.doMock('@/lib/visionExtraction', () => ({ extractViaVision: m.extractViaVision, extractViaVisionImage: m.extractViaVisionImage, extractPagesViaVision: m.extractPagesViaVision }))
   vi.doMock('@/lib/fileExtraction', async (orig) => ({ ...(await (orig as () => Promise<Record<string, unknown>>)()), extractTextFromBuffer: m.extractTextFromBuffer }))
   const { POST } = await import('@/app/api/documents/process/route')
   return POST
@@ -35,7 +36,7 @@ function req(documentId: number) {
 }
 
 describe('POST /api/documents/process', () => {
-  const extRes = (text: string, extra: Partial<{ pageCount: number | null; pagesExtracted: number | null; partial: boolean }> = {}) =>
+  const extRes = (text: string, extra: Partial<{ pageCount: number | null; pagesExtracted: number | null; partial: boolean; pageTexts: string[] }> = {}) =>
     ({ text, pageCount: null, pagesExtracted: null, partial: false, ...extra })
 
   beforeEach(() => {
@@ -54,6 +55,7 @@ describe('POST /api/documents/process', () => {
     m.generateImageThumbnail.mockResolvedValue(Buffer.from('thumb'))
     m.extractViaVision.mockResolvedValue(extRes(''))
     m.extractViaVisionImage.mockResolvedValue(extRes(''))
+    m.extractPagesViaVision.mockResolvedValue({ segments: [], failed: 0, truncated: false })
   })
 
   it('404 when the document or its storagePath is missing', async () => {
@@ -267,5 +269,33 @@ describe('POST /api/documents/process', () => {
     expect(m.commitDocumentReplacement).toHaveBeenCalledWith(32, 1, expect.any(Array), expect.objectContaining({
       pageCount: 12, extractionPartial: false,
     }))
+  })
+
+  it('hybrid: sparse pages inside a dense doc are vision-spliced, method hybrid', async () => {
+    // 3 pages: page 2 is title-block-thin (<500), pages 1/3 dense
+    m.getDocumentById.mockResolvedValue({ id: 40, projectId: 1, filename: 'plans.pdf', mimeType: 'application/pdf', storagePath: 'p' })
+    m.extractTextFromBuffer.mockResolvedValue(extRes('D'.repeat(4000), {
+      pageCount: 3, pageTexts: ['D'.repeat(2000), 'thin', 'E'.repeat(2000)],
+    }))
+    m.extractPagesViaVision.mockResolvedValue({ segments: [{ firstPage: 2, lastPage: 2, text: 'VISION NOTES BODY' }], failed: 0, truncated: false })
+    const POST = await importRoute()
+    const res = await POST(req(40) as never)
+    expect(res.status).toBe(200)
+    expect(m.extractPagesViaVision).toHaveBeenCalledWith(expect.anything(), [2])
+    const call = m.updateDocumentStatus.mock.calls.find((c: unknown[]) => c[1] === 'ready')
+    expect(call?.[2]).toMatchObject({ extractionMethod: 'hybrid' })
+  })
+
+  it('hybrid: a failed run keeps the thin text and flags partial', async () => {
+    m.getDocumentById.mockResolvedValue({ id: 41, projectId: 1, filename: 'plans.pdf', mimeType: 'application/pdf', storagePath: 'p' })
+    m.extractTextFromBuffer.mockResolvedValue(extRes('D'.repeat(4000), {
+      pageCount: 3, pageTexts: ['D'.repeat(2000), 'thin', 'E'.repeat(2000)],
+    }))
+    m.extractPagesViaVision.mockResolvedValue({ segments: [], failed: 1, truncated: false })
+    const POST = await importRoute()
+    const res = await POST(req(41) as never)
+    expect(res.status).toBe(200)
+    const call = m.updateDocumentStatus.mock.calls.find((c: unknown[]) => c[1] === 'ready')
+    expect(call?.[2]).toMatchObject({ extractionMethod: 'text', extractionPartial: true })
   })
 })

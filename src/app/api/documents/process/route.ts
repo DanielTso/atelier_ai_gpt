@@ -6,7 +6,7 @@ import { embedContents } from '@/lib/embedChunks'
 import { ingestText } from '@/lib/ingest'
 import { MAX_FILE_SIZE, DOCUMENT_MAX_CHARS, getExtension, isImageExtension, isSupported, extractTextFromBuffer } from '@/lib/fileExtraction'
 import type { ExtractionResult } from '@/lib/fileExtraction'
-import { extractViaVision, extractViaVisionImage } from '@/lib/visionExtraction'
+import { extractViaVision, extractViaVisionImage, extractPagesViaVision } from '@/lib/visionExtraction'
 import { downloadToBuffer, uploadBuffer, sanitizeStorageName } from '@/lib/storage'
 import { generatePdfThumbnail, generateImageThumbnail } from '@/lib/thumbnails'
 import { processDocumentRequestSchema } from '@/lib/validation'
@@ -20,6 +20,8 @@ export const maxDuration = 800
 
 const MIN_TEXT = Number(process.env.EXTRACTION_MIN_TEXT_CHARS) || 100
 const MIN_CHARS_PER_PAGE = Number(process.env.EXTRACTION_MIN_CHARS_PER_PAGE) || 200
+const HYBRID_MIN_CHARS = Number(process.env.EXTRACTION_HYBRID_PAGE_MIN_CHARS) || 500
+const HYBRID_MAX_PAGES = Number(process.env.EXTRACTION_HYBRID_MAX_PAGES) || 80
 
 export async function POST(request: NextRequest) {
   try {
@@ -76,7 +78,7 @@ export async function POST(request: NextRequest) {
     }
 
     let textContent = ''
-    let extractionMethod: 'text' | 'vision' = 'text'
+    let extractionMethod: 'text' | 'vision' | 'hybrid' = 'text'
     let extraction: ExtractionResult = { text: '', pageCount: null, pagesExtracted: null, partial: false }
     try {
       if (isImage) {
@@ -114,6 +116,41 @@ export async function POST(request: NextRequest) {
       await updateDocumentStatus(doc.id, 'error', { errorMessage: 'Failed to extract document content.' })
       return apiError(e, 'Failed to extract document content', 500, false)
     }
+
+    // Per-page hybrid: a text-rich set can still contain SHX sheets whose notes text
+    // is stroke geometry (title-block-only text layer). Vision-extract just those
+    // pages and splice them in — never fatal, plain text path survives any failure.
+    if (ext === 'pdf' && extractionMethod === 'text' && extraction.pageTexts) {
+      const sparse = extraction.pageTexts
+        .map((t, i) => ({ page: i + 1, len: t.trim().length }))
+        .filter(p => p.len < HYBRID_MIN_CHARS)
+        .map(p => p.page)
+      if (sparse.length > 0 && sparse.length <= HYBRID_MAX_PAGES) {
+        try {
+          const hybrid = await extractPagesViaVision(buffer, sparse)
+          if (hybrid.segments.length > 0) {
+            const byStart = new Map(hybrid.segments.map(s => [s.firstPage, s]))
+            const covered = new Set(hybrid.segments.flatMap(s =>
+              Array.from({ length: s.lastPage - s.firstPage + 1 }, (_, k) => s.firstPage + k)))
+            const parts: string[] = []
+            extraction.pageTexts.forEach((t, i) => {
+              const page = i + 1
+              const seg = byStart.get(page)
+              if (seg) parts.push(seg.text)
+              else if (!covered.has(page)) parts.push(t)
+            })
+            textContent = parts.join('\n')
+            extractionMethod = 'hybrid'
+          }
+          if (hybrid.failed > 0 || hybrid.truncated) extraction = { ...extraction, partial: true }
+        } catch (e) {
+          console.warn('[documents/process] hybrid extraction failed:', e instanceof Error ? e.message : e)
+        }
+      } else if (sparse.length > HYBRID_MAX_PAGES) {
+        console.warn(`[documents/process] ${sparse.length} sparse pages > cap ${HYBRID_MAX_PAGES} — hybrid skipped`)
+      }
+    }
+
     if (textContent.length > DOCUMENT_MAX_CHARS) {
       console.warn(`[documents/process] ${doc.filename}: content truncated ${textContent.length} -> ${DOCUMENT_MAX_CHARS}`)
       textContent = textContent.slice(0, DOCUMENT_MAX_CHARS)

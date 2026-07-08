@@ -17,7 +17,7 @@ export interface DocumentSummary {
   errorMessage: string | null
   url: string | null
   thumbnailUrl: string | null
-  extractionMethod: 'text' | 'vision' | null
+  extractionMethod: 'text' | 'vision' | 'hybrid' | null
   pageCount?: number | null
   pagesExtracted?: number | null
   extractionPartial?: boolean
