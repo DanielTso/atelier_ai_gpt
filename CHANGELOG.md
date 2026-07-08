@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.46.0] - 2026-07-07 — RAG Phase 2b: per-page hybrid extraction
+
+Follow-up to Phase 2 (v4.45.0). Fixes a hole the per-document density gate can't see: a text-rich plan set with individually sparse sheets.
+
+### Problem
+
+- Live diagnosis on the Drover 90% DD set (259 pages, 184 MB): ingested `ready` via the **text** path at ~4,900 chars/page average, sailing past the 200 chars/page document-level density gate — but its Civil General Notes sheets (pages 2–5) are plotted with **AutoCAD SHX fonts**, whose notes text is stroke geometry, not text objects. Measured per-page text-layer chars: median 2,517; pages 2–5 = 401/375/317/444 (title block alone ≈ 300); 63 of 259 pages under 600 chars. Chat correctly reported the notes body text as missing — a document-level average can never catch a locally-sparse sheet.
+
+### Added
+
+- **Per-page hybrid splice.** On the PDF **text** path, pages whose individual text layer falls under `EXTRACTION_HYBRID_PAGE_MIN_CHARS` (default **500**) are grouped into contiguous runs and vision-extracted through the existing v4.45.0 segment machinery (new `extractPagesViaVision` + `splitPdfPageRuns` in `src/lib/visionExtraction.ts`/`src/lib/pdfSegments.ts`), then spliced back into the document text in page order. TrueType pages keep exact text extraction; SHX pages get Gemini vision. `extraction_method` becomes `'hybrid'`.
+- New env knobs: `EXTRACTION_HYBRID_PAGE_MIN_CHARS` (default `500`), `EXTRACTION_HYBRID_MAX_PAGES` (default `80` — more sparse pages than that skips hybrid entirely; the whole-doc density gate still owns pervasively-sparse docs).
+- **`hybrid` badge** on `DocumentCard`, alongside the existing `vision` badge.
+
+### Notes
+
+- No migration, no new deps. Best-effort and non-fatal: a hybrid vision failure or truncation just flags the doc `extraction_partial` and keeps the plain text extraction — the text path never regresses. Applies to both new upload and replace. A failed/truncated hybrid run surfaces as `extraction_partial`, same schema as 4.44.0/4.45.0.
+
 ## [4.45.0] - 2026-07-07 — RAG Phase 2: segmented native-PDF vision extraction
 
 Phase 2 of the RAG overhaul. Replaces the per-page-rasterize vision fallback with segmented native-PDF extraction — faster, cheaper, and reliable at scale for large CAD/plan sets.
