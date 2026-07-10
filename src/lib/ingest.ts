@@ -1,6 +1,6 @@
 // Shared post-extraction tail: chunk → save → embed → status. Used by the file
 // upload pipeline (documents/process) and web ingestion (documents/web-ingest).
-import { saveDocumentChunks, updateDocumentStatus } from '@/app/actions'
+import { saveDocumentChunks, deleteDocumentChunks, updateDocumentStatus } from '@/app/actions'
 import { chunkText } from '@/lib/chunking'
 import { embedChunks } from '@/lib/embedChunks'
 
@@ -10,6 +10,9 @@ export async function ingestText(
   opts: { extractionMethod: 'text' | 'vision' | 'hybrid'; thumbnailPath?: string; pageCount?: number | null; pagesExtracted?: number | null; partial?: boolean },
 ): Promise<{ status: 'ready' | 'error'; chunkCount: number }> {
   const textChunks = chunkText(textContent)
+  // A repeated process call (client re-click, retry after an apparent hang) must not
+  // append a second chunk set on top of the first — clear the doc's chunks first.
+  await deleteDocumentChunks(doc.id)
   const saved = await saveDocumentChunks(textChunks.map(c => ({
     documentId: doc.id, projectId: doc.projectId, chunkIndex: c.index, content: c.content,
   })))

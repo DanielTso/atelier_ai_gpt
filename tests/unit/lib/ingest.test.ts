@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const mockSaveDocumentChunks = vi.fn()
+const mockDeleteDocumentChunks = vi.fn()
 const mockUpdateDocumentStatus = vi.fn()
 const mockChunkText = vi.fn()
 const mockEmbedChunks = vi.fn()
@@ -9,6 +10,7 @@ async function load() {
   vi.resetModules()
   vi.doMock('@/app/actions', () => ({
     saveDocumentChunks: mockSaveDocumentChunks,
+    deleteDocumentChunks: mockDeleteDocumentChunks,
     updateChunkEmbedding: vi.fn(),
     updateDocumentStatus: mockUpdateDocumentStatus,
   }))
@@ -20,10 +22,21 @@ async function load() {
 
 describe('ingestText', () => {
   beforeEach(() => {
-    [mockSaveDocumentChunks, mockUpdateDocumentStatus, mockChunkText, mockEmbedChunks].forEach(f => f.mockReset())
+    [mockSaveDocumentChunks, mockDeleteDocumentChunks, mockUpdateDocumentStatus, mockChunkText, mockEmbedChunks].forEach(f => f.mockReset())
     mockChunkText.mockReturnValue([{ index: 0, content: 'a' }, { index: 1, content: 'b' }, { index: 2, content: 'c' }])
     mockSaveDocumentChunks.mockResolvedValue([{ id: 1, content: 'a' }, { id: 2, content: 'b' }, { id: 3, content: 'c' }])
+    mockDeleteDocumentChunks.mockResolvedValue([])
     mockUpdateDocumentStatus.mockResolvedValue(undefined)
+  })
+
+  it('clears any existing chunks for the document before saving (idempotent re-process)', async () => {
+    mockEmbedChunks.mockResolvedValue({ embedded: 3, failed: 0 })
+    const { ingestText } = await load()
+    await ingestText({ id: 7, projectId: 1 }, 'text', { extractionMethod: 'text' })
+    expect(mockDeleteDocumentChunks).toHaveBeenCalledWith(7)
+    // Delete must run before the new chunks are written, or a re-process wipes them.
+    expect(mockDeleteDocumentChunks.mock.invocationCallOrder[0])
+      .toBeLessThan(mockSaveDocumentChunks.mock.invocationCallOrder[0])
   })
 
   it('flags extraction_partial when some embeds fail, and persists page fields', async () => {

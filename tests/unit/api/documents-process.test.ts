@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const m = {
-  getDocumentById: vi.fn(), updateDocumentStatus: vi.fn(), saveDocumentChunks: vi.fn(), updateChunkEmbedding: vi.fn(),
+  getDocumentById: vi.fn(), updateDocumentStatus: vi.fn(), saveDocumentChunks: vi.fn(), deleteDocumentChunks: vi.fn(), updateChunkEmbedding: vi.fn(),
   createDocumentRevision: vi.fn(), commitDocumentReplacement: vi.fn(),
   ensureEmbeddingModel: vi.fn(), generateEmbedding: vi.fn(), chunkText: vi.fn(),
   embedChunks: vi.fn(), embedContents: vi.fn(),
@@ -15,7 +15,7 @@ async function importRoute() {
   vi.resetModules()
   vi.doMock('@/app/actions', () => ({
     getDocumentById: m.getDocumentById, updateDocumentStatus: m.updateDocumentStatus,
-    saveDocumentChunks: m.saveDocumentChunks, updateChunkEmbedding: m.updateChunkEmbedding,
+    saveDocumentChunks: m.saveDocumentChunks, deleteDocumentChunks: m.deleteDocumentChunks, updateChunkEmbedding: m.updateChunkEmbedding,
     createDocumentRevision: m.createDocumentRevision, commitDocumentReplacement: m.commitDocumentReplacement,
   }))
   vi.doMock('@/lib/embeddings', () => ({ ensureEmbeddingModel: m.ensureEmbeddingModel, generateEmbedding: m.generateEmbedding }))
@@ -45,6 +45,7 @@ describe('POST /api/documents/process', () => {
     m.downloadToBuffer.mockResolvedValue(Buffer.from('bytes'))
     m.chunkText.mockReturnValue([{ index: 0, content: 'chunk' }])
     m.saveDocumentChunks.mockResolvedValue([{ id: 11, content: 'chunk' }])
+    m.deleteDocumentChunks.mockResolvedValue([])
     m.embedChunks.mockImplementation(async (chunks: { id: number }[]) => ({ embedded: chunks.length, failed: 0 }))
     m.embedContents.mockImplementation(async (contents: string[]) => ({ embeddings: contents.map(() => new Array(768).fill(0.1)), embedded: contents.length, failed: 0 }))
     m.generateEmbedding.mockResolvedValue(new Array(768).fill(0.1))
