@@ -41,6 +41,15 @@ describe('extractViaVision (segmented)', () => {
     expect(content[0].text).toContain('pages 1-2')
   })
 
+  it('transcribes at temperature 0 — re-processing the same sheet must not produce different text', async () => {
+    setup()
+    mockSplit.mockResolvedValue({ segments: [seg(1, 2)], pageCount: 2, skippedPages: 0 })
+    mockGenerateText.mockResolvedValue({ text: 'OK', finishReason: 'stop' })
+    const { extractViaVision } = await import('@/lib/visionExtraction')
+    await extractViaVision(Buffer.from('pdf'))
+    expect(mockGenerateText.mock.calls[0][0].temperature).toBe(0)
+  })
+
   it('returns empty result without touching the pdf when no API key', async () => {
     setup(null)
     const { extractViaVision } = await import('@/lib/visionExtraction')
@@ -159,5 +168,6 @@ describe('extractViaVisionImage', () => {
     expect(out.text).toBe('IMAGE TEXT')
     expect(out.pageCount).toBe(1)
     expect(mockSplit).not.toHaveBeenCalled()
+    expect(mockGenerateText.mock.calls[0][0].temperature).toBe(0)
   })
 })

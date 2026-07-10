@@ -62,6 +62,9 @@ async function extractSegments(
             ],
           }],
           maxOutputTokens: c.maxOutputTokens,
+          // Transcription must be deterministic: at the default temperature the same
+          // sheet transcribes differently run to run (seen live on SHX notes sheets).
+          temperature: 0,
         })
         if (finishReason === 'length') {
           console.warn(`[visionExtraction] segment ${seg.firstPage}-${seg.lastPage} hit the output cap`)
@@ -87,6 +90,7 @@ async function extractImage(image: Uint8Array, model: string, maxOutputTokens: n
     model: google(model),
     messages: [{ role: 'user', content: [{ type: 'text', text: IMAGE_PROMPT }, { type: 'image', image }] }],
     maxOutputTokens,
+    temperature: 0,
   })
   return text.trim()
 }
