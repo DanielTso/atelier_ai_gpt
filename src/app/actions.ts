@@ -491,11 +491,19 @@ export async function getProjectDocuments(projectId: number) {
 // module, which may only export async functions (a const export fails the build).
 const STALE_PROCESSING_MINUTES = 20
 
-// Opportunistic lazy sweep (no cron infra): flip genuinely-stuck 'processing' rows to
-// a terminal 'error' so a killed function never leaves a row stuck forever. Called from
-// GET /api/documents before listing; one indexed UPDATE, negligible cost.
+// An 'uploading' row is the browser PUTting straight to Storage — a dead tab or
+// dropped connection leaves it stuck with no server-side catch at all. The threshold
+// is much longer than processing's: a 184MB plan set on a slow uplink can legitimately
+// take tens of minutes. Reaping a still-live upload is harmless anyway — the process
+// call that follows a completed PUT rewrites status and the row self-heals.
+const STALE_UPLOADING_MINUTES = 60
+
+// Opportunistic lazy sweep (no cron infra): flip genuinely-stuck 'processing' and
+// 'uploading' rows to a terminal 'error' so a killed function or abandoned browser
+// upload never leaves a row stuck forever. Called from GET /api/documents before
+// listing; two indexed UPDATEs, negligible cost.
 export async function reapStaleProcessing(projectId?: number) {
-  return await db.update(documents)
+  const reaped = await db.update(documents)
     .set({ status: 'error', errorMessage: 'Processing timed out', updatedAt: new Date() })
     .where(and(
       eq(documents.status, 'processing'),
@@ -503,6 +511,15 @@ export async function reapStaleProcessing(projectId?: number) {
       projectId !== undefined ? eq(documents.projectId, projectId) : undefined,
     ))
     .returning()
+  const reapedUploads = await db.update(documents)
+    .set({ status: 'error', errorMessage: 'Upload never completed', updatedAt: new Date() })
+    .where(and(
+      eq(documents.status, 'uploading'),
+      sql`coalesce(${documents.updatedAt}, ${documents.createdAt}) < now() - make_interval(mins => ${STALE_UPLOADING_MINUTES})`,
+      projectId !== undefined ? eq(documents.projectId, projectId) : undefined,
+    ))
+    .returning()
+  return [...reaped, ...reapedUploads]
 }
 
 export async function deleteDocument(id: number) {

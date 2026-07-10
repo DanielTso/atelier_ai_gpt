@@ -48,6 +48,28 @@ describe('reapStaleProcessing', () => {
     expect((await getDocumentById(legacy.id))?.status).toBe('error')
   })
 
+  it('flips a stale uploading row (dead browser PUT) to error with its own message', async () => {
+    const [p] = await testDb.insert(projects).values({ name: 'P' }).returning()
+    const dead = await insertDoc(p.id, { status: 'uploading', updatedAt: new Date(Date.now() - 90 * 60 * 1000) })
+
+    await reapStaleProcessing()
+
+    const after = await getDocumentById(dead.id)
+    expect(after?.status).toBe('error')
+    expect(after?.errorMessage).toBe('Upload never completed')
+  })
+
+  it('leaves a still-plausible uploading row alone (uploading threshold is longer than processing)', async () => {
+    const [p] = await testDb.insert(projects).values({ name: 'P' }).returning()
+    // 30 min: already stale for 'processing', but a 184MB file on a slow uplink can
+    // legitimately still be PUTting — must NOT be reaped.
+    const slow = await insertDoc(p.id, { status: 'uploading', updatedAt: OLD })
+
+    await reapStaleProcessing()
+
+    expect((await getDocumentById(slow.id))?.status).toBe('uploading')
+  })
+
   it('respects the projectId filter', async () => {
     const [a] = await testDb.insert(projects).values({ name: 'A' }).returning()
     const [b] = await testDb.insert(projects).values({ name: 'B' }).returning()
