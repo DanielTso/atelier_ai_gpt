@@ -95,7 +95,7 @@ export const ProjectLandingPage = memo(function ProjectLandingPage({
               <DropdownMenu.Content
                 align="end"
                 sideOffset={6}
-                className="min-w-[160px] glass-panel rounded-xl p-1.5 shadow-2xl border border-border z-50"
+                className="min-w-[160px] glass-panel rounded-xl p-1.5 shadow-2xl border border-border z-50 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:slide-in-from-top-1 duration-150"
               >
                 <DropdownMenu.Item
                   onClick={onRename}

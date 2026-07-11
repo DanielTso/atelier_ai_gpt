@@ -23,7 +23,7 @@ export function QuickActions({ onNewProject, onAddDocuments, onDraftRfi, onLooka
         <button
           key={label}
           onClick={onClick}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+          className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition motion-safe:hover:-translate-y-0.5 motion-safe:active:scale-[0.97]"
         >
           <Icon className="h-4 w-4" />
           {label}

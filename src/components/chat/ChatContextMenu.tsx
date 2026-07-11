@@ -42,7 +42,7 @@ export const ChatContextMenu = memo(function ChatContextMenu({
 
       <DropdownMenu.Portal>
         <DropdownMenu.Content
-          className="min-w-[180px] glass-panel rounded-lg p-1.5 shadow-xl z-50"
+          className="min-w-[180px] glass-panel rounded-lg p-1.5 shadow-xl z-50 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:slide-in-from-top-1 duration-150"
           sideOffset={5}
           align="end"
           onClick={(e) => e.stopPropagation()}

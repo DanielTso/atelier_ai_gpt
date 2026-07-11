@@ -25,7 +25,7 @@ export const ImageCard = memo(function ImageCard({ image, onOpen, onDelete }: Im
 
   return (
     <div
-      className="group relative rounded-xl border border-border/30 overflow-hidden cursor-pointer hover:border-border/60 transition-colors bg-card"
+      className="group relative rounded-xl border border-border/30 overflow-hidden cursor-pointer hover:border-border/60 hover:shadow-md motion-safe:hover:-translate-y-0.5 transition-[transform,box-shadow,border-color] duration-200 bg-card"
       onClick={() => url && onOpen(image)}
     >
       <div className="aspect-square bg-muted/40 overflow-hidden">

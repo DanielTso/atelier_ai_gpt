@@ -99,7 +99,7 @@ export function ProjectsView({
               <DropdownMenu.Content
                 align="end"
                 sideOffset={6}
-                className="min-w-[160px] glass-panel rounded-xl p-1.5 shadow-2xl border border-border z-50"
+                className="min-w-[160px] glass-panel rounded-xl p-1.5 shadow-2xl border border-border z-50 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:slide-in-from-top-1 duration-150"
               >
                 {(Object.keys(SORT_LABELS) as SortKey[]).map(key => (
                   <DropdownMenu.Item
@@ -160,7 +160,7 @@ export function ProjectsView({
             return (
               <div
                 key={p.id}
-                className="group relative glass-panel rounded-xl hover:border-primary/40 transition-colors"
+                className="group relative glass-panel rounded-xl hover:border-primary/40 hover:shadow-md motion-safe:hover:-translate-y-0.5 transition-[transform,box-shadow,border-color] duration-200"
               >
                 <button
                   onClick={() => onSelectProject(p.id)}
@@ -210,7 +210,7 @@ export function ProjectsView({
                       <DropdownMenu.Content
                         align="end"
                         sideOffset={6}
-                        className="min-w-[160px] glass-panel rounded-xl p-1.5 shadow-2xl border border-border z-50"
+                        className="min-w-[160px] glass-panel rounded-xl p-1.5 shadow-2xl border border-border z-50 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:slide-in-from-top-1 duration-150"
                       >
                         <DropdownMenu.Item
                           onClick={() => togglePin(p.id)}

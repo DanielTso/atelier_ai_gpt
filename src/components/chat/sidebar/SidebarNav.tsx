@@ -20,7 +20,7 @@ export function SidebarNav() {
           key={label}
           onClick={onClick}
           className={cn(
-            'flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg text-sm transition-colors',
+            'flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg text-sm transition motion-safe:active:scale-[0.98]',
             active ? 'bg-accent text-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-accent',
           )}
         >

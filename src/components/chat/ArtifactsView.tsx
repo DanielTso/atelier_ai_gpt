@@ -75,7 +75,7 @@ export function ArtifactsView({ onOpenChat, sidebarCollapsedRef, setSidebarColla
                 Filter by {FILTERS.find(f => f.value === typeFilter)!.label} <ChevronDown className="h-3.5 w-3.5" />
               </button>
               {filterOpen && (
-                <div className="absolute right-0 z-20 mt-1 w-40 rounded-lg border border-border bg-card py-1 shadow-lg" onMouseLeave={() => setFilterOpen(false)}>
+                <div className="absolute right-0 z-20 mt-1 w-40 rounded-lg border border-border bg-card py-1 shadow-lg animate-in fade-in-0 zoom-in-95 slide-in-from-top-1 duration-150" onMouseLeave={() => setFilterOpen(false)}>
                   {FILTERS.map(f => (
                     <button key={f.value} onClick={() => { setTypeFilter(f.value); setFilterOpen(false) }}
                       className={cn('block w-full px-3 py-1.5 text-left text-sm hover:bg-accent', typeFilter === f.value ? 'text-foreground font-medium' : 'text-muted-foreground')}>
@@ -90,7 +90,7 @@ export function ArtifactsView({ onOpenChat, sidebarCollapsedRef, setSidebarColla
                 {creating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} New artifact <ChevronDown className="h-3.5 w-3.5" />
               </button>
               {newOpen && (
-                <div className="absolute right-0 z-20 mt-1 w-44 rounded-lg border border-border bg-card py-1 shadow-lg" onMouseLeave={() => setNewOpen(false)}>
+                <div className="absolute right-0 z-20 mt-1 w-44 rounded-lg border border-border bg-card py-1 shadow-lg animate-in fade-in-0 zoom-in-95 slide-in-from-top-1 duration-150" onMouseLeave={() => setNewOpen(false)}>
                   {NEW_TYPES.map(t => (
                     <button key={t} onClick={() => handleNew(t)} className="block w-full px-3 py-1.5 text-left text-sm text-foreground hover:bg-accent">
                       {ARTIFACT_TYPE_LABELS[t]}

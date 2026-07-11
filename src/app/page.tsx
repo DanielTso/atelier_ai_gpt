@@ -187,6 +187,7 @@ export default function Home() {
     messages,
     setMessages,
     sendMessage,
+    stop,
     status,
     error: chatError
   } = useChat({
@@ -1152,6 +1153,7 @@ export default function Home() {
               onFormSubmit={handleFormSubmit}
               onKeyDown={handleKeyDown}
               isLoading={isLoading}
+              onStop={stop}
               activeChatId={activeChatId}
               activeProjectId={activeProjectId}
               systemPrompt={currentSystemPrompt}
@@ -1200,6 +1202,7 @@ export default function Home() {
                 onFormSubmit={handleProjectLandingFormSubmit}
                 onKeyDown={handleProjectLandingKeyDown}
                 isLoading={isLoading}
+                onStop={stop}
                 activeChatId={activeChatId}
                 activeProjectId={activeProjectId}
                 systemPrompt={currentSystemPrompt}
@@ -1234,6 +1237,7 @@ export default function Home() {
                 onFormSubmit={handleFormSubmit}
                 onKeyDown={handleKeyDown}
                 isLoading={isLoading}
+                onStop={stop}
                 activeChatId={activeChatId}
                 activeProjectId={activeProjectId}
                 systemPrompt={currentSystemPrompt}

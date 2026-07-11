@@ -48,7 +48,7 @@ export function SmartChatMenu({ sortedProjects, variant }: SmartChatMenuProps) {
           <DropdownMenu.Content
             side="right"
             sideOffset={8}
-            className="min-w-[180px] glass-panel rounded-xl p-1.5 shadow-2xl border border-border z-50"
+            className="min-w-[180px] glass-panel rounded-xl p-1.5 shadow-2xl border border-border z-50 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:slide-in-from-left-1 duration-150"
           >
             {menuContent}
           </DropdownMenu.Content>
@@ -71,7 +71,7 @@ export function SmartChatMenu({ sortedProjects, variant }: SmartChatMenuProps) {
             side="bottom"
             align="start"
             sideOffset={6}
-            className="min-w-[200px] glass-panel rounded-xl p-1.5 shadow-2xl border border-border z-50"
+            className="min-w-[200px] glass-panel rounded-xl p-1.5 shadow-2xl border border-border z-50 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:slide-in-from-top-1 duration-150"
           >
             {menuContent}
           </DropdownMenu.Content>

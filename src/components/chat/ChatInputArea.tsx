@@ -1,7 +1,8 @@
 'use client'
 
 import { memo, useRef, useState, useEffect, useCallback } from 'react'
-import { Send, Loader2, FileText, Brain, Paperclip, Upload, X } from 'lucide-react'
+import { Send, Square, Loader2, FileText, Brain, Paperclip, Upload, X } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
 import TextareaAutosize from 'react-textarea-autosize'
 import { toast } from 'sonner'
 import { PersonaSelector } from '@/components/ui/PersonaSelector'
@@ -25,6 +26,8 @@ interface ChatInputAreaProps {
   onFormSubmit: (e: React.FormEvent<HTMLFormElement>) => void
   onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void
   isLoading: boolean
+  /** Cancels the in-flight response — the send button morphs into stop while streaming. */
+  onStop?: () => void
   activeChatId: number | null
   activeProjectId: number | null
   systemPrompt: string | null
@@ -47,6 +50,7 @@ export const ChatInputArea = memo(function ChatInputArea({
   onFormSubmit,
   onKeyDown,
   isLoading,
+  onStop,
   activeChatId,
   activeProjectId,
   systemPrompt,
@@ -430,15 +434,29 @@ export const ChatInputArea = memo(function ChatInputArea({
             disabled={isLoading}
             minRows={2}
             maxRows={6}
-            className="w-full bg-card border border-border rounded-2xl px-5 py-4 pr-14 shadow-sm focus:outline-none focus:ring-1 focus:ring-ring focus:border-ring transition-all placeholder:text-muted-foreground disabled:opacity-50 resize-none"
+            className="w-full bg-card border border-border rounded-2xl px-5 py-4 pr-14 shadow-sm focus:outline-none focus:border-ring focus:shadow-[0_0_0_3px_color-mix(in_oklab,var(--primary)_14%,transparent)] transition-all placeholder:text-muted-foreground disabled:opacity-50 resize-none"
             placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
           />
           <button
-            type="submit"
-            disabled={isLoading || (!input?.trim() && !hasFiles && !hasImages)}
-            className="absolute right-3 bottom-3 p-2 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground transition-colors disabled:opacity-50"
+            type={isLoading && onStop ? 'button' : 'submit'}
+            onClick={isLoading && onStop ? onStop : undefined}
+            aria-label={isLoading && onStop ? 'Stop response' : 'Send message'}
+            disabled={isLoading ? !onStop : (!input?.trim() && !hasFiles && !hasImages)}
+            className="absolute right-3 bottom-3 p-2 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground transition-colors disabled:opacity-50 active:scale-[0.94] motion-safe:transition-[transform,background-color]"
           >
-            {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            <AnimatePresence mode="wait" initial={false}>
+              {isLoading && onStop ? (
+                <motion.span key="stop" initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.6, opacity: 0 }} transition={{ duration: 0.12 }} className="block">
+                  <Square className="h-4 w-4 fill-current" />
+                </motion.span>
+              ) : isLoading ? (
+                <motion.span key="wait" className="block"><Loader2 className="h-4 w-4 animate-spin" /></motion.span>
+              ) : (
+                <motion.span key="send" initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.6, opacity: 0 }} transition={{ duration: 0.12 }} className="block">
+                  <Send className="h-4 w-4" />
+                </motion.span>
+              )}
+            </AnimatePresence>
           </button>
         </form>
         <div className="text-center mt-2">

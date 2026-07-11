@@ -28,7 +28,7 @@ export const ArtifactGalleryCard = memo(function ArtifactGalleryCard({ artifact,
   return (
     <div
       onClick={() => onOpen(artifact.id)}
-      className="group flex cursor-pointer flex-col overflow-hidden rounded-xl border border-border bg-card transition-colors hover:border-foreground/30"
+      className="group flex cursor-pointer flex-col overflow-hidden rounded-xl border border-border bg-card hover:border-foreground/30 hover:shadow-md motion-safe:hover:-translate-y-0.5 transition-[transform,box-shadow,border-color] duration-200"
     >
       <ArtifactThumbnail artifact={artifact} />
       <div className="flex flex-1 flex-col gap-1.5 p-3">
