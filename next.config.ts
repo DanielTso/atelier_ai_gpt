@@ -36,7 +36,10 @@ const csp = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
-  `img-src 'self' data: blob: ${imgFrame}`,
+  // i.ytimg.com: video thumbnail-card images in HTML artifacts (embedded players
+  // can't work in the sandboxed preview — no Referer from an opaque origin — so
+  // artifacts render click-out thumbnail cards instead).
+  `img-src 'self' data: blob: ${imgFrame} https://i.ytimg.com`,
   "font-src 'self' data:",
   "connect-src 'self' https:",
   // youtube-nocookie: HTML artifacts (sandboxed srcDoc iframes inherit this CSP) may

@@ -46,12 +46,15 @@ function SheetsPreview({ content }: { content: string }) {
 export function ArtifactPreview({ artifact }: { artifact: ArtifactSummary }) {
   // HTML → live preview from the stored source. sandbox="allow-scripts" runs the
   // page's own JS but, without allow-same-origin, it cannot reach app cookies/session.
+  // allow-popups(-to-escape-sandbox) lets the page's links (cited sources, video
+  // thumbnail cards) open in a real new tab on a user click — still no same-origin
+  // access, and popup blockers gate non-gesture window.opens as usual.
   if (artifact.type === 'html') {
     return (
       <iframe
         srcDoc={artifact.content ?? ''}
         title={artifact.title}
-        sandbox="allow-scripts"
+        sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
         className="h-full min-h-[60vh] w-full rounded-lg border border-border bg-white"
       />
     )
