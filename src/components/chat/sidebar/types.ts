@@ -37,4 +37,6 @@ export interface SidebarActions {
   openSettings: () => void
   selectView: (view: AppView) => void
   activeView: AppView
+  // Chat-title state — ids whose auto-title is generating (sidebar shimmers these)
+  titlePendingIds?: Set<number>
 }

@@ -1,6 +1,6 @@
 "use client"
 
-import { memo, useState, useCallback } from "react"
+import { memo, useState, useCallback, useEffect, useRef } from "react"
 import { Folder, MessageSquare, ExternalLink, Globe, Paperclip, Sparkles, ChevronRight } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
@@ -18,6 +18,8 @@ import { formatFileSize } from "@/lib/fileUtils"
 import type { ArtifactSummary } from "@/types"
 import { ArtifactCard } from "./ArtifactCard"
 import { Lightbox } from "@/components/ui/Lightbox"
+import { MessageSkeleton } from "./LoadingSkeletons"
+import { staggerDelay } from "@/lib/motion"
 
 export type ChatMessage = UIMessage & { createdAt?: Date }
 
@@ -29,6 +31,8 @@ interface MessagesListProps {
   onDeleteMessage?: (id: string) => void
   artifacts?: ArtifactSummary[]
   onOpenArtifact?: (id: number) => void
+  /** True while the chat's history is fetching — skeletons hold the layout. */
+  messagesLoading?: boolean
 }
 
 // Helper to extract text content from message parts, stripping file prefix for display
@@ -264,10 +268,17 @@ export const MessagesList = memo(function MessagesList({
   onDeleteMessage,
   artifacts,
   onOpenArtifact,
+  messagesLoading = false,
 }: MessagesListProps) {
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
   const onImageClick = useCallback((url: string) => setLightboxUrl(url), [])
   const closeLightbox = useCallback(() => setLightboxUrl(null), [])
+
+  // Stagger the entrance only for the batch present at mount (chat open — the
+  // keyed view wrapper remounts this list per chat). Messages streamed in later
+  // must appear immediately, not wait out a stagger delay.
+  const mountedRef = useRef(false)
+  useEffect(() => { mountedRef.current = true }, [])
 
   if (!activeChatId) {
     return (
@@ -285,6 +296,16 @@ export const MessagesList = memo(function MessagesList({
           Create a new project and chat to start your conversation with AI models
         </p>
       </motion.div>
+    )
+  }
+
+  if (messagesLoading && messages.length === 0) {
+    return (
+      <div className="flex flex-col gap-6 max-w-3xl xl:max-w-4xl 2xl:max-w-5xl mx-auto pb-4">
+        <MessageSkeleton align="right" />
+        <MessageSkeleton />
+        <MessageSkeleton align="right" />
+      </div>
     )
   }
 
@@ -314,7 +335,7 @@ export const MessagesList = memo(function MessagesList({
   return (
     <Tooltip.Provider delayDuration={300}>
       <div className="flex flex-col gap-6 max-w-3xl xl:max-w-4xl 2xl:max-w-5xl mx-auto pb-4">
-        <AnimatePresence initial={false}>
+        <AnimatePresence>
           {messages.map((m, index) => {
             // Show streaming cursor on last assistant message while loading
             const isStreamingMessage = isLoading && m.role === 'assistant' && index === lastAssistantIndex
@@ -326,7 +347,7 @@ export const MessagesList = memo(function MessagesList({
               initial="initial"
               animate="animate"
               exit="exit"
-              transition={{ duration: 0.2 }}
+              transition={{ duration: 0.2, delay: mountedRef.current ? 0 : staggerDelay(index) }}
               className={cn(
                 "flex gap-4 group",
                 m.role === 'user' ? "flex-row-reverse" : ""

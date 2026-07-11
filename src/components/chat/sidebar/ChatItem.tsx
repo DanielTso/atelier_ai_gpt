@@ -2,6 +2,7 @@
 
 import { memo } from 'react'
 import { MessageSquare } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import { ChatContextMenu } from '../ChatContextMenu'
 import { useSidebarActions } from './SidebarActionsContext'
@@ -34,6 +35,23 @@ export const ChatItem = memo(function ChatItem({
 
   const isArchived = variant === 'archived'
   const isProjectChat = variant === 'project'
+  // While the auto-title generates, the placeholder shimmers; the real title
+  // then fades in via the keyed span instead of snapping.
+  const titlePending = actions.titlePendingIds instanceof Set && actions.titlePendingIds.has(chat.id)
+  const titleSpan = (extra?: string) => (
+    <AnimatePresence mode="wait" initial={false}>
+      <motion.span
+        key={chat.title}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.2 }}
+        className={cn('truncate', extra, titlePending && 'text-shimmer')}
+      >
+        {chat.title}
+      </motion.span>
+    </AnimatePresence>
+  )
 
   return (
     <div
@@ -53,12 +71,12 @@ export const ChatItem = memo(function ChatItem({
           onClick={handleClick}
         >
           <MessageSquare className="h-3.5 w-3.5 shrink-0" />
-          <span className="truncate">{chat.title}</span>
+          {titleSpan()}
         </div>
       ) : (
         <>
           <MessageSquare className="h-3.5 w-3.5 shrink-0" />
-          <span className="truncate flex-1">{chat.title}</span>
+          {titleSpan('flex-1')}
         </>
       )}
       <ChatContextMenu

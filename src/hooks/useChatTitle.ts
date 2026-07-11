@@ -19,8 +19,10 @@ export function useChatTitle(opts: {
   readChats: () => TitleChat[]
   modelRef: RefObject<string>
   applyTitle: (chatId: number, title: string) => void
+  /** Fired around the actual generation window so the UI can shimmer the pending title. */
+  onPendingChange?: (chatId: number, pending: boolean) => void
 }) {
-  const { readChats, modelRef, applyTitle } = opts
+  const { readChats, modelRef, applyTitle, onPendingChange } = opts
   return useCallback(
     async (chatId: number) => {
       const chat = readChats().find((c) => c.id === chatId)
@@ -30,32 +32,37 @@ export function useChatTitle(opts: {
         const userMsg = dbMessages.find((m) => m.role === 'user')
         const assistantMsg = dbMessages.find((m) => m.role === 'assistant')
         if (!userMsg || !assistantMsg) return // need a full exchange to title from
-        const res = await fetch('/api/generate-title', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chatId,
-            messages: [
-              { role: 'user', content: (userMsg.content || '').slice(0, 500) },
-              { role: 'assistant', content: (assistantMsg.content || '').slice(0, 500) },
-            ],
-            model: modelRef.current,
-          }),
-        })
-        const data = res.ok ? await res.json().catch(() => null) : null
-        // Prefer the model's title; if empty, fall back to the first few words of the
-        // user's message so the chat never stays stuck on "New Chat".
-        let title: string = (data?.title || '').trim()
-        if (!title) {
-          title = (userMsg.content || '').replace(/\s+/g, ' ').trim().split(' ').slice(0, 6).join(' ').slice(0, 50)
+        onPendingChange?.(chatId, true)
+        try {
+          const res = await fetch('/api/generate-title', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chatId,
+              messages: [
+                { role: 'user', content: (userMsg.content || '').slice(0, 500) },
+                { role: 'assistant', content: (assistantMsg.content || '').slice(0, 500) },
+              ],
+              model: modelRef.current,
+            }),
+          })
+          const data = res.ok ? await res.json().catch(() => null) : null
+          // Prefer the model's title; if empty, fall back to the first few words of the
+          // user's message so the chat never stays stuck on "New Chat".
+          let title: string = (data?.title || '').trim()
+          if (!title) {
+            title = (userMsg.content || '').replace(/\s+/g, ' ').trim().split(' ').slice(0, 6).join(' ').slice(0, 50)
+          }
+          if (!title) return
+          await updateChatTitle(chatId, title)
+          applyTitle(chatId, title)
+        } finally {
+          onPendingChange?.(chatId, false)
         }
-        if (!title) return
-        await updateChatTitle(chatId, title)
-        applyTitle(chatId, title)
       } catch {
         // best-effort
       }
     },
-    [readChats, modelRef, applyTitle]
+    [readChats, modelRef, applyTitle, onPendingChange]
   )
 }

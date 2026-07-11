@@ -6,7 +6,7 @@ import { viewVariants } from "@/lib/motion"
 import { useTheme } from "next-themes"
 import { useChat } from "@ai-sdk/react"
 import { DefaultChatTransport } from "ai"
-import { useEffect, useState, useRef, useCallback, useMemo } from "react"
+import { useEffect, useLayoutEffect, useState, useRef, useCallback, useMemo } from "react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { extractText } from "@/lib/messageParts"
@@ -118,7 +118,17 @@ export default function Home() {
     setChats(prev => prev.map(c => (c.id === chatId ? { ...c, title } : c)))
     setStandaloneChats(prev => prev.map(c => (c.id === chatId ? { ...c, title } : c)))
   }, [])
-  const maybeGenerateTitle = useChatTitle({ readChats: readTitleChats, modelRef: selectedModelRef, applyTitle: applyChatTitle })
+  // Chats whose auto-title is currently generating — the sidebar shimmers these.
+  const [titlePendingIds, setTitlePendingIds] = useState<Set<number>>(new Set())
+  const handleTitlePending = useCallback((chatId: number, pending: boolean) => {
+    setTitlePendingIds(prev => {
+      const next = new Set(prev)
+      if (pending) next.add(chatId)
+      else next.delete(chatId)
+      return next
+    })
+  }, [])
+  const maybeGenerateTitle = useChatTitle({ readChats: readTitleChats, modelRef: selectedModelRef, applyTitle: applyChatTitle, onPendingChange: handleTitlePending })
 
   // Dialog state — centralised in useDialogs
   const dialogs = useDialogs()
@@ -305,6 +315,10 @@ export default function Home() {
     }
   }, [])
 
+  // True while a chat's history is being fetched — MessagesList holds layout
+  // with skeletons instead of flashing empty-then-pop.
+  const [messagesLoading, setMessagesLoading] = useState(false)
+
   const loadMessages = useCallback(async (cid: number) => {
     try {
       const [msgs, attachments, artifactsData] = await Promise.all([
@@ -419,7 +433,11 @@ export default function Home() {
       if (skipLoadOnceRef.current === activeChatId) {
         skipLoadOnceRef.current = null
       } else {
-        loadMessages(activeChatId)
+        setMessagesLoading(true)
+        loadMessages(activeChatId).finally(() => {
+          // A stale finish must not clear the loading state of the chat we switched to.
+          if (activeChatIdRef.current === activeChatId) setMessagesLoading(false)
+        })
       }
       // Backfill the title if this chat is still "New Chat" but already has an exchange.
       maybeGenerateTitle(activeChatId)
@@ -446,10 +464,21 @@ export default function Home() {
     setSidebarCollapsed,
   })
 
-  // Auto-scroll with requestAnimationFrame for smoother scrolling
+  // Position at the latest message BEFORE paint when a chat's history lands, so
+  // the user never sees the list at the top or a visible jump-to-bottom.
+  useLayoutEffect(() => {
+    const scrollContainer = scrollRef.current
+    if (!scrollContainer || messagesLoading) return
+    scrollContainer.scrollTop = scrollContainer.scrollHeight
+  }, [activeChatId, messagesLoading])
+
+  // Streaming follow: keep pinned to the bottom only while the user is already
+  // near it — never fight an upward scroll during a long response.
   useEffect(() => {
     const scrollContainer = scrollRef.current
     if (!scrollContainer) return
+    const nearBottom = scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight < 120
+    if (!nearBottom) return
 
     const animationId = requestAnimationFrame(() => {
       scrollContainer.scrollTop = scrollContainer.scrollHeight
@@ -982,7 +1011,8 @@ export default function Home() {
     openSettings: () => dialogs.settings.setOpen(true),
     selectView: (view: AppView) => { setActiveView(view); setActiveChatId(null); },
     activeView,
-  }), [handleCreateProject, handleRenameProject, handleRequestDeleteProject, handleSelectProject, handleOpenProjectDocuments, handleOpenProjectSettings, handleCreateChat, handleCreateStandaloneChat, handleCreateChatInProject, setActiveChatId, handleSelectStandaloneChat, handleMoveChat, handleRequestRename, handleArchiveChat, handleRestoreChat, handleRequestDelete, theme, activeView, dialogs.settings])
+    titlePendingIds,
+  }), [handleCreateProject, handleRenameProject, handleRequestDeleteProject, handleSelectProject, handleOpenProjectDocuments, handleOpenProjectSettings, handleCreateChat, handleCreateStandaloneChat, handleCreateChatInProject, setActiveChatId, handleSelectStandaloneChat, handleMoveChat, handleRequestRename, handleArchiveChat, handleRestoreChat, handleRequestDelete, theme, activeView, dialogs.settings, titlePendingIds])
 
   // Get the current chat (and its project) from either chats or standaloneChats
   const currentChat = activeChatId
@@ -1096,6 +1126,7 @@ export default function Home() {
                 selectedModel={selectedModel}
                 artifacts={artifacts}
                 onOpenArtifact={setActiveArtifactId}
+                messagesLoading={messagesLoading}
               />
             </div>
 
