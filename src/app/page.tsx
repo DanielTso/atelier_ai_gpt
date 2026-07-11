@@ -1,6 +1,8 @@
 "use client"
 
 import { AlertCircle, Menu } from "lucide-react"
+import { MotionConfig, AnimatePresence, motion } from "framer-motion"
+import { viewVariants } from "@/lib/motion"
 import { useTheme } from "next-themes"
 import { useChat } from "@ai-sdk/react"
 import { DefaultChatTransport } from "ai"
@@ -991,7 +993,16 @@ export default function Home() {
     ? projects.find(p => p.id === currentChat.projectId)?.name ?? null
     : null
 
+  // One key per distinct main-pane surface: tab views, individual chats, and
+  // project landings each get their own crossfade (soft fade + rise, no pop-in).
+  const viewKey =
+    activeView !== 'home' ? activeView
+    : activeChatId ? `chat-${activeChatId}`
+    : activeProjectId && !newChatCompose ? `project-${activeProjectId}`
+    : 'home'
+
   return (
+    <MotionConfig reducedMotion="user">
     <div className={cn(
       "flex h-screen w-full overflow-hidden p-4 gap-4",
       fontSize === 'small' && 'text-sm',
@@ -1023,6 +1034,15 @@ export default function Home() {
         >
           <Menu className="h-5 w-5" />
         </button>
+        <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={viewKey}
+          variants={viewVariants}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+          className="flex-1 flex flex-col min-h-0 overflow-hidden"
+        >
         {activeView === 'images' ? (
           <ImagesView projects={projects} />
         ) : activeView === 'projects' ? (
@@ -1206,6 +1226,8 @@ export default function Home() {
             />
           </div>
         )}
+        </motion.div>
+        </AnimatePresence>
       </main>
 
       {/* Command Palette */}
@@ -1311,5 +1333,6 @@ export default function Home() {
         />
       )}
     </div>
+    </MotionConfig>
   )
 }

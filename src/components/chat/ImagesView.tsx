@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 import type { GeneratedImageSummary } from '@/types'
 import { getGeneratedImages, deleteGeneratedImage } from '@/app/actions'
 import { ImageCard } from '@/components/chat/ImageCard'
+import { ImageGridSkeleton } from '@/components/chat/LoadingSkeletons'
 import { Lightbox } from '@/components/ui/Lightbox'
 import { downloadFile, imageExt } from '@/lib/download'
 
@@ -259,7 +260,7 @@ export function ImagesView({ projects }: ImagesViewProps) {
           </div>
 
           {loading ? (
-            <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+            <ImageGridSkeleton />
           ) : (
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
               {images.map(img => (

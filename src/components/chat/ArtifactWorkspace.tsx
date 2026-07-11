@@ -100,7 +100,7 @@ export function ArtifactWorkspace({ artifact, onClose, onChanged, width = 448, o
   )
 
   return (
-    <aside style={{ width: `${width}px` }} className="relative flex shrink-0 flex-col overflow-hidden border-l border-border/40">
+    <aside style={{ width: `${width}px` }} className="relative flex shrink-0 flex-col overflow-hidden border-l border-border/40 animate-in fade-in-0 slide-in-from-right-4 duration-200">
       {/* Drag handle — resize the panel by dragging its left edge. */}
       <div
         onPointerDown={startResize}

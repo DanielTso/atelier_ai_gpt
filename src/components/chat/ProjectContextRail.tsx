@@ -8,6 +8,7 @@ import type { DocumentSummary, MemorySuggestion } from '@/types'
 import { getPendingSuggestions, acceptSuggestion, dismissSuggestion } from '@/app/actions'
 import { useDocumentUpload } from '@/hooks/useDocumentUpload'
 import { DocumentCard } from '@/components/chat/DocumentCard'
+import { FilesRailSkeleton } from '@/components/chat/LoadingSkeletons'
 import { DocumentPreviewDialog } from '@/components/ui/DocumentPreviewDialog'
 import { AddFromWebDialog } from '@/components/ui/AddFromWebDialog'
 import { CapacityBar } from '@/components/chat/CapacityBar'
@@ -39,6 +40,7 @@ export function ProjectContextRail({ project, onSaveContext, onAddFiles }: Proje
   const [memory, setMemory] = useState(project.memory ?? '')
   const [instructions, setInstructions] = useState(project.instructions ?? '')
   const [documents, setDocuments] = useState<DocumentSummary[]>([])
+  const [docsLoading, setDocsLoading] = useState(true)
   const [previewDoc, setPreviewDoc] = useState<DocumentSummary | null>(null)
   const [dragOver, setDragOver] = useState(false)
   const [webOpen, setWebOpen] = useState(false)
@@ -55,7 +57,7 @@ export function ProjectContextRail({ project, onSaveContext, onAddFiles }: Proje
     try {
       const res = await fetch(`/api/documents?projectId=${project.id}`)
       if (res.ok) setDocuments((await res.json()).documents)
-    } catch { /* silent */ }
+    } catch { /* silent */ } finally { setDocsLoading(false) }
   }, [project.id])
   useEffect(() => { loadDocuments() }, [loadDocuments])
 
@@ -259,7 +261,9 @@ export function ProjectContextRail({ project, onSaveContext, onAddFiles }: Proje
           onChange={e => { handleFiles(Array.from(e.target.files ?? [])); e.target.value = '' }}
         />
         <div className="mb-3"><CapacityBar usedBytes={usedBytes} capBytes={PROJECT_CAPACITY_BYTES} /></div>
-        {documents.length === 0 ? (
+        {docsLoading && documents.length === 0 ? (
+          <FilesRailSkeleton />
+        ) : documents.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-10 text-muted-foreground">
             <Upload className="h-8 w-8 mb-3 opacity-30" />
             <p className="text-sm">No files yet</p>

@@ -9,6 +9,7 @@ import type { ArtifactType } from '@/lib/artifacts/types'
 import { getAllArtifacts, createBlankArtifact } from '@/app/actions'
 import { filterArtifacts, type ArtifactTypeFilter } from '@/lib/artifactFilter'
 import { ArtifactGalleryCard } from '@/components/chat/ArtifactGalleryCard'
+import { GalleryGridSkeleton } from '@/components/chat/LoadingSkeletons'
 import { ArtifactWorkspace } from '@/components/chat/ArtifactWorkspace'
 import { useLocalStorage } from '@/hooks/useLocalStorage'
 import { useAutoCollapseSidebar } from '@/hooks/useAutoCollapseSidebar'
@@ -63,10 +64,6 @@ export function ArtifactsView({ onOpenChat, sidebarCollapsedRef, setSidebarColla
     } finally { setCreating(false) }
   }
 
-  if (artifacts === null) {
-    return <div className="flex-1 flex items-center justify-center text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" /></div>
-  }
-
   return (
     <div className="flex-1 flex min-h-0 overflow-hidden">
       <div className="flex-1 overflow-y-auto p-8">
@@ -111,7 +108,9 @@ export function ArtifactsView({ onOpenChat, sidebarCollapsedRef, setSidebarColla
             className="w-full rounded-lg border border-border bg-card py-2.5 pl-10 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring" />
         </div>
 
-        {visible.length === 0 ? (
+        {artifacts === null ? (
+          <GalleryGridSkeleton />
+        ) : visible.length === 0 ? (
           <motion.div
             className="flex flex-col items-center justify-center gap-3 py-20 text-center"
             initial={{ opacity: 0, y: 8 }}

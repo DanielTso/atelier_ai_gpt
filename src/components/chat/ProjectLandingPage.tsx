@@ -7,6 +7,7 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
 import { cn } from "@/lib/utils"
 import { useLocalStorage } from "@/hooks/useLocalStorage"
 import { ProjectContextRail } from "@/components/chat/ProjectContextRail"
+import { Shimmer } from "@/components/chat/LoadingSkeletons"
 
 interface ChatPreview {
   id: number
@@ -128,12 +129,12 @@ export const ProjectLandingPage = memo(function ProjectLandingPage({
             {loading ? (
               <div className="space-y-3 mt-3">
                 {[1, 2, 3].map((i) => (
-                  <div key={i} className="animate-pulse rounded-xl border border-border/30 p-4">
+                  <div key={i} className="rounded-xl border border-border/30 p-4">
                     <div className="flex items-center justify-between">
-                      <div className="h-4 w-40 bg-muted/60 rounded" />
-                      <div className="h-3 w-14 bg-muted/40 rounded" />
+                      <Shimmer className="h-4 w-40" />
+                      <Shimmer className="h-3 w-14" />
                     </div>
-                    <div className="h-3 w-64 bg-muted/30 rounded mt-2.5" />
+                    <Shimmer className="h-3 w-64 mt-2.5" />
                   </div>
                 ))}
               </div>

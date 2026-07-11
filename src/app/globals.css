@@ -182,6 +182,77 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* ----------------------------------------------------------------
+   Loading shimmer — brand warmth, not gray pulse.
+   .skeleton-shimmer: block placeholder with a terracotta-tinted sweep.
+   .text-shimmer: gradient-clipped sliding sheen for live status text
+   ("Thinking…", pending chat titles).
+---------------------------------------------------------------- */
+.skeleton-shimmer {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--muted);
+  border-radius: var(--radius-sm);
+}
+
+.skeleton-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 20%,
+    color-mix(in oklab, var(--primary) 7%, var(--card)) 50%,
+    transparent 80%
+  );
+  transform: translateX(-100%);
+  animation: shimmer-sweep 1.6s ease-in-out infinite;
+}
+
+@keyframes shimmer-sweep {
+  to { transform: translateX(100%); }
+}
+
+.text-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--muted-foreground) 30%,
+    var(--primary) 50%,
+    var(--muted-foreground) 70%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: text-shimmer-slide 2s linear infinite;
+}
+
+@keyframes text-shimmer-slide {
+  to { background-position: -200% 0; }
+}
+
+/* Reduced motion: freeze decorative loops but keep resting states legible.
+   Scoped on purpose — spinners and enter-once dialog animations may run. */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-shimmer::after,
+  .text-shimmer {
+    animation: none;
+  }
+  .text-shimmer {
+    background: none;
+    color: var(--muted-foreground);
+  }
+  .streaming-cursor::after {
+    animation: none;
+    opacity: 1;
+  }
+  .streaming-cursor p:last-of-type,
+  .streaming-cursor li:last-of-type,
+  .streaming-cursor pre:last-of-type {
+    animation: none;
+  }
+}
+
 /* Chat message typography refinements */
 .prose {
   & p {
