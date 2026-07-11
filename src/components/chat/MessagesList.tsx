@@ -13,6 +13,7 @@ import { SmoothStreamingWrapper } from "./SmoothStreamingWrapper"
 import { MessageActions } from "./MessageActions"
 import { ThinkingStatus } from "./ThinkingStatus"
 import { deriveAssistantStage } from "@/lib/chatStage"
+import { ToolProgressCard, toolPartName, extractInlineArtifactIds } from "./ToolProgressCard"
 import { formatMessageTime, formatFullTime } from "@/lib/formatTime"
 import { parseFileMetadata, stripFilePrefix, getFileTypeLabel, type FileMetadata } from "@/lib/fileAttachments"
 import { formatFileSize } from "@/lib/fileUtils"
@@ -211,13 +212,17 @@ const messageVariants = {
 // active row re-parses; prior messages (stable `m` reference, isStreaming=false)
 // skip re-render entirely instead of re-parsing on every token.
 const MessageBody = memo(function MessageBody({
-  m, isStreaming, onImageClick,
-}: { m: ChatMessage; isStreaming: boolean; onImageClick: (url: string) => void }) {
+  m, isStreaming, onImageClick, onOpenArtifact,
+}: { m: ChatMessage; isStreaming: boolean; onImageClick: (url: string) => void; onOpenArtifact?: (id: number) => void }) {
   const images = getMessageImages(m)
   const isGenerated = m.role === 'assistant'
   const files = m.role === 'user' ? getMessageFiles(m) : null
   const reasoning = isGenerated ? getMessageReasoning(m) : ''
   const answerText = getMessageText(m)
+  // Live tool parts (generate_image / generate_artifact) render inline: an
+  // in-progress card while the tool runs, the settled image/artifact after.
+  const toolParts = isGenerated ? m.parts.filter(p => toolPartName(p) !== null) : []
+  const fileUrls = new Set(images.map(img => img.url))
   return (
     <div className={cn(
       "p-4 rounded-2xl border transition-all hover:border-border relative",
@@ -248,6 +253,9 @@ const MessageBody = memo(function MessageBody({
       )}
       {files && <MessageFileChips files={files} />}
       {isGenerated && <ReasoningBlock text={reasoning} live={isStreaming && answerText.trim().length === 0} />}
+      {toolParts.map((p, idx) => (
+        <ToolProgressCard key={idx} part={p} fileUrls={fileUrls} onImageClick={onImageClick} onOpenArtifact={onOpenArtifact} />
+      ))}
       <div className={cn(
         "prose prose-sm dark:prose-invert max-w-none break-words overflow-hidden",
         isStreaming && "streaming-cursor"
@@ -343,9 +351,16 @@ export const MessagesList = memo(function MessagesList({
   const lastAssistantHasContent = lastMessage?.role === 'assistant' && lastMessage.parts.some(p => {
     const part = p as { type?: string; text?: string }
     if (part.type === 'text' || part.type === 'reasoning') return Boolean(part.text?.trim())
-    return part.type === 'file'
+    // A tool part renders its own inline progress card — the status line yields to it.
+    return part.type === 'file' || toolPartName(p) !== null
   })
   const showThinking = stage !== 'idle' && stage !== 'writing' && !lastAssistantHasContent
+
+  // Artifacts already rendered inline from live tool outputs are filtered out of
+  // the bottom block: live session → inline card; reloaded history (DB messages
+  // carry no tool parts) → bottom block. Never both.
+  const inlineArtifactIds = extractInlineArtifactIds(messages)
+  const bottomArtifacts = artifacts?.filter(a => !inlineArtifactIds.has(a.id))
 
   return (
     <Tooltip.Provider delayDuration={300}>
@@ -378,7 +393,7 @@ export const MessagesList = memo(function MessagesList({
                 "flex flex-col gap-1 max-w-[80%] min-w-0",
                 m.role === 'user' ? "items-end" : "items-start"
               )}>
-                <MessageBody m={m} isStreaming={isStreamingMessage} onImageClick={onImageClick} />
+                <MessageBody m={m} isStreaming={isStreamingMessage} onImageClick={onImageClick} onOpenArtifact={onOpenArtifact} />
 
                 {/* Timestamp and Actions Row */}
                 <div className={cn(
@@ -413,9 +428,9 @@ export const MessagesList = memo(function MessagesList({
           )})}
         </AnimatePresence>
 
-        {/* Artifact Cards */}
-        {artifacts && artifacts.length > 0 && (
-          <div className="px-4 pb-2">{artifacts.map(a => <ArtifactCard key={a.id} artifact={a} onOpen={onOpenArtifact} />)}</div>
+        {/* Artifact Cards (historical — live tool outputs render inline instead) */}
+        {bottomArtifacts && bottomArtifacts.length > 0 && (
+          <div className="px-4 pb-2">{bottomArtifacts.map(a => <ArtifactCard key={a.id} artifact={a} onOpen={onOpenArtifact} />)}</div>
         )}
 
         {/* Staged response status — covers the gap before the reply bubble has any
