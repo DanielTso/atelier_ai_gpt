@@ -7,12 +7,12 @@ _Last updated: 2026-06-25. How the app is protected, how it was set up, and how 
 Atelier Studio is a **single-user** app (all projects/chats/documents are global — there is no per-user data separation). To keep the public deployment from being hit by strangers (and to stop anyone burning the Anthropic/Gemini API keys), it uses a **lightweight single-password access gate** rather than full per-user authentication.
 
 - One shared password protects the whole app.
-- Implemented in code (shipped v4.11.0): `src/middleware.ts`, `src/app/login/page.tsx`, `src/app/api/auth/route.ts`, `src/lib/auth.ts`.
+- Implemented in code (shipped v4.11.0): `src/proxy.ts` (formerly `src/middleware.ts` — renamed for Next 16's proxy convention), `src/app/login/page.tsx`, `src/app/api/auth/route.ts`, `src/lib/auth.ts`.
 - **The gate is OFF unless `APP_ACCESS_PASSWORD` is set.** With no env var, the app behaves exactly as before (open) — so it is safe to deploy without breaking anything.
 
 ## How it works
 
-1. `src/middleware.ts` runs on every request except Next internals (`_next/static`, `_next/image`, `favicon.ico`), `/login`, and `/api/auth`. (Files in `public/` are gated too — none are needed pre-auth.)
+1. `src/proxy.ts` runs on every request except Next internals (`_next/static`, `_next/image`, `favicon.ico`), `/login`, and `/api/auth`. (Files in `public/` are gated too — none are needed pre-auth.)
 2. If `APP_ACCESS_PASSWORD` is not set → gate disabled, all requests pass.
 3. If set → the request must carry a valid `atelier_auth` cookie. Missing/invalid/**expired** →
    - API routes get `401 JSON`,

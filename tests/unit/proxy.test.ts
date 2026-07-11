@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+﻿import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { NextRequest } from 'next/server'
-import { middleware, config } from '@/middleware'
+import { proxy, config } from '@/proxy'
 import { mintAuthToken, AUTH_COOKIE_NAME } from '@/lib/auth'
 
 const ORIG = { pw: process.env.APP_ACCESS_PASSWORD, secret: process.env.AUTH_SECRET }
@@ -20,10 +20,10 @@ function mkReq(path: string, cookie?: string) {
   return new NextRequest(new URL(path, 'http://localhost'), { headers })
 }
 
-// Part A — the matcher decides which paths the gate even runs on. This locks the
+// Part A â€” the matcher decides which paths the gate even runs on. This locks the
 // PREVIOUSLY-FIXED bypass the matcher comment documents (an earlier matcher excluded
 // any path ending in an image extension, leaving such routes reachable unauthenticated).
-describe('middleware matcher', () => {
+describe('proxy matcher', () => {
   const re = new RegExp('^' + config.matcher[0]! + '$')
   const runsOn = (p: string) => re.test(p)
 
@@ -45,26 +45,26 @@ describe('middleware matcher', () => {
   })
 })
 
-// Part B — the gate's branching: api-vs-page, public-path allowlist, enable flag.
-describe('middleware gate', () => {
+// Part B â€” the gate's branching: api-vs-page, public-path allowlist, enable flag.
+describe('proxy gate', () => {
   it('lets a request through with a valid cookie', async () => {
     const token = await mintAuthToken()
-    const res = await middleware(mkReq('/api/chat', token))
+    const res = await proxy(mkReq('/api/chat', token))
     expect(res.headers.get('x-middleware-next')).toBe('1')
   })
 
   it('returns 401 JSON on an /api route without a valid cookie', async () => {
-    const res = await middleware(mkReq('/api/chat'))
+    const res = await proxy(mkReq('/api/chat'))
     expect(res.status).toBe(401)
   })
 
   it('returns 401 on an /api route with a tampered cookie', async () => {
-    const res = await middleware(mkReq('/api/chat', 'payload.deadbeef'))
+    const res = await proxy(mkReq('/api/chat', 'payload.deadbeef'))
     expect(res.status).toBe(401)
   })
 
   it('redirects a page request without a cookie to /login, preserving the destination', async () => {
-    const res = await middleware(mkReq('/dashboard'))
+    const res = await proxy(mkReq('/dashboard'))
     expect(res.status).toBe(307)
     const loc = res.headers.get('location')!
     expect(loc).toContain('/login')
@@ -72,19 +72,19 @@ describe('middleware gate', () => {
   })
 
   it('does not append a next param for the root path', async () => {
-    const res = await middleware(mkReq('/'))
+    const res = await proxy(mkReq('/'))
     expect(res.status).toBe(307)
     expect(res.headers.get('location')).not.toContain('next=')
   })
 
   it('lets /login and /api/auth through unauthenticated', async () => {
-    expect((await middleware(mkReq('/login'))).headers.get('x-middleware-next')).toBe('1')
-    expect((await middleware(mkReq('/api/auth'))).headers.get('x-middleware-next')).toBe('1')
+    expect((await proxy(mkReq('/login'))).headers.get('x-middleware-next')).toBe('1')
+    expect((await proxy(mkReq('/api/auth'))).headers.get('x-middleware-next')).toBe('1')
   })
 
   it('is a no-op for every path when the gate is disabled', async () => {
     delete process.env.APP_ACCESS_PASSWORD
-    expect((await middleware(mkReq('/api/chat'))).headers.get('x-middleware-next')).toBe('1')
-    expect((await middleware(mkReq('/dashboard'))).headers.get('x-middleware-next')).toBe('1')
+    expect((await proxy(mkReq('/api/chat'))).headers.get('x-middleware-next')).toBe('1')
+    expect((await proxy(mkReq('/dashboard'))).headers.get('x-middleware-next')).toBe('1')
   })
 })

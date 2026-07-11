@@ -4,7 +4,9 @@ import { AUTH_COOKIE_NAME, isAuthEnabled, verifyAuthCookie } from '@/lib/auth'
 // Gate every route behind the single-password cookie when the gate is enabled
 // (APP_ACCESS_PASSWORD set). /login and /api/auth stay public so the user can
 // authenticate; static assets are excluded via the matcher below.
-export async function middleware(req: NextRequest) {
+// Next 16 renamed the middleware convention to proxy (runtime is Node — fine here:
+// the cookie check uses Web Crypto, nothing edge-only).
+export async function proxy(req: NextRequest) {
   if (!isAuthEnabled()) return NextResponse.next()
 
   const { pathname } = req.nextUrl
