@@ -1,6 +1,6 @@
 "use client"
 
-import { memo, useState, useCallback, useEffect, useRef } from "react"
+import { memo, useState, useCallback } from "react"
 import { Folder, MessageSquare, ExternalLink, Globe, Paperclip, Sparkles, ChevronRight } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
@@ -11,7 +11,8 @@ import type { UIMessage } from "ai"
 import { CodeBlock, InlineCode } from "./CodeBlock"
 import { SmoothStreamingWrapper } from "./SmoothStreamingWrapper"
 import { MessageActions } from "./MessageActions"
-import { TypingIndicator } from "@/components/ui/TypingIndicator"
+import { ThinkingStatus } from "./ThinkingStatus"
+import { deriveAssistantStage } from "@/lib/chatStage"
 import { formatMessageTime, formatFullTime } from "@/lib/formatTime"
 import { parseFileMetadata, stripFilePrefix, getFileTypeLabel, type FileMetadata } from "@/lib/fileAttachments"
 import { formatFileSize } from "@/lib/fileUtils"
@@ -33,6 +34,8 @@ interface MessagesListProps {
   onOpenArtifact?: (id: number) => void
   /** True while the chat's history is fetching — skeletons hold the layout. */
   messagesLoading?: boolean
+  /** useChat status — drives the staged thinking/tool indicator. */
+  status?: string
 }
 
 // Helper to extract text content from message parts, stripping file prefix for display
@@ -269,6 +272,7 @@ export const MessagesList = memo(function MessagesList({
   artifacts,
   onOpenArtifact,
   messagesLoading = false,
+  status,
 }: MessagesListProps) {
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
   const onImageClick = useCallback((url: string) => setLightboxUrl(url), [])
@@ -277,8 +281,7 @@ export const MessagesList = memo(function MessagesList({
   // Stagger the entrance only for the batch present at mount (chat open — the
   // keyed view wrapper remounts this list per chat). Messages streamed in later
   // must appear immediately, not wait out a stagger delay.
-  const mountedRef = useRef(false)
-  useEffect(() => { mountedRef.current = true }, [])
+  const [initialMessageIds] = useState(() => new Set(messages.map(m => m.id)))
 
   if (!activeChatId) {
     return (
@@ -332,6 +335,18 @@ export const MessagesList = memo(function MessagesList({
   const lastAssistantIndex = messages.reduce((lastIdx, m, idx) =>
     m.role === 'assistant' ? idx : lastIdx, -1)
 
+  // Staged response status: derived from the streaming message's real parts
+  // (reasoning, tool calls, text) — never timers. Hidden as soon as the reply
+  // bubble has anything visible of its own (text, live reasoning, images).
+  const lastMessage = messages[messages.length - 1]
+  const stage = deriveAssistantStage(status ?? (isLoading ? 'streaming' : 'ready'), lastMessage)
+  const lastAssistantHasContent = lastMessage?.role === 'assistant' && lastMessage.parts.some(p => {
+    const part = p as { type?: string; text?: string }
+    if (part.type === 'text' || part.type === 'reasoning') return Boolean(part.text?.trim())
+    return part.type === 'file'
+  })
+  const showThinking = stage !== 'idle' && stage !== 'writing' && !lastAssistantHasContent
+
   return (
     <Tooltip.Provider delayDuration={300}>
       <div className="flex flex-col gap-6 max-w-3xl xl:max-w-4xl 2xl:max-w-5xl mx-auto pb-4">
@@ -347,7 +362,7 @@ export const MessagesList = memo(function MessagesList({
               initial="initial"
               animate="animate"
               exit="exit"
-              transition={{ duration: 0.2, delay: mountedRef.current ? 0 : staggerDelay(index) }}
+              transition={{ duration: 0.2, delay: initialMessageIds.has(m.id) ? staggerDelay(index) : 0 }}
               className={cn(
                 "flex gap-4 group",
                 m.role === 'user' ? "flex-row-reverse" : ""
@@ -403,23 +418,18 @@ export const MessagesList = memo(function MessagesList({
           <div className="px-4 pb-2">{artifacts.map(a => <ArtifactCard key={a.id} artifact={a} onOpen={onOpenArtifact} />)}</div>
         )}
 
-        {/* Typing Indicator — only while waiting for the reply to start. Once the
-            assistant message begins streaming (last message is the assistant's), the
-            message itself + its cursor show progress, so the dots would be redundant. */}
+        {/* Staged response status — covers the gap before the reply bubble has any
+            visible content: shimmer for a quick plain reply, labelled stages
+            ("Thinking…", "Searching the web…", "Creating image…") when real
+            reasoning/tool events are on the wire. */}
         <AnimatePresence>
-          {isLoading && messages[messages.length - 1]?.role !== 'assistant' && (
+          {showThinking && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              className="flex gap-4"
             >
-              <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center shrink-0 text-xs font-semibold text-primary">
-                AI
-              </div>
-              <div className="bg-muted p-4 rounded-2xl rounded-tl-none border border-border flex items-center">
-                <TypingIndicator />
-              </div>
+              <ThinkingStatus stage={stage} />
             </motion.div>
           )}
         </AnimatePresence>

@@ -1127,6 +1127,7 @@ export default function Home() {
                 artifacts={artifacts}
                 onOpenArtifact={setActiveArtifactId}
                 messagesLoading={messagesLoading}
+                status={status}
               />
             </div>
 
