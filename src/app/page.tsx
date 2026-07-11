@@ -43,6 +43,7 @@ import type { Model, ArtifactSummary } from "@/types"
 import { useChatTitle } from "@/hooks/useChatTitle"
 import { useFollowUps } from "@/hooks/useFollowUps"
 import { FollowUpChips } from "@/components/chat/FollowUpChips"
+import { toolPartName } from "@/lib/chatStage"
 import { useSummarization } from "@/hooks/useSummarization"
 import { useAutoCollapseSidebar } from "@/hooks/useAutoCollapseSidebar"
 import { useDialogs } from "@/hooks/useDialogs"
@@ -199,6 +200,33 @@ export default function Home() {
 
   // Suggested follow-up chips after each finished response (best-effort, Gemini Flash).
   const { followUps, clearFollowUps } = useFollowUps({ messages, status, activeChatId })
+
+  // Auto-open a just-built artifact in the workspace the moment its tool output
+  // lands MID-STREAM (Claude.ai-style) — the user shouldn't have to notice a card
+  // and click it. Each artifact auto-opens once; closing the panel is respected
+  // (we never re-open the same id).
+  const autoOpenedArtifactIdsRef = useRef<Set<number>>(new Set())
+  useEffect(() => {
+    const last = messages[messages.length - 1]
+    if (!last || last.role !== 'assistant' || !activeChatId) return
+    for (const p of last.parts) {
+      if (toolPartName(p) !== 'generate_artifact') continue
+      const part = p as { state?: string; output?: { artifactId?: unknown } }
+      if (part.state !== 'output-available') continue
+      const id = part.output?.artifactId
+      if (typeof id !== 'number' || autoOpenedArtifactIdsRef.current.has(id)) continue
+      autoOpenedArtifactIdsRef.current.add(id)
+      const cid = activeChatId
+      fetch(`/api/artifacts?chatId=${cid}`)
+        .then(r => (r.ok ? r.json() : null))
+        .then(data => {
+          if (!data?.artifacts || activeChatIdRef.current !== cid) return
+          setArtifacts(data.artifacts)
+          setActiveArtifactId(id)
+        })
+        .catch(() => { /* best-effort — the card in the message still opens it */ })
+    }
+  }, [messages, activeChatId])
 
   // Message-persistence pipeline: save → embed → summarize → memory-suggest → title → artifact-refetch.
   // Must be called AFTER useChat so setMessages / setArtifacts are in scope.
