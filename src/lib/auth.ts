@@ -109,6 +109,27 @@ export async function verifyAuthCookie(value: string | undefined | null): Promis
   return typeof parsed.exp === 'number' && parsed.exp > Math.floor(Date.now() / 1000)
 }
 
+/**
+ * Stable HMAC capability signature for a generated-file storage path. HTML artifacts
+ * embed images via /api/files/raw, but their sandboxed preview iframe runs on an
+ * opaque origin and cannot send the auth cookie — so that route sits outside the
+ * cookie gate and enforces THIS signature instead: unforgeable without the secret,
+ * deliberately non-expiring (the URL lives inside permanent artifact HTML).
+ * Domain-separated from the cookie HMAC by the `file:` prefix.
+ */
+export async function signFilePath(path: string): Promise<string> {
+  // Gate off → no secret to sign with (and Web Crypto rejects empty HMAC keys);
+  // the route accepts any signature in that mode.
+  if (!authSecret()) return ''
+  return hmacHex(`file:${path}`)
+}
+
+export async function verifyFilePathSig(path: string, sig: string | null | undefined): Promise<boolean> {
+  if (!isAuthEnabled()) return true // gate off → open, matching every other route
+  if (!sig) return false
+  return safeEqual(sig, await hmacHex(`file:${path}`))
+}
+
 // Compare HMAC digests of both sides (fixed 64-hex length, collision-resistant) so the
 // constant-time compare never observes the password length — closes the length
 // side-channel without the collision risk of a non-cryptographic length-normalizer.

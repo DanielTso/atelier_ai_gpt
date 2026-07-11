@@ -812,11 +812,13 @@ export async function restoreArtifactVersion(artifactId: number, version: number
 
 // Row → API shape with a signed download URL (best-effort). Uses the generous
 // artifact TTL so the link doesn't expire before the user clicks Download.
+// HTML downloads go through the same-origin raw route instead: Supabase's storage
+// endpoint refuses to serve text/html as HTML, so its signed URLs arrive named .txt.
 async function toArtifactSummary(r: typeof artifacts.$inferSelect) {
   return {
     id: r.id, chatId: r.chatId, type: r.type, title: r.title, status: r.status, createdAt: r.createdAt,
     format: r.format, content: r.content, version: r.currentVersion,
-    downloadUrl: await signedArtifactUrl(r.storagePath),
+    downloadUrl: r.type === 'html' ? `/api/artifacts/${r.id}/raw?download=1` : await signedArtifactUrl(r.storagePath),
   }
 }
 
@@ -854,7 +856,9 @@ export async function getAllArtifacts(limit = 60) {
     createdAt: r.createdAt, format: r.format, content: r.content, version: r.version,
     chatTitle: r.chatTitle, projectName: r.projectName,
     editedAt: r.editedAt ?? r.createdAt,
-    downloadUrl: r.storagePath ? (urlMap.get(r.storagePath) ?? null) : null,
+    downloadUrl: r.type === 'html'
+      ? `/api/artifacts/${r.id}/raw?download=1`
+      : r.storagePath ? (urlMap.get(r.storagePath) ?? null) : null,
   }))
 }
 

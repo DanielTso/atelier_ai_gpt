@@ -40,8 +40,9 @@ describe('generate_image tool', () => {
     expect(out).toEqual({
       storagePath: expect.stringMatching(/^attachments\/7\/generated\/.+\.png$/),
       url: 'signed:url',
-      // Stable same-origin proxy form for embedding in HTML artifacts (signed url expires).
-      embedUrl: expect.stringMatching(/^\/api\/files\/raw\?path=attachments%2F7%2Fgenerated%2F.+\.png$/),
+      // Stable same-origin proxy form for embedding in HTML artifacts (signed url
+      // expires). sig is empty when the auth gate is off (test env), hex otherwise.
+      embedUrl: expect.stringMatching(/^\/api\/files\/raw\?path=attachments%2F7%2Fgenerated%2F.+\.png&sig=[0-9a-f]*$/),
       mediaType: 'image/png',
       filename: 'generated-image.png',
       fileSize: 3, // byteLength of the mocked image (Uint8Array([1,2,3]))

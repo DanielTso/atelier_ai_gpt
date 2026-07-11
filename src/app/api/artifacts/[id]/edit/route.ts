@@ -51,7 +51,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       throw e
     }
 
-    const downloadUrl = await signedArtifactUrl(path)
+    // HTML downloads go same-origin (Supabase serves text/html signed URLs named .txt).
+    const downloadUrl = type === 'html' ? `/api/artifacts/${id}/raw?download=1` : await signedArtifactUrl(path)
     return NextResponse.json({ artifactId: id, version: result.version, title, type, downloadUrl })
   } catch (error) {
     return apiError(error, 'Failed to edit artifact', 500)

@@ -11,6 +11,10 @@ export async function proxy(req: NextRequest) {
 
   const { pathname } = req.nextUrl
   if (pathname === '/login' || pathname === '/api/auth') return NextResponse.next()
+  // Generated-image proxy: consumed from sandboxed artifact iframes (opaque origin —
+  // no cookies possible). The route enforces its own HMAC capability signature
+  // (verifyFilePathSig), so exempting it from the cookie gate does not open it.
+  if (pathname === '/api/files/raw') return NextResponse.next()
 
   const cookie = req.cookies.get(AUTH_COOKIE_NAME)?.value
   if (await verifyAuthCookie(cookie)) return NextResponse.next()

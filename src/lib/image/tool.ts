@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
 import { isStorageConfigured, uploadBuffer, createSignedDownloadUrl, ARTIFACT_URL_TTL_SECONDS } from '@/lib/storage'
 import { generateImageBytes } from '@/lib/image/generate'
+import { signFilePath } from '@/lib/auth'
 
 /**
  * `generate_image` tool: generate an image from a prompt with Nano Banana, upload it to
@@ -31,8 +32,10 @@ export function createGenerateImageTool(ctx: { chatId: number; projectId: number
         await uploadBuffer(path, bytes, mediaType)
         const url = await createSignedDownloadUrl(path, ARTIFACT_URL_TTL_SECONDS)
         // embedUrl is the STABLE same-origin proxy form — the one to reference from
-        // HTML artifacts, where the signed `url` would expire after 24h.
-        const embedUrl = `/api/files/raw?path=${encodeURIComponent(path)}`
+        // HTML artifacts, where the signed `url` would expire after 24h. Carries an
+        // HMAC capability signature: the sandboxed preview iframe can't send the
+        // auth cookie, so the proxy route authenticates by signature instead.
+        const embedUrl = `/api/files/raw?path=${encodeURIComponent(path)}&sig=${await signFilePath(path)}`
         return { storagePath: path, url, embedUrl, mediaType, filename: `generated-image.${ext}`, fileSize: bytes.byteLength }
       } catch (e) {
         // Surface generateImageBytes's specific, user-appropriate message (no Gemini

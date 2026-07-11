@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { isStorageConfigured, downloadToBuffer } from '@/lib/storage'
+import { verifyFilePathSig } from '@/lib/auth'
 
 // Generated-image paths only — a strict allow-list, not a general storage proxy.
 // attachments/<chatId>/generated/<uuid>.<ext> (chat generate_image tool)
@@ -14,12 +15,14 @@ const CONTENT_TYPES: Record<string, string> = {
   gif: 'image/gif',
 }
 
-// GET /api/files/raw?path=… — stream a generated image SAME-ORIGIN with a stable
-// URL. HTML artifacts embed this (their srcDoc iframes inherit the app CSP, whose
-// img-src allows 'self'), so pages keep their imagery forever instead of going
-// blank when the 24h signed URL dies. Auth-gated by middleware; the path is
-// allow-listed to generated-image locations only (single-user app — any
-// authenticated session may read any generated image).
+// GET /api/files/raw?path=…&sig=… — stream a generated image SAME-ORIGIN with a
+// stable URL. HTML artifacts embed this (their srcDoc iframes inherit the app CSP,
+// whose img-src allows 'self'), so pages keep their imagery forever instead of
+// going blank when the 24h signed URL dies. The sandboxed iframe runs on an OPAQUE
+// origin and cannot send the auth cookie, so this route is exempt from the cookie
+// gate (see src/proxy.ts) and enforces an HMAC capability signature instead —
+// unforgeable without the secret. Path is additionally allow-listed to
+// generated-image locations only.
 export async function GET(req: NextRequest) {
   if (!isStorageConfigured()) {
     return NextResponse.json({ error: 'File storage is not configured.' }, { status: 503 })
@@ -27,6 +30,9 @@ export async function GET(req: NextRequest) {
   const path = req.nextUrl.searchParams.get('path') ?? ''
   if (!ALLOWED_PATH.test(path)) {
     return NextResponse.json({ error: 'Invalid path' }, { status: 400 })
+  }
+  if (!(await verifyFilePathSig(path, req.nextUrl.searchParams.get('sig')))) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {

@@ -42,7 +42,11 @@ export function createGenerateArtifactTool(ctx: { chatId: number; projectId: num
           await removeObjects([path]).catch(() => {}) // don't leave an orphan object if the insert fails
           throw e
         }
-        const downloadUrl = await createSignedDownloadUrl(path, ARTIFACT_URL_TTL_SECONDS)
+        // HTML goes through the same-origin raw route (Supabase serves text/html
+        // signed-URL downloads named .txt); other types keep the signed URL.
+        const downloadUrl = type === 'html'
+          ? `/api/artifacts/${row.id}/raw?download=1`
+          : await createSignedDownloadUrl(path, ARTIFACT_URL_TTL_SECONDS)
         return { artifactId: row.id, title, type, downloadUrl }
       } catch (e) {
         console.warn('[generate_artifact] failed:', e instanceof Error ? e.message : e)

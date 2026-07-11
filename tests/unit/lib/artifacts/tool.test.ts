@@ -41,7 +41,9 @@ describe('generate_artifact tool', () => {
     const out = await tool.execute!({ type: 'html', title: 'Landing', format: 'html', content: '<!doctype html><h1>Hi</h1>' }, {} as never)
     expect(mockRender).toHaveBeenCalledWith('html', 'Landing', '<!doctype html><h1>Hi</h1>')
     expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ type: 'html', format: 'html', content: '<!doctype html><h1>Hi</h1>' }))
-    expect(out).toEqual({ artifactId: 9, title: 'Landing', type: 'html', downloadUrl: 'signed:url' })
+    // HTML downloads go through the same-origin raw route (Supabase serves
+    // text/html signed-URL downloads named .txt).
+    expect(out).toEqual({ artifactId: 9, title: 'Landing', type: 'html', downloadUrl: '/api/artifacts/9/raw?download=1' })
     expect(mockUpload.mock.calls[0][0]).toMatch(/^artifacts\/1\/.+\/landing\.html$/)
   })
 

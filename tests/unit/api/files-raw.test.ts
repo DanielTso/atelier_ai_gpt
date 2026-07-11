@@ -53,6 +53,30 @@ describe('GET /api/files/raw', () => {
     expect(mockDownload).not.toHaveBeenCalled()
   })
 
+  it('with the auth gate ON, requires a valid HMAC capability signature', async () => {
+    process.env.APP_ACCESS_PASSWORD = 'hunter2'
+    process.env.AUTH_SECRET = 'test-secret'
+    try {
+      const { signFilePath } = await import('@/lib/auth')
+      const path = 'attachments/7/generated/a-b.png'
+      const GET = await importRoute()
+
+      // no sig / wrong sig → 401, storage never touched
+      expect((await GET(req(path))).status).toBe(401)
+      const wrong = new NextRequest(`http://localhost/api/files/raw?path=${encodeURIComponent(path)}&sig=${'0'.repeat(64)}`)
+      expect((await GET(wrong)).status).toBe(401)
+      expect(mockDownload).not.toHaveBeenCalled()
+
+      // valid sig → 200 without any cookie (sandboxed iframes can't send one)
+      const sig = await signFilePath(path)
+      const ok = new NextRequest(`http://localhost/api/files/raw?path=${encodeURIComponent(path)}&sig=${sig}`)
+      expect((await GET(ok)).status).toBe(200)
+    } finally {
+      delete process.env.APP_ACCESS_PASSWORD
+      delete process.env.AUTH_SECRET
+    }
+  })
+
   it('503 when storage is not configured, 502 when the download fails', async () => {
     mockIsConfigured.mockReturnValue(false)
     let GET = await importRoute()
