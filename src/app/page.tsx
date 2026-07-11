@@ -41,6 +41,8 @@ import { buildFileMessage } from "@/lib/fileAttachments"
 import type { FileUIPart, UIMessage } from "ai"
 import type { Model, ArtifactSummary } from "@/types"
 import { useChatTitle } from "@/hooks/useChatTitle"
+import { useFollowUps } from "@/hooks/useFollowUps"
+import { FollowUpChips } from "@/components/chat/FollowUpChips"
 import { useSummarization } from "@/hooks/useSummarization"
 import { useAutoCollapseSidebar } from "@/hooks/useAutoCollapseSidebar"
 import { useDialogs } from "@/hooks/useDialogs"
@@ -194,6 +196,9 @@ export default function Home() {
     transport,
     onFinish: useCallback((args: { message: UIMessage }) => onFinishRef.current(args), []),
   })
+
+  // Suggested follow-up chips after each finished response (best-effort, Gemini Flash).
+  const { followUps, clearFollowUps } = useFollowUps({ messages, status, activeChatId })
 
   // Message-persistence pipeline: save → embed → summarize → memory-suggest → title → artifact-refetch.
   // Must be called AFTER useChat so setMessages / setArtifacts are in scope.
@@ -1175,6 +1180,12 @@ export default function Home() {
                 />
               </div>
             )}
+
+            {/* Suggested follow-ups (best-effort, cleared on the next turn) */}
+            <FollowUpChips
+              suggestions={followUps}
+              onPick={(s) => { setInput(s); clearFollowUps() }}
+            />
 
             {/* Input Area */}
             <ChatInputArea

@@ -39,7 +39,9 @@ const csp = [
   `img-src 'self' data: blob: ${imgFrame}`,
   "font-src 'self' data:",
   "connect-src 'self' https:",
-  `frame-src 'self' ${imgFrame}`,
+  // youtube-nocookie: HTML artifacts (sandboxed srcDoc iframes inherit this CSP) may
+  // embed videos via the privacy-enhanced player only — never youtube.com proper.
+  `frame-src 'self' ${imgFrame} https://www.youtube-nocookie.com`,
   // 'self' (not 'none') so the app can frame its OWN same-origin routes — the PDF
   // artifact preview embeds /api/artifacts/:id/raw. Cross-origin framing of the app
   // (clickjacking) is still blocked. Pairs with X-Frame-Options: SAMEORIGIN below.

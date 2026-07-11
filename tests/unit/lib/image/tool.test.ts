@@ -40,12 +40,14 @@ describe('generate_image tool', () => {
     expect(out).toEqual({
       storagePath: expect.stringMatching(/^attachments\/7\/generated\/.+\.png$/),
       url: 'signed:url',
+      // Stable same-origin proxy form for embedding in HTML artifacts (signed url expires).
+      embedUrl: expect.stringMatching(/^\/api\/files\/raw\?path=attachments%2F7%2Fgenerated%2F.+\.png$/),
       mediaType: 'image/png',
       filename: 'generated-image.png',
       fileSize: 3, // byteLength of the mocked image (Uint8Array([1,2,3]))
     })
     // tiny result — no base64 image bytes leak into the conversation
-    expect(JSON.stringify(out).length).toBeLessThan(300)
+    expect(JSON.stringify(out).length).toBeLessThan(400)
   })
 
   it('returns an error and skips upload when no Gemini key', async () => {

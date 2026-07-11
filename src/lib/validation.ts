@@ -45,6 +45,13 @@ export const generateTitleRequestSchema = z.object({
   model: modelEnum.optional(),
 })
 
+export const suggestFollowupsRequestSchema = z.object({
+  messages: z.array(z.object({
+    role: z.enum(['user', 'assistant']),
+    content: z.string(),
+  })).min(1).max(4),
+})
+
 export const embedRequestSchema = z.object({
   messageId: z.number(),
   chatId: z.number(),
