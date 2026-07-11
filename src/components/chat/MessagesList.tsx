@@ -198,6 +198,10 @@ const MARKDOWN_COMPONENTS = {
     const isBlock = typeof className === 'string' && /(^|\s)language-/.test(className)
     return isBlock ? <code className={className} {...props} /> : <InlineCode className={className} {...props} />
   },
+  // Article/video links open in a new tab — in-tab navigation would drop the chat.
+  a: ({href, children, ...props}: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
+    <a href={href} target="_blank" rel="noopener noreferrer" {...props}>{children}</a>
+  ),
 }
 
 const EMPTY_URL_SET: ReadonlySet<string> = new Set()

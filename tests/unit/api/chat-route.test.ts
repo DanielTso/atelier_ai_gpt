@@ -19,6 +19,7 @@ const mockConvertToModelMessages = vi.fn().mockResolvedValue([
 vi.mock('ai', () => ({
   streamText: (...args: unknown[]) => mockStreamText(...args),
   convertToModelMessages: (...args: unknown[]) => mockConvertToModelMessages(...args),
+  stepCountIs: (n: number) => ({ type: 'step-count', count: n }),
 }))
 
 const mockGoogleSearch = vi.fn(() => ({ type: 'provider-defined', id: 'google_search' }))
@@ -57,6 +58,7 @@ describe('POST /api/chat', () => {
     vi.doMock('ai', () => ({
       streamText: (...args: unknown[]) => mockStreamText(...args),
       convertToModelMessages: (...args: unknown[]) => mockConvertToModelMessages(...args),
+      stepCountIs: (n: number) => ({ type: 'step-count', count: n }),
     }))
     vi.doMock('@ai-sdk/google', () => ({
       createGoogleGenerativeAI: () => Object.assign(

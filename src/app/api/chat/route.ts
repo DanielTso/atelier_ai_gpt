@@ -1,4 +1,4 @@
-import { streamText, convertToModelMessages, type UIMessage } from 'ai';
+import { streamText, convertToModelMessages, stepCountIs, type UIMessage } from 'ai';
 import { getChatWithContext, getProjectContext } from '@/app/actions';
 import { buildProjectPreamble } from '@/lib/projectPreamble';
 import { retrieveContext } from '@/lib/retrieval';
@@ -21,7 +21,9 @@ const TOOL_GUIDANCE =
   'Use generate_image when the user asks to create/generate/draw/design/make an image, illustration, mockup, logo, icon, diagram, or picture. ' +
   'Use generate_artifact when the user asks for a downloadable/exported file ("make a spreadsheet", "export to Word", "create a PDF", "build a slide deck") OR for a web page, website, landing page, or HTML page/mockup ("build me a landing page", "make a website", "create an HTML page"). ' +
   'IMPORTANT: whenever your reply would otherwise be a COMPLETE HTML document or a full web page / landing page / site, you MUST call generate_artifact with format "html" instead of pasting that HTML as a code block in chat — the artifact gives the user a live preview, edit, and download. A short illustrative snippet may stay inline, but a whole page or file belongs in an artifact. ' +
-  'If the user asks you to write, draft, or compose an email, message, summary, report, plan, list, or table to read in the conversation, write it directly in your reply — do NOT create a file. When in doubt for prose, answer in chat; for a full web page or file, use generate_artifact.';
+  'If the user asks you to write, draft, or compose an email, message, summary, report, plan, list, or table to read in the conversation, write it directly in your reply — do NOT create a file. When in doubt for prose, answer in chat; for a full web page or file, use generate_artifact. ' +
+  'EXCEPTION — visual answers: when the user explicitly asks for a visual, illustrated, or image-rich response ("use images", "make it visual", "add pictures/diagrams/illustrations"), interleave your prose with generate_image calls: write a section, generate a fitting illustration, then continue writing. You can call tools multiple times in one reply — never promise a visual and stop without generating it. ' +
+  'When the user asks for articles or videos, include inline Markdown links to real, relevant pages you found via web search (link the title text), not bare claims.';
 
 function buildContextPrefix(
   documentContext: string | null,
@@ -134,6 +136,11 @@ export async function POST(req: Request) {
       messages: modelMessages,
       ...(tools && { tools }),
       ...(providerOptions && { providerOptions }),
+      // Multi-step tool loop: without this streamText stops after ONE step, so the
+      // model could never continue writing after a generate_image/generate_artifact
+      // call (it would tease a visual and die mid-reply). 8 steps allows several
+      // text→tool→text rounds; server-side web_search doesn't consume steps.
+      stopWhen: stepCountIs(8),
     });
 
     return result.toUIMessageStreamResponse({ sendSources: true, sendReasoning: true });
