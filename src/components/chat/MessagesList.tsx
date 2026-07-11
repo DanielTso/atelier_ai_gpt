@@ -1,6 +1,6 @@
 "use client"
 
-import { memo, useState, useCallback } from "react"
+import { memo, useState, useCallback, useEffect } from "react"
 import { Folder, MessageSquare, ExternalLink, Globe, Paperclip, Sparkles, ChevronRight } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
@@ -12,8 +12,8 @@ import { CodeBlock, InlineCode } from "./CodeBlock"
 import { SmoothStreamingWrapper } from "./SmoothStreamingWrapper"
 import { MessageActions } from "./MessageActions"
 import { ThinkingStatus } from "./ThinkingStatus"
-import { deriveAssistantStage } from "@/lib/chatStage"
-import { ToolProgressCard, toolPartName, extractInlineArtifactIds } from "./ToolProgressCard"
+import { deriveAssistantStage, assistantHasVisibleContent } from "@/lib/chatStage"
+import { ToolProgressCard, isToolCardPart, extractInlineArtifactIds } from "./ToolProgressCard"
 import { formatMessageTime, formatFullTime } from "@/lib/formatTime"
 import { parseFileMetadata, stripFilePrefix, getFileTypeLabel, type FileMetadata } from "@/lib/fileAttachments"
 import { formatFileSize } from "@/lib/fileUtils"
@@ -200,6 +200,8 @@ const MARKDOWN_COMPONENTS = {
   },
 }
 
+const EMPTY_URL_SET: ReadonlySet<string> = new Set()
+
 // Message animation variants
 const messageVariants = {
   initial: { opacity: 0, y: 20 },
@@ -221,8 +223,10 @@ const MessageBody = memo(function MessageBody({
   const answerText = getMessageText(m)
   // Live tool parts (generate_image / generate_artifact) render inline: an
   // in-progress card while the tool runs, the settled image/artifact after.
-  const toolParts = isGenerated ? m.parts.filter(p => toolPartName(p) !== null) : []
-  const fileUrls = new Set(images.map(img => img.url))
+  const toolParts = isGenerated ? m.parts.filter(isToolCardPart) : []
+  // Only needed for settled image dedup — skip the allocation on the common
+  // no-tool path (this row re-renders per streamed token).
+  const fileUrls = toolParts.length > 0 ? new Set(images.map(img => img.url)) : EMPTY_URL_SET
   return (
     <div className={cn(
       "p-4 rounded-2xl border transition-all hover:border-border relative",
@@ -286,10 +290,20 @@ export const MessagesList = memo(function MessagesList({
   const onImageClick = useCallback((url: string) => setLightboxUrl(url), [])
   const closeLightbox = useCallback(() => setLightboxUrl(null), [])
 
-  // Stagger the entrance only for the batch present at mount (chat open — the
-  // keyed view wrapper remounts this list per chat). Messages streamed in later
-  // must appear immediately, not wait out a stagger delay.
-  const [initialMessageIds] = useState(() => new Set(messages.map(m => m.id)))
+  // Stagger the entrance only for the chat's opening batch. The list remounts
+  // per chat (keyed view wrapper) but the history usually lands AFTER mount
+  // (async load behind the skeleton), so the batch is captured at the first
+  // non-empty render: while `staggerBatchIds` is still null every row is part
+  // of the opening batch; once recorded, later (streamed) rows mount with no
+  // delay.
+  const [staggerBatchIds, setStaggerBatchIds] = useState<Set<string> | null>(
+    () => (messages.length > 0 ? new Set(messages.map(m => m.id)) : null),
+  )
+  useEffect(() => {
+    if (staggerBatchIds === null && messages.length > 0) {
+      setStaggerBatchIds(new Set(messages.map(m => m.id)))
+    }
+  }, [staggerBatchIds, messages])
 
   if (!activeChatId) {
     return (
@@ -348,19 +362,17 @@ export const MessagesList = memo(function MessagesList({
   // bubble has anything visible of its own (text, live reasoning, images).
   const lastMessage = messages[messages.length - 1]
   const stage = deriveAssistantStage(status ?? (isLoading ? 'streaming' : 'ready'), lastMessage)
-  const lastAssistantHasContent = lastMessage?.role === 'assistant' && lastMessage.parts.some(p => {
-    const part = p as { type?: string; text?: string }
-    if (part.type === 'text' || part.type === 'reasoning') return Boolean(part.text?.trim())
-    // A tool part renders its own inline progress card — the status line yields to it.
-    return part.type === 'file' || toolPartName(p) !== null
-  })
-  const showThinking = stage !== 'idle' && stage !== 'writing' && !lastAssistantHasContent
+  const showThinking = stage !== 'idle' && stage !== 'writing' && !assistantHasVisibleContent(lastMessage)
 
   // Artifacts already rendered inline from live tool outputs are filtered out of
   // the bottom block: live session → inline card; reloaded history (DB messages
-  // carry no tool parts) → bottom block. Never both.
-  const inlineArtifactIds = extractInlineArtifactIds(messages)
-  const bottomArtifacts = artifacts?.filter(a => !inlineArtifactIds.has(a.id))
+  // carry no tool parts) → bottom block. Never both. The full-history scan only
+  // runs when there are artifacts to filter — not on every streamed token.
+  let bottomArtifacts = artifacts
+  if (artifacts && artifacts.length > 0) {
+    const inlineIds = extractInlineArtifactIds(messages)
+    if (inlineIds.size > 0) bottomArtifacts = artifacts.filter(a => !inlineIds.has(a.id))
+  }
 
   return (
     <Tooltip.Provider delayDuration={300}>
@@ -377,7 +389,7 @@ export const MessagesList = memo(function MessagesList({
               initial="initial"
               animate="animate"
               exit="exit"
-              transition={{ duration: 0.2, delay: initialMessageIds.has(m.id) ? staggerDelay(index) : 0 }}
+              transition={{ duration: 0.2, delay: staggerBatchIds === null || staggerBatchIds.has(m.id) ? staggerDelay(index) : 0 }}
               className={cn(
                 "flex gap-4 group",
                 m.role === 'user' ? "flex-row-reverse" : ""

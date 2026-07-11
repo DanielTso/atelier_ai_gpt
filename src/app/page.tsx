@@ -434,6 +434,11 @@ export default function Home() {
       if (skipLoadOnceRef.current === activeChatId) {
         skipLoadOnceRef.current = null
       } else {
+        // Clear the previous chat's content immediately: without this a chat→chat
+        // switch renders the OLD chat's messages under the new chat's key while
+        // the fetch is in flight (and the loading skeleton never shows).
+        setMessages([])
+        setArtifacts([])
         setMessagesLoading(true)
         loadMessages(activeChatId).finally(() => {
           // A stale finish must not clear the loading state of the chat we switched to.
@@ -465,24 +470,49 @@ export default function Home() {
     setSidebarCollapsed,
   })
 
-  // Position at the latest message BEFORE paint when a chat's history lands, so
-  // the user never sees the list at the top or a visible jump-to-bottom.
+  // Whether the user is pinned near the bottom, maintained by a passive scroll
+  // listener — measured on USER scrolls, not after each content commit, so a
+  // single tall chunk (image, code fence) can't silently detach auto-follow,
+  // and the streaming effect below does zero layout reads per token.
+  const nearBottomRef = useRef(true)
+  const updateNearBottom = useCallback(() => {
+    const el = scrollRef.current
+    if (el) nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120
+  }, [])
+  // Callback ref: the scroll container remounts with each keyed view swap, and
+  // AnimatePresence mode='wait' can mount it AFTER messagesLoading settles — so
+  // pin to the bottom at attach time (no effect re-fires on ref changes).
+  const attachScrollContainer = useCallback((node: HTMLDivElement | null) => {
+    scrollRef.current?.removeEventListener('scroll', updateNearBottom)
+    scrollRef.current = node
+    if (node) {
+      node.addEventListener('scroll', updateNearBottom, { passive: true })
+      nearBottomRef.current = true
+      node.scrollTop = node.scrollHeight
+    }
+  }, [updateNearBottom])
+
+  // Position at the latest message BEFORE paint when a chat's history lands in
+  // an already-mounted container, so the user never sees a visible jump.
   useLayoutEffect(() => {
     const scrollContainer = scrollRef.current
     if (!scrollContainer || messagesLoading) return
     scrollContainer.scrollTop = scrollContainer.scrollHeight
+    nearBottomRef.current = true
   }, [activeChatId, messagesLoading])
 
-  // Streaming follow: keep pinned to the bottom only while the user is already
-  // near it — never fight an upward scroll during a long response.
+  // Streaming follow: keep pinned while the user is near the bottom — never
+  // fight an upward scroll mid-response. The user's OWN send always scrolls,
+  // even from deep in the history.
   useEffect(() => {
     const scrollContainer = scrollRef.current
     if (!scrollContainer) return
-    const nearBottom = scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight < 120
-    if (!nearBottom) return
+    const justSent = messages[messages.length - 1]?.role === 'user'
+    if (!nearBottomRef.current && !justSent) return
 
     const animationId = requestAnimationFrame(() => {
       scrollContainer.scrollTop = scrollContainer.scrollHeight
+      nearBottomRef.current = true
     })
 
     return () => cancelAnimationFrame(animationId)
@@ -1114,7 +1144,7 @@ export default function Home() {
             )}
 
             {/* Messages */}
-            <div ref={scrollRef} className={cn(
+            <div ref={attachScrollContainer} className={cn(
               "flex-1 overflow-y-auto p-6",
               messageDensity === 'compact' && 'space-y-2',
               messageDensity === 'comfortable' && 'space-y-6',
@@ -1154,6 +1184,7 @@ export default function Home() {
               onKeyDown={handleKeyDown}
               isLoading={isLoading}
               onStop={stop}
+              canStop={status === 'streaming'}
               activeChatId={activeChatId}
               activeProjectId={activeProjectId}
               systemPrompt={currentSystemPrompt}
@@ -1203,6 +1234,7 @@ export default function Home() {
                 onKeyDown={handleProjectLandingKeyDown}
                 isLoading={isLoading}
                 onStop={stop}
+                canStop={status === 'streaming'}
                 activeChatId={activeChatId}
                 activeProjectId={activeProjectId}
                 systemPrompt={currentSystemPrompt}
@@ -1238,6 +1270,7 @@ export default function Home() {
                 onKeyDown={handleKeyDown}
                 isLoading={isLoading}
                 onStop={stop}
+                canStop={status === 'streaming'}
                 activeChatId={activeChatId}
                 activeProjectId={activeProjectId}
                 systemPrompt={currentSystemPrompt}

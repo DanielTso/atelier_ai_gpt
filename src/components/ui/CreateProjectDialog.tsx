@@ -2,6 +2,7 @@
 
 import { memo, useRef, useCallback } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
+import { DIALOG_OVERLAY_ANIM, DIALOG_CONTENT_ANIM } from '@/lib/motion'
 import { FolderPlus, X } from 'lucide-react'
 
 interface CreateProjectDialogProps {
@@ -36,9 +37,9 @@ export const CreateProjectDialog = memo(function CreateProjectDialog({
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 duration-200" />
+        <Dialog.Overlay className={`fixed inset-0 bg-black/50 backdrop-blur-sm z-50 ${DIALOG_OVERLAY_ANIM}`} />
         <Dialog.Content
-          className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 glass-panel rounded-xl p-6 w-full max-w-md shadow-2xl z-50 focus:outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:slide-in-from-top-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 duration-200"
+          className={`fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 glass-panel rounded-xl p-6 w-full max-w-md shadow-2xl z-50 focus:outline-none ${DIALOG_CONTENT_ANIM}`}
           onOpenAutoFocus={handleOpenAutoFocus}
         >
           <div className="flex items-center justify-between mb-4">

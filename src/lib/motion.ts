@@ -30,4 +30,14 @@ export const viewVariants: Variants = {
   exit: { opacity: 0, transition: { duration: 0.12, ease: 'easeIn' } },
 }
 
+// tailwindcss-animate recipes for Radix surfaces — one copy so retiming dialogs
+// or menus is a single edit. Tailwind's scanner reads the full strings from this
+// file, so consumers can interpolate them into className template literals.
+export const DIALOG_OVERLAY_ANIM =
+  'data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 duration-200'
+export const DIALOG_CONTENT_ANIM =
+  'data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:slide-in-from-top-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 duration-200'
+export const MENU_CONTENT_ANIM =
+  'data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:slide-in-from-top-1 duration-150'
+
 export { useReducedMotion } from 'framer-motion'

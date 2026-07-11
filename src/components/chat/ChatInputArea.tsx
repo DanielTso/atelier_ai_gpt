@@ -28,6 +28,9 @@ interface ChatInputAreaProps {
   isLoading: boolean
   /** Cancels the in-flight response — the send button morphs into stop while streaming. */
   onStop?: () => void
+  /** Gate for the stop morph: true only while tokens stream. During 'submitted' the
+      button stays a disabled spinner so a double-click can't abort the just-sent turn. */
+  canStop?: boolean
   activeChatId: number | null
   activeProjectId: number | null
   systemPrompt: string | null
@@ -51,6 +54,7 @@ export const ChatInputArea = memo(function ChatInputArea({
   onKeyDown,
   isLoading,
   onStop,
+  canStop = false,
   activeChatId,
   activeProjectId,
   systemPrompt,
@@ -434,30 +438,40 @@ export const ChatInputArea = memo(function ChatInputArea({
             disabled={isLoading}
             minRows={2}
             maxRows={6}
-            className="w-full bg-card border border-border rounded-2xl px-5 py-4 pr-14 shadow-sm focus:outline-none focus:border-ring focus:shadow-[0_0_0_3px_color-mix(in_oklab,var(--primary)_14%,transparent)] transition-all placeholder:text-muted-foreground disabled:opacity-50 resize-none"
+            className="w-full bg-card border border-border rounded-2xl px-5 py-4 pr-14 shadow-sm focus:outline-none focus:border-ring focus:shadow-[0_0_0_3px_color-mix(in_oklab,var(--primary)_30%,transparent)] transition-all placeholder:text-muted-foreground disabled:opacity-50 resize-none"
             placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
           />
-          <button
-            type={isLoading && onStop ? 'button' : 'submit'}
-            onClick={isLoading && onStop ? onStop : undefined}
-            aria-label={isLoading && onStop ? 'Stop response' : 'Send message'}
-            disabled={isLoading ? !onStop : (!input?.trim() && !hasFiles && !hasImages)}
-            className="absolute right-3 bottom-3 p-2 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground transition-colors disabled:opacity-50 active:scale-[0.94] motion-safe:transition-[transform,background-color]"
-          >
-            <AnimatePresence mode="wait" initial={false}>
-              {isLoading && onStop ? (
-                <motion.span key="stop" initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.6, opacity: 0 }} transition={{ duration: 0.12 }} className="block">
-                  <Square className="h-4 w-4 fill-current" />
-                </motion.span>
-              ) : isLoading ? (
-                <motion.span key="wait" className="block"><Loader2 className="h-4 w-4 animate-spin" /></motion.span>
-              ) : (
-                <motion.span key="send" initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.6, opacity: 0 }} transition={{ duration: 0.12 }} className="block">
-                  <Send className="h-4 w-4" />
-                </motion.span>
-              )}
-            </AnimatePresence>
-          </button>
+          {(() => {
+            // One condition drives type/click/label/disabled/icon so they can't drift.
+            const showStop = isLoading && canStop && !!onStop
+            const icon = showStop
+              ? { key: 'stop', node: <Square className="h-4 w-4 fill-current" /> }
+              : isLoading
+                ? { key: 'wait', node: <Loader2 className="h-4 w-4 animate-spin" /> }
+                : { key: 'send', node: <Send className="h-4 w-4" /> }
+            return (
+              <button
+                type={showStop ? 'button' : 'submit'}
+                onClick={showStop ? onStop : undefined}
+                aria-label={showStop ? 'Stop response' : 'Send message'}
+                disabled={isLoading ? !showStop : (!input?.trim() && !hasFiles && !hasImages)}
+                className="absolute right-3 bottom-3 p-2 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground transition-colors disabled:opacity-50 active:scale-[0.94] motion-safe:transition-[transform,background-color]"
+              >
+                <AnimatePresence mode="wait" initial={false}>
+                  <motion.span
+                    key={icon.key}
+                    initial={{ scale: 0.6, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.6, opacity: 0 }}
+                    transition={{ duration: 0.12 }}
+                    className="block"
+                  >
+                    {icon.node}
+                  </motion.span>
+                </AnimatePresence>
+              </button>
+            )
+          })()}
         </form>
         <div className="text-center mt-2">
           <p className="text-xs text-muted-foreground">AI can make mistakes. Check important info.</p>

@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
+import { DIALOG_OVERLAY_ANIM, DIALOG_CONTENT_ANIM } from '@/lib/motion'
 import { X, Globe, Loader2, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -77,8 +78,8 @@ export function AddFromWebDialog({ open, onOpenChange, projectId, onIngested }: 
   return (
     <Dialog.Root open={open} onOpenChange={handleClose}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 bg-foreground/30 z-50 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 duration-200" />
-        <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-lg glass-panel rounded-2xl p-6 z-50 shadow-xl max-h-[80vh] flex flex-col data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:slide-in-from-top-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 duration-200">
+        <Dialog.Overlay className={`fixed inset-0 bg-foreground/30 z-50 ${DIALOG_OVERLAY_ANIM}`} />
+        <Dialog.Content className={`fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-lg glass-panel rounded-2xl p-6 z-50 shadow-xl max-h-[80vh] flex flex-col ${DIALOG_CONTENT_ANIM}`}>
           <div className="flex items-center justify-between mb-4">
             <Dialog.Title className="text-lg font-semibold flex items-center gap-2">
               <Globe className="h-5 w-5 text-primary" />

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { deriveAssistantStage } from '@/lib/chatStage'
+import { deriveAssistantStage, assistantHasVisibleContent, toolPartName, isRenderableTool } from '@/lib/chatStage'
 
 const assistant = (parts: unknown[]) => ({ role: 'assistant', parts })
 
@@ -68,5 +68,41 @@ describe('deriveAssistantStage', () => {
 
   it('step-start noise parts alone read as thinking', () => {
     expect(deriveAssistantStage('streaming', assistant([{ type: 'step-start' }]))).toBe('thinking')
+  })
+})
+
+describe('toolPartName / isRenderableTool', () => {
+  it('parses static and dynamic tool parts, empty for everything else', () => {
+    expect(toolPartName({ type: 'tool-generate_image' })).toBe('generate_image')
+    expect(toolPartName({ type: 'dynamic-tool', toolName: 'generate_artifact' })).toBe('generate_artifact')
+    expect(toolPartName({ type: 'text', text: 'hi' })).toBe('')
+    expect(toolPartName({})).toBe('')
+  })
+
+  it('only the two inline-card tools are renderable', () => {
+    expect(isRenderableTool('generate_image')).toBe(true)
+    expect(isRenderableTool('generate_artifact')).toBe(true)
+    expect(isRenderableTool('web_search')).toBe(false)
+    expect(isRenderableTool('')).toBe(false)
+  })
+})
+
+describe('assistantHasVisibleContent', () => {
+  it('false for missing, user, or empty-part messages', () => {
+    expect(assistantHasVisibleContent(undefined)).toBe(false)
+    expect(assistantHasVisibleContent({ role: 'user', parts: [{ type: 'text', text: 'q' }] })).toBe(false)
+    expect(assistantHasVisibleContent(assistant([]))).toBe(false)
+    expect(assistantHasVisibleContent(assistant([{ type: 'text', text: '  ' }]))).toBe(false)
+  })
+
+  it('true for non-empty text, reasoning, file parts, and renderable tool parts', () => {
+    expect(assistantHasVisibleContent(assistant([{ type: 'text', text: 'hi' }]))).toBe(true)
+    expect(assistantHasVisibleContent(assistant([{ type: 'reasoning', text: 'hmm' }]))).toBe(true)
+    expect(assistantHasVisibleContent(assistant([{ type: 'file', url: 'u', mediaType: 'image/png' }]))).toBe(true)
+    expect(assistantHasVisibleContent(assistant([{ type: 'tool-generate_image', state: 'input-available' }]))).toBe(true)
+  })
+
+  it('false for a non-renderable tool part (web search shows the status line instead)', () => {
+    expect(assistantHasVisibleContent(assistant([{ type: 'tool-web_search', state: 'input-available' }]))).toBe(false)
   })
 })

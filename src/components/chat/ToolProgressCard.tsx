@@ -3,6 +3,7 @@
 import { motion } from 'framer-motion'
 import { FileText, ImageIcon, AlertCircle } from 'lucide-react'
 import { ArtifactCard } from './ArtifactCard'
+import { toolPartName, isRenderableTool } from '@/lib/chatStage'
 import type { ArtifactSummary } from '@/types'
 
 // Live in-message rendering for the generate_image / generate_artifact tool
@@ -10,22 +11,14 @@ import type { ArtifactSummary } from '@/types'
 // artifact card / inline image when the output arrives.
 
 type ToolPartLike = {
-  type?: string
-  toolName?: string
   state?: string
   input?: unknown
   output?: unknown
 }
 
-/** The tool name when a part belongs to one of the two renderable tools, else null. */
-export function toolPartName(p: unknown): 'generate_image' | 'generate_artifact' | null {
-  const part = p as ToolPartLike
-  const type = part.type ?? ''
-  const name =
-    type === 'dynamic-tool' ? (part.toolName ?? '')
-    : type.startsWith('tool-') ? type.slice('tool-'.length)
-    : ''
-  return name === 'generate_image' || name === 'generate_artifact' ? name : null
+/** True for parts this card renders (the two renderable tools). */
+export function isToolCardPart(p: unknown): boolean {
+  return isRenderableTool(toolPartName(p))
 }
 
 /** Artifact ids already rendered inline via tool outputs — the below-messages
@@ -42,16 +35,22 @@ export function extractInlineArtifactIds(messages: { parts?: readonly unknown[] 
   return ids
 }
 
+// Signed Storage URLs for the same object differ only in their query string —
+// dedup on pathname so a re-signed url can never cause a double render.
+function urlPath(u: string): string {
+  try { return new URL(u).pathname } catch { return u }
+}
+
 export function ToolProgressCard({ part, fileUrls, onImageClick, onOpenArtifact }: {
   part: unknown
   /** Urls of file parts already rendered in this message — a settled image tool
-      output with the same url is skipped (the persisted file part wins). */
-  fileUrls: Set<string>
+      output for the same object is skipped (the persisted file part wins). */
+  fileUrls: ReadonlySet<string>
   onImageClick: (url: string) => void
   onOpenArtifact?: (id: number) => void
 }) {
   const name = toolPartName(part)
-  if (!name) return null
+  if (!isRenderableTool(name)) return null
   const p = part as ToolPartLike
   const input = (p.input ?? {}) as Record<string, unknown>
   const output = p.output as Record<string, unknown> | undefined
@@ -69,7 +68,9 @@ export function ToolProgressCard({ part, fileUrls, onImageClick, onOpenArtifact 
   if (p.state === 'output-available') {
     if (isImage) {
       const url = typeof output?.url === 'string' ? output.url : null
-      if (!url || fileUrls.has(url)) return null
+      if (!url) return null
+      const path = urlPath(url)
+      for (const f of fileUrls) if (urlPath(f) === path) return null
       return (
         <motion.button
           type="button"
