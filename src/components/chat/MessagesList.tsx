@@ -262,7 +262,7 @@ const MessageBody = memo(function MessageBody({
       {files && <MessageFileChips files={files} />}
       {isGenerated && <ReasoningBlock text={reasoning} live={isStreaming && answerText.trim().length === 0} />}
       {toolParts.map((p, idx) => (
-        <ToolProgressCard key={idx} part={p} fileUrls={fileUrls} onImageClick={onImageClick} onOpenArtifact={onOpenArtifact} />
+        <ToolProgressCard key={idx} part={p} fileUrls={fileUrls} onImageClick={onImageClick} onOpenArtifact={onOpenArtifact} stalled={!isStreaming} />
       ))}
       <div className={cn(
         "prose prose-sm dark:prose-invert max-w-none break-words overflow-hidden",

@@ -9,6 +9,10 @@ import { createGenerateArtifactTool } from '@/lib/artifacts/tool';
 import { createGenerateImageTool } from '@/lib/image/tool';
 import { isStorageConfigured } from '@/lib/storage';
 
+// Experience-mode turns run long: web research + several image generations + an
+// HTML artifact build in one streamed response. Make the time budget explicit.
+export const maxDuration = 300;
+
 // Configuration for hybrid context management
 const RECENT_MESSAGES_LIMIT = 20; // Keep last N messages in full detail
 
@@ -24,7 +28,7 @@ const TOOL_GUIDANCE =
   'If the user asks you to write, draft, or compose an email, message, summary, report, plan, list, or table to read in the conversation, write it directly in your reply — do NOT create a file. When in doubt for prose, answer in chat; for a full web page or file, use generate_artifact. ' +
   'EXCEPTION — visual answers: when the user explicitly asks for a visual, illustrated, or image-rich response ("use images", "make it visual", "add pictures/diagrams/illustrations"), interleave your prose with generate_image calls: write a section, generate a fitting illustration, then continue writing. You can call tools multiple times in one reply — never promise a visual and stop without generating it. ' +
   'When the user asks for articles or videos, include inline Markdown links to real, relevant pages you found via web search (link the title text), not bare claims. ' +
-  'RICH EXPERIENCES: when the user asks for a full multimedia presentation or experience (images AND articles AND videos together, "make it immersive/edgy/cinematic", "build me something"), go all in: (1) research facts and links with web search; (2) generate the key illustrations with generate_image; (3) build a designed, self-contained page with generate_artifact format "html" — bold editorial typography, sections, stat callouts — embedding your generated images via each result\'s embedUrl (NOT url — url expires), linking cited sources, and embedding videos with <iframe src="https://www.youtube-nocookie.com/embed/VIDEO_ID" allowfullscreen></iframe>; (4) close with a short chat summary of what you built. The page opens in a live preview beside the chat.';
+  'RICH EXPERIENCES: when the user asks for a full multimedia presentation or experience (images AND articles AND videos together, "make it immersive/edgy/cinematic", "build me something"), go all in: (1) research facts and links with web search; (2) generate the key illustrations with generate_image; (3) build a designed, self-contained page with generate_artifact format "html" — bold editorial typography, sections, stat callouts — embedding your generated images via each result\'s embedUrl (NOT url — url expires), linking cited sources, and embedding videos with <iframe src="https://www.youtube-nocookie.com/embed/VIDEO_ID" allowfullscreen></iframe>; (4) close with a short chat summary of what you built. Keep the page self-contained and lean (roughly under 40KB of HTML — designed, not exhaustive). The page opens in a live preview beside the chat.';
 
 function buildContextPrefix(
   documentContext: string | null,
@@ -139,9 +143,15 @@ export async function POST(req: Request) {
       ...(providerOptions && { providerOptions }),
       // Multi-step tool loop: without this streamText stops after ONE step, so the
       // model could never continue writing after a generate_image/generate_artifact
-      // call (it would tease a visual and die mid-reply). 8 steps allows several
-      // text→tool→text rounds; server-side web_search doesn't consume steps.
-      stopWhen: stepCountIs(8),
+      // call (it would tease a visual and die mid-reply). 12 steps allows an
+      // image-heavy experience (each image is a step); server-side web_search
+      // doesn't consume steps.
+      stopWhen: stepCountIs(12),
+      // A generate_artifact HTML page is written as tool-call INPUT tokens — the
+      // provider default (~4k) truncates the call mid-JSON and the build silently
+      // never executes (seen live: "Building document…" stuck forever). 32k covers
+      // a large page + prose across every Claude model in the picker.
+      maxOutputTokens: 32000,
     });
 
     return result.toUIMessageStreamResponse({ sendSources: true, sendReasoning: true });

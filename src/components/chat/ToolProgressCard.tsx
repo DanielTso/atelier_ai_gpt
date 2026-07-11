@@ -41,13 +41,17 @@ function urlPath(u: string): string {
   try { return new URL(u).pathname } catch { return u }
 }
 
-export function ToolProgressCard({ part, fileUrls, onImageClick, onOpenArtifact }: {
+export function ToolProgressCard({ part, fileUrls, onImageClick, onOpenArtifact, stalled = false }: {
   part: unknown
   /** Urls of file parts already rendered in this message — a settled image tool
       output for the same object is skipped (the persisted file part wins). */
   fileUrls: ReadonlySet<string>
   onImageClick: (url: string) => void
   onOpenArtifact?: (id: number) => void
+  /** True when the message is no longer streaming — an input-* part can never
+      complete now (interrupted stream / truncated tool call), so render a clear
+      interrupted state instead of an eternal shimmer. */
+  stalled?: boolean
 }) {
   const name = toolPartName(part)
   if (!isRenderableTool(name)) return null
@@ -110,6 +114,15 @@ export function ToolProgressCard({ part, fileUrls, onImageClick, onOpenArtifact 
     typeof input.title === 'string' ? input.title
     : typeof input.prompt === 'string' ? input.prompt
     : null
+  if (stalled) {
+    return (
+      <p className="flex items-center gap-1.5 text-xs text-muted-foreground my-2">
+        <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+        {isImage ? 'Image generation was interrupted' : 'Document build was interrupted'}
+        {detail ? ` — ${detail}` : ''}. Ask me to try again.
+      </p>
+    )
+  }
   return (
     <motion.div
       initial={{ opacity: 0, y: 6 }}
