@@ -2,6 +2,42 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.47.0] - 2026-07-11 — Living Studio: motion system, agentic experiences, hardening
+
+The largest single-day release to date. Three arcs: RAG ingestion hardening from live Drover failures, a full motion/loading-state modernization ("no more old-ChatGPT feel"), and Experience Mode — multi-step agentic responses that research, generate imagery, and build designed HTML pages, benchmarked against Manus and hardened across four live debugging rounds.
+
+### RAG / ingestion hardening
+
+- **Ingest idempotency** — `ingestText` clears a document's existing chunks before saving; a repeated `/api/documents/process` call (re-click, retry) can no longer stack duplicate/conflicting chunk sets (prod doc had 262 rows for a 115-chunk doc).
+- **Uploading reaper** — the lazy reaper now also flips stale `uploading` rows (>60 min) to `error` ("Upload never completed"); an abandoned 184MB browser PUT no longer spins forever.
+- **Deterministic vision extraction** — both vision `generateText` calls pin `temperature: 0`; re-processing the same sheet produced materially different transcriptions at the Gemini default.
+- **Retrieval depth** (prod env) — `RAG_DOC_TOP_K=10`, `RAG_TOP_N=40`: a 24-note General Notes section now fits in context instead of truncating at the old top-3.
+
+### Motion & loading modernization
+
+- **Motion foundation** — `src/lib/motion.ts` house tokens/variants, `MotionConfig reducedMotion="user"` + scoped CSS = first `prefers-reduced-motion` support; warm terracotta shimmer primitives replace gray pulses.
+- **View crossfade** — Home/chats/projects/Artifacts/Images swap through a keyed AnimatePresence (200ms rise in / 120ms fade out); layout-holding skeletons for Artifacts/Images/Files rail.
+- **Chat polish** — history-fetch skeletons, entrance stagger, scroll that pins before paint and never fights an upward scroll (near-bottom tracked by a passive listener; own send always scrolls), sidebar titles shimmer during auto-naming.
+- **Staged response states** — pure stage machine (`src/lib/chatStage.ts`, unit-tested) drives "Thinking…" / "Searching the web…" / "Creating image…" / "Building document…" from real stream parts, never timers; inline `ToolProgressCard`s settle into the artifact card / image, or an explicit "interrupted" line.
+- **Micro-interactions** — send↔stop morph (streaming is cancellable for the first time; gated so a double-click can't abort the turn), press/hover/focus states behind `motion-safe:`, all 9 dialogs + menus animate via shared `DIALOG_*_ANIM` constants.
+- An 8-angle adversarial review of the pass found and fixed 5 regressions pre-release (stale chat-switch content, dead stagger, scroll race, follow-gate detach, double-click abort) plus hot-path perf (no per-token reflows/full-history scans).
+
+### Experience Mode (agentic multimedia responses)
+
+- **Multi-step tool loop** — `stopWhen: stepCountIs(12)` + `maxOutputTokens: 32000` + `maxDuration: 300` on `/api/chat`; the model can research → generate images → build an artifact → keep writing in one turn (previously it stopped dead after its first step, and the provider's ~4k default truncated any HTML build mid-tool-call).
+- **Experience guidance** — an explicit multimedia ask ("use images/articles/videos, make it immersive") now produces a designed self-contained HTML artifact embedding generated imagery, cited links, and video cards, plus a chat summary. Plain asks stay plain — chat-first rules unchanged.
+- **Stable image capability URLs** — new `GET /api/files/raw` streams generated images same-origin behind an HMAC capability signature (`signFilePath`/`verifyFilePathSig`; the sandboxed preview iframe can't send cookies), path allow-listed, immutable-cached. Artifact pages keep their imagery forever instead of dying with the 24h signed URL.
+- **Same-origin HTML downloads** — all HTML artifact downloads route through `/api/artifacts/:id/raw?download=1` with real content-type + filename (Supabase refuses to serve `text/html`, mangling downloads to `.txt`). Only PDFs are ever served inline.
+- **Auto-opening canvas** — a just-built artifact opens itself in the workspace mid-stream, Claude.ai-style.
+- **Video thumbnail cards** — YouTube embeds cannot work in the sandboxed preview (opaque origin sends no Referer → player error 153); artifacts render click-out thumbnail cards (CSP `img-src` allows `i.ytimg.com`), and the preview sandbox gains `allow-popups` so source/video links open real tabs (still no `allow-same-origin`).
+- **Follow-up chips** — `POST /api/suggest-followups` (Gemini Flash housekeeping, silent degradation) + pills above the composer.
+- Markdown links in chat open in new tabs.
+
+### Infrastructure
+
+- **Access gate migrated to Next 16's `proxy` convention** (`src/middleware.ts` → `src/proxy.ts`; build deprecation warning gone; behavior byte-identical, verified live: `/` 307→login, API 401, unsigned `/api/files/raw` 401).
+- Spec: `docs/specs/2026-07-11-experience-mode.md`. ~600 unit tests. No migrations.
+
 ## [4.46.0] - 2026-07-07 — RAG Phase 2b: per-page hybrid extraction
 
 Follow-up to Phase 2 (v4.45.0). Fixes a hole the per-document density gate can't see: a text-rich plan set with individually sparse sheets.
