@@ -1,11 +1,11 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
-import { FileSpreadsheet, FileType, FileText, Presentation, Code } from 'lucide-react'
+import { FileSpreadsheet, FileType, FileText, Presentation, Code, FileCode } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { ArtifactSummary } from '@/types'
 import type { SheetSpec } from '@/lib/artifacts/types'
 
-const ICON: Record<string, LucideIcon> = { xlsx: FileSpreadsheet, docx: FileType, pdf: FileText, pptx: Presentation, html: Code }
+const ICON: Record<string, LucideIcon> = { xlsx: FileSpreadsheet, docx: FileType, pdf: FileText, pptx: Presentation, html: Code, code: FileCode }
 
 function TypeTile({ type }: { type: string }) {
   const Icon = ICON[type] ?? FileText

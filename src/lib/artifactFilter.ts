@@ -1,4 +1,4 @@
-export type ArtifactTypeFilter = 'all' | 'html' | 'pdf' | 'xlsx' | 'docx' | 'pptx'
+export type ArtifactTypeFilter = 'all' | 'html' | 'pdf' | 'xlsx' | 'docx' | 'pptx' | 'code'
 
 export function filterArtifacts<
   T extends { title: string; type: string; chatTitle?: string | null; projectName?: string | null },

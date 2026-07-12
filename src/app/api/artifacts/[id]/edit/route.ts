@@ -3,6 +3,7 @@ import { getArtifactById, addArtifactVersion } from '@/app/actions'
 import { isStorageConfigured, uploadBuffer, signedArtifactUrl, removeObjects } from '@/lib/storage'
 import { renderArtifact } from '@/lib/artifacts/render'
 import { artifactStoragePath } from '@/lib/artifacts/path'
+import { artifactLanguage, codeLanguage } from '@/lib/artifacts/code'
 import type { ArtifactType } from '@/lib/artifacts/types'
 import { artifactEditRequestSchema } from '@/lib/validation'
 import { apiError } from '@/lib/errors'
@@ -40,7 +41,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     // Code artifacts store their language in the format column — re-derive it
     // so the re-render keeps the right file extension.
-    const language = type === 'code' ? artifact.format ?? undefined : undefined
+    const language = artifactLanguage(type, artifact.format)
+    if (type === 'code' && !codeLanguage(language)) {
+      return NextResponse.json({ error: 'This code artifact has no valid language recorded — cannot re-render.' }, { status: 422 })
+    }
     const { buffer, contentType, ext } = await renderArtifact(type, title, content, language)
     const path = artifactStoragePath(artifact.projectId, title, ext)
     await uploadBuffer(path, buffer, contentType)

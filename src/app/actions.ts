@@ -5,6 +5,7 @@ import { projects, chats, messages, settings, messageEmbeddings, personaUsage, c
 import { eq, desc, isNull, isNotNull, and, lte, gt, asc, count, inArray, sql } from 'drizzle-orm'
 import { isStorageConfigured, uploadBuffer, createSignedDownloadUrls, removeObjects, signedArtifactUrl, signedArtifactUrls } from '@/lib/storage'
 import { blankArtifactTemplate } from '@/lib/artifacts/templates'
+import { artifactLanguage } from '@/lib/artifacts/code'
 import { renderArtifact } from '@/lib/artifacts/render'
 import { artifactStoragePath } from '@/lib/artifacts/path'
 import type { ArtifactType, SheetSpec } from '@/lib/artifacts/types'
@@ -877,7 +878,7 @@ export async function createBlankArtifact(type: ArtifactType): Promise<{ artifac
 
   let path: string | null = null
   try {
-    const { buffer, contentType, ext } = await renderArtifact(type, tpl.title, renderContent, type === 'code' ? tpl.format : undefined)
+    const { buffer, contentType, ext } = await renderArtifact(type, tpl.title, renderContent, artifactLanguage(type, tpl.format))
     path = artifactStoragePath(null, tpl.title, ext)
     await uploadBuffer(path, buffer, contentType)
     const [art] = await createArtifact({

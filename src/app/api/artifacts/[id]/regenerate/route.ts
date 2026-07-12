@@ -6,6 +6,7 @@ import { getAnthropicApiKey } from '@/lib/settings'
 import { isStorageConfigured, uploadBuffer, signedArtifactUrl, removeObjects } from '@/lib/storage'
 import { renderArtifact } from '@/lib/artifacts/render'
 import { artifactStoragePath } from '@/lib/artifacts/path'
+import { artifactLanguage } from '@/lib/artifacts/code'
 import type { ArtifactType, SheetSpec } from '@/lib/artifacts/types'
 import { artifactRegenerateRequestSchema } from '@/lib/validation'
 import { apiError } from '@/lib/errors'
@@ -59,7 +60,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       content = raw
     }
 
-    const { buffer, contentType, ext } = await renderArtifact(type, title, content as string | SheetSpec[], isCode ? artifact.format ?? undefined : undefined)
+    const { buffer, contentType, ext } = await renderArtifact(type, title, content as string | SheetSpec[], artifactLanguage(type, artifact.format))
     const path = artifactStoragePath(artifact.projectId, title, ext)
     await uploadBuffer(path, buffer, contentType)
 

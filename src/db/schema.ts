@@ -131,7 +131,10 @@ export const artifacts = pgTable('artifacts', {
   status: text('status').notNull().default('ready'),
   errorMessage: text('error_message'),
   // D2: source that produced the binary, so it can be previewed/edited/regenerated.
-  // `format` is 'markdown' | 'sheets'; `content` is the markdown string or JSON sheets.
+  // `format` is 'markdown' | 'sheets' | 'html' — EXCEPT for type='code' rows, where
+  // it stores the code LANGUAGE id ('python' | 'bash' | ... — see CODE_LANGUAGES in
+  // src/lib/artifacts/code.ts, and artifactLanguage() for the read-side helper).
+  // `content` is the markdown/html/source string or JSON sheets.
   format: text('format'),
   content: text('content'),
   currentVersion: integer('current_version').notNull().default(1),

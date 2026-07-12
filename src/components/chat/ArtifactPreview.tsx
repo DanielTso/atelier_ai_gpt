@@ -99,7 +99,9 @@ export function ArtifactPreview({ artifact }: { artifact: ArtifactSummary }) {
         </p>
       )}
       {artifact.type === 'code' ? (
-        <CodePreview content={content} language={codeLanguage(artifact.format)?.shikiLang ?? artifact.format ?? null} />
+        // Keyed so switching artifacts/versions resets the highlight state instead
+        // of flashing the previous artifact's stale HTML while shiki re-runs.
+        <CodePreview key={`${artifact.id}:${artifact.version ?? 0}`} content={content} language={codeLanguage(artifact.format)?.shikiLang ?? artifact.format ?? null} />
       ) : artifact.format === 'sheets' ? (
         <SheetsPreview content={content} />
       ) : content ? (

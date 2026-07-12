@@ -26,8 +26,10 @@ export function createGenerateArtifactTool(ctx: { chatId: number; projectId: num
       language: z.enum(CODE_LANGUAGE_IDS).optional()
         .describe('Required for type "code": the source language (drives file extension + preview highlighting)'),
       content: z.union([z.string(), z.array(sheetSpec)]),
-    }).refine(v => v.type !== 'code' || v.language != null, {
-      message: 'language is required for code artifacts',
+    }).refine(v => v.type !== 'code' || (v.language != null && typeof v.content === 'string'), {
+      // Without the string check, an array here would silently render an EMPTY
+      // source file (render.ts coerces non-string code content to '').
+      message: 'code artifacts require a language and string content',
       path: ['language'],
     }),
     execute: async ({ type, title, format, content, language }) => {

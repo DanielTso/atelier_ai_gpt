@@ -19,8 +19,9 @@ import { cn } from '@/lib/utils'
 const FILTERS: { value: ArtifactTypeFilter; label: string }[] = [
   { value: 'all', label: 'All' }, { value: 'html', label: 'HTML' }, { value: 'pdf', label: 'PDF' },
   { value: 'xlsx', label: 'Spreadsheet' }, { value: 'docx', label: 'Document' }, { value: 'pptx', label: 'Slides' },
+  { value: 'code', label: 'Code' },
 ]
-const NEW_TYPES: ArtifactType[] = ['html', 'docx', 'pdf', 'pptx', 'xlsx']
+const NEW_TYPES: ArtifactType[] = ['html', 'docx', 'pdf', 'pptx', 'xlsx', 'code']
 
 export function ArtifactsView({ onOpenChat, sidebarCollapsedRef, setSidebarCollapsed }: {
   onOpenChat?: (chatId: number) => void

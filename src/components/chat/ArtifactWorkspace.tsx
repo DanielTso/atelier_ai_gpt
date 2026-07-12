@@ -1,15 +1,16 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { X, Download, Eye, Pencil, History, RotateCcw, Sparkles, Loader2, FileSpreadsheet, FileType, FileText, Presentation, Code } from 'lucide-react'
+import { X, Download, Eye, Pencil, History, RotateCcw, Sparkles, Loader2, FileSpreadsheet, FileType, FileText, Presentation, Code, FileCode } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import type { ArtifactSummary, ArtifactVersionSummary } from '@/types'
 import { getArtifactVersions, restoreArtifactVersion } from '@/app/actions'
 import { ArtifactPreview } from './ArtifactPreview'
+import { codeLanguage } from '@/lib/artifacts/code'
 
-const ICON: Record<string, LucideIcon> = { xlsx: FileSpreadsheet, docx: FileType, pdf: FileText, pptx: Presentation, html: Code }
+const ICON: Record<string, LucideIcon> = { xlsx: FileSpreadsheet, docx: FileType, pdf: FileText, pptx: Presentation, html: Code, code: FileCode }
 type Mode = 'preview' | 'edit' | 'versions'
 
 export function ArtifactWorkspace({ artifact, onClose, onChanged, width = 448, onWidthChange, initialMode = 'preview' }: {
@@ -138,7 +139,7 @@ export function ArtifactWorkspace({ artifact, onClose, onChanged, width = 448, o
         {mode === 'edit' && (
           <div className="flex h-full flex-col gap-2 pb-2">
             <p className="text-[11px] uppercase tracking-wide text-muted-foreground/70">
-              Edit source ({artifact.format === 'sheets' ? 'JSON sheets' : artifact.format === 'html' ? 'HTML' : 'Markdown'}) — saving creates a new version
+              Edit source ({artifact.type === 'code' ? codeLanguage(artifact.format)?.label ?? 'Code' : artifact.format === 'sheets' ? 'JSON sheets' : artifact.format === 'html' ? 'HTML' : 'Markdown'}) — saving creates a new version
             </p>
             <textarea
               aria-label="Edit source"

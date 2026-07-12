@@ -22,3 +22,10 @@ export function codeLanguage(id: string | null | undefined): CodeLanguage | null
   if (!id) return null
   return CODE_LANGUAGES.find(l => l.id === id) ?? null
 }
+
+/** The language to pass renderArtifact for an artifact row: code artifacts store
+ * it in the format column; every other type has none. Single source for the
+ * type='code'/format=language convention — use this instead of re-deriving it. */
+export function artifactLanguage(type: string, format: string | null | undefined): string | undefined {
+  return type === 'code' ? format ?? undefined : undefined
+}
