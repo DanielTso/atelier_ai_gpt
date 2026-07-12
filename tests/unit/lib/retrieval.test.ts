@@ -6,6 +6,7 @@ const m = {
   findSimilarDocumentChunks: vi.fn(),
   rewriteQuery: vi.fn(),
   rerankCandidates: vi.fn(),
+  findChunksByKeyword: vi.fn(),
 }
 function setup(cfgOverrides: Record<string, unknown> = {}) {
   vi.resetModules()
@@ -16,10 +17,16 @@ function setup(cfgOverrides: Record<string, unknown> = {}) {
   }))
   vi.doMock('@/lib/queryRewrite', () => ({ rewriteQuery: (...a: unknown[]) => m.rewriteQuery(...a) }))
   vi.doMock('@/lib/rerank', () => ({ rerankCandidates: (...a: unknown[]) => m.rerankCandidates(...a) }))
+  // retrieval.ts now imports keywordSearch directly (the RRF keyword leg) — mock it
+  // so the real module (which imports @/db) never loads in this unit test.
+  vi.doMock('@/lib/keywordSearch', () => ({ findChunksByKeyword: (...a: unknown[]) => m.findChunksByKeyword(...a) }))
   vi.doMock('@/lib/ragConfig', () => ({ getRagConfig: () => ({
     docThreshold: 0.5, msgThreshold: 0.7, topN: 20, docTopK: 3, msgTopK: 5, mmrLambda: 0.7,
-    rewriteEnabled: true, rerankEnabled: true, mmrEnabled: true, ...cfgOverrides,
+    rewriteEnabled: true, rerankEnabled: true, mmrEnabled: true,
+    hybridEnabled: true, rrfK: 60, keywordTopN: 20, ...cfgOverrides,
   }) }))
+  // Default: no keyword hits, so existing vector-only test expectations hold unchanged.
+  m.findChunksByKeyword.mockResolvedValue([])
 }
 
 const msgs = [{ id: 'u1', role: 'user', parts: [{ type: 'text', text: 'foundation spec?' }] }]
@@ -95,5 +102,53 @@ describe('retrieveContext', () => {
     await retrieveContext(msgs as never, { chatId: 1, projectId: 7 })
     expect(m.rewriteQuery).not.toHaveBeenCalled()
     expect(m.generateEmbedding).toHaveBeenCalledWith('foundation spec?', 'query')
+  })
+
+  it('RRF-fuses vector + keyword hits and surfaces a keyword-only hit through MMR', async () => {
+    setup()
+    m.generateEmbedding.mockResolvedValue([1, 0, 0])
+    m.findSimilarMessages.mockResolvedValue([])
+    m.findSimilarDocumentChunks.mockResolvedValue([
+      { content: 'vector hit', similarity: 0.9, chunkId: 1, documentId: 1, filename: 'a.pdf', embedding: [1, 0, 0] },
+    ])
+    // Keyword-only exact match (e.g. sheet number "SW-101") — no embedding, so it
+    // can never come back from the vector leg, but it's a genuine hit by construction.
+    m.findChunksByKeyword.mockResolvedValue([
+      { content: 'SW-101 keyword hit', chunkId: 2, documentId: 2, filename: 'b.pdf', embedding: null },
+    ])
+    m.rerankCandidates.mockImplementation((_q: unknown, c: unknown) => Promise.resolve(c))
+    const { retrieveContext } = await import('@/lib/retrieval')
+    const out = await retrieveContext(msgs as never, { chatId: 1, projectId: 7 })
+    expect(m.findChunksByKeyword).toHaveBeenCalledWith('foundation spec?', 7, 20)
+    expect(out.documentContext).toContain('vector hit')
+    expect(out.documentContext).toContain('SW-101 keyword hit')
+  })
+
+  it('skips the keyword leg entirely when hybridEnabled is false', async () => {
+    setup({ hybridEnabled: false })
+    m.generateEmbedding.mockResolvedValue([1, 0, 0])
+    m.findSimilarMessages.mockResolvedValue([])
+    m.findSimilarDocumentChunks.mockResolvedValue([
+      { content: 'vector only', similarity: 0.9, chunkId: 1, documentId: 1, filename: 'a.pdf', embedding: [1, 0, 0] },
+    ])
+    m.rerankCandidates.mockImplementation((_q: unknown, c: unknown) => Promise.resolve(c))
+    const { retrieveContext } = await import('@/lib/retrieval')
+    const out = await retrieveContext(msgs as never, { chatId: 1, projectId: 7 })
+    expect(m.findChunksByKeyword).not.toHaveBeenCalled()
+    expect(out.documentContext).toContain('vector only')
+  })
+
+  it('degrades to vector-only when the keyword leg throws', async () => {
+    setup()
+    m.generateEmbedding.mockResolvedValue([1, 0, 0])
+    m.findSimilarMessages.mockResolvedValue([])
+    m.findSimilarDocumentChunks.mockResolvedValue([
+      { content: 'vector hit', similarity: 0.9, chunkId: 1, documentId: 1, filename: 'a.pdf', embedding: [1, 0, 0] },
+    ])
+    m.findChunksByKeyword.mockRejectedValue(new Error('fts index down'))
+    m.rerankCandidates.mockImplementation((_q: unknown, c: unknown) => Promise.resolve(c))
+    const { retrieveContext } = await import('@/lib/retrieval')
+    const out = await retrieveContext(msgs as never, { chatId: 1, projectId: 7 })
+    expect(out.documentContext).toContain('vector hit')
   })
 })

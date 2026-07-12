@@ -8,6 +8,9 @@ export interface RagConfig {
   rewriteEnabled: boolean
   rerankEnabled: boolean
   mmrEnabled: boolean
+  hybridEnabled: boolean
+  rrfK: number
+  keywordTopN: number
 }
 
 function num(value: string | undefined, fallback: number): number {
@@ -33,5 +36,8 @@ export function getRagConfig(): RagConfig {
     rewriteEnabled: bool(process.env.RAG_REWRITE_ENABLED, true),
     rerankEnabled: bool(process.env.RAG_RERANK_ENABLED, true),
     mmrEnabled: bool(process.env.RAG_MMR_ENABLED, true),
+    hybridEnabled: bool(process.env.RAG_HYBRID_ENABLED, true),
+    rrfK: num(process.env.RAG_RRF_K, 60),
+    keywordTopN: num(process.env.RAG_KEYWORD_TOP_N, num(process.env.RAG_TOP_N, 20)),
   }
 }

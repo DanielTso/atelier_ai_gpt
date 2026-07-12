@@ -5,6 +5,13 @@ import { rerankCandidates } from './rerank'
 import { mmr, type MmrItem } from './mmr'
 import { getRagConfig } from './ragConfig'
 import { extractText } from './messageParts'
+import { findChunksByKeyword } from './keywordSearch'
+import { rrfFuse } from './rrf'
+
+// Shared shape for both retrieval legs (vector + keyword) so they can be RRF-fused
+// and MMR-selected through one code path. Vector candidates carry an extra
+// `similarity` field, which is fine — it's just unused by DocCand consumers.
+type DocCand = { content: string; chunkId: number; documentId: number; filename: string; embedding: number[] | null }
 
 export async function retrieveContext(
   messages: UIMessage[],
@@ -54,12 +61,26 @@ export async function retrieveContext(
     const documentsP = (async (): Promise<string | null> => {
       if (!scope.projectId) return null
       try {
-        let docCands = await findSimilarDocumentChunks(queryEmbedding, scope.projectId, cfg.topN, cfg.docThreshold, cfg.mmrEnabled)
+        const [vecCands, kwCands]: [DocCand[], DocCand[]] = await Promise.all([
+          findSimilarDocumentChunks(queryEmbedding, scope.projectId, cfg.topN, cfg.docThreshold, cfg.mmrEnabled),
+          cfg.hybridEnabled
+            ? findChunksByKeyword(query, scope.projectId, cfg.keywordTopN).catch(e => {
+                // Keyword leg is best-effort: a failure degrades to vector-only.
+                console.warn('[retrieval] keyword search failed:', e instanceof Error ? e.message : e)
+                return []
+              })
+            : Promise.resolve([]),
+        ])
+        // Vector list FIRST so shared ids keep their embedding (and similarity) for MMR.
+        let docCands: (DocCand & { rrfScore: number })[] = rrfFuse([vecCands, kwCands], cfg.rrfK)
         if (cfg.mmrEnabled) {
-          docCands = mmr(
-            docCands.filter(c => c.embedding != null) as (typeof docCands[number] & MmrItem)[],
-            cfg.docTopK * 2, cfg.mmrLambda,
-          )
+          // MMR needs embeddings; keyword-only hits have none but are exact
+          // matches by construction — keep them alongside the MMR picks.
+          const embedded = docCands.filter(c => c.embedding != null)
+          const keywordOnly = docCands.filter(c => c.embedding == null).slice(0, cfg.docTopK)
+          const picked = mmr(embedded as unknown as (DocCand & MmrItem)[], cfg.docTopK * 2, cfg.mmrLambda)
+          const seen = new Set(picked.map(c => c.chunkId))
+          docCands = [...picked, ...keywordOnly.filter(c => !seen.has(c.chunkId))] as (DocCand & { rrfScore: number })[]
         }
         const docFinal = cfg.rerankEnabled ? await rerankCandidates(query, docCands, cfg.docTopK) : docCands.slice(0, cfg.docTopK)
         return docFinal.length > 0 ? docFinal.map(c => `[From: ${c.filename}]\n${c.content}`).join('\n---\n') : null
