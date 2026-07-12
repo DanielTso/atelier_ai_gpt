@@ -48,6 +48,7 @@ import { useSummarization } from "@/hooks/useSummarization"
 import { useAutoCollapseSidebar } from "@/hooks/useAutoCollapseSidebar"
 import { useDialogs } from "@/hooks/useDialogs"
 import { useChatPersistence } from "@/hooks/useChatPersistence"
+import { useUrlNavSync } from "@/hooks/useUrlNavSync"
 
 // Types matching DB schema roughly
 type Project = { id: number; name: string; memory?: string | null; instructions?: string | null; createdAt?: Date | null; updatedAt?: Date | null }
@@ -110,6 +111,30 @@ export default function Home() {
   chatsRef.current = chats
   const standaloneChatsRef = useRef(standaloneChats)
   standaloneChatsRef.current = standaloneChats
+
+  // Get the current chat (and its project) from either chats or standaloneChats
+  const currentChat = activeChatId
+    ? chats.find(c => c.id === activeChatId) ?? standaloneChats.find(c => c.id === activeChatId)
+    : undefined
+  const currentChatTitle = currentChat?.title
+  const currentChatProjectName = currentChat?.projectId
+    ? projects.find(p => p.id === currentChat.projectId)?.name ?? null
+    : null
+
+  // Browser back/forward + deep links: mirror nav state into the URL. Deliberately
+  // excluded from history: newChatCompose, dialogs, lightboxes, and the artifact
+  // panel — back navigates views, it never closes overlays.
+  const navSync = useUrlNavSync({
+    activeView,
+    activeProjectId,
+    activeChatId,
+    // The chat's OWN project, not activeProjectId — that goes stale when a chat is
+    // opened from the artifact gallery or after selectView (neither clears it).
+    currentChatProjectId: currentChat?.projectId ?? (currentChat ? null : undefined),
+    setActiveView,
+    setActiveProjectId,
+    setActiveChatId,
+  })
 
   // Auto-name a still-"New Chat" once it has a full exchange. Logic lives in useChatTitle;
   // page state is injected via stable callbacks.
@@ -431,16 +456,21 @@ export default function Home() {
     fetchModels()
   }, [loadProjects, loadStandaloneChats, loadAllProjectChats, loadArchivedChats, fetchModels])
 
-  // Validate persisted activeChatId/activeProjectId after data loads
+  // Validate persisted activeChatId/activeProjectId after data loads. Also cleans
+  // stale deep links (useUrlNavSync restores ids from the URL optimistically);
+  // suppressNextPush makes the URL correction a replaceState so history gets no
+  // dead entry pointing at the broken URL.
   useEffect(() => {
     if (activeChatId !== null) {
       const allChats = [...chats, ...standaloneChats]
       if (allChats.length > 0 && !allChats.find(c => c.id === activeChatId)) {
+        navSync.suppressNextPush()
         setActiveChatId(null)
       }
     }
     if (activeProjectId !== null) {
       if (projects.length > 0 && !projects.find(p => p.id === activeProjectId)) {
+        navSync.suppressNextPush()
         setActiveProjectId(null)
       }
     }
@@ -1077,15 +1107,6 @@ export default function Home() {
     activeView,
     titlePendingIds,
   }), [handleCreateProject, handleRenameProject, handleRequestDeleteProject, handleSelectProject, handleOpenProjectDocuments, handleOpenProjectSettings, handleCreateChat, handleCreateStandaloneChat, handleCreateChatInProject, setActiveChatId, handleSelectStandaloneChat, handleMoveChat, handleRequestRename, handleArchiveChat, handleRestoreChat, handleRequestDelete, theme, activeView, dialogs.settings, titlePendingIds])
-
-  // Get the current chat (and its project) from either chats or standaloneChats
-  const currentChat = activeChatId
-    ? chats.find(c => c.id === activeChatId) ?? standaloneChats.find(c => c.id === activeChatId)
-    : undefined
-  const currentChatTitle = currentChat?.title
-  const currentChatProjectName = currentChat?.projectId
-    ? projects.find(p => p.id === currentChat.projectId)?.name ?? null
-    : null
 
   // One key per distinct main-pane surface: tab views, individual chats, and
   // project landings each get their own crossfade (soft fade + rise, no pop-in).
