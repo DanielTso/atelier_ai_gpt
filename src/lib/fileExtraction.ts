@@ -13,6 +13,7 @@ export interface ExtractionResult {
   pagesExtracted: number | null
   partial: boolean
   pageTexts?: string[] // raw per-page text, index 0 = page 1; PDF text path only, set before char-cap truncation
+  failedPages?: number[] // absolute page numbers whose vision segment failed after retries
 }
 
 export const SUPPORTED_EXTENSIONS = new Set([

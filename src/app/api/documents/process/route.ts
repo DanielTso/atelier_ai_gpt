@@ -117,6 +117,8 @@ export async function POST(request: NextRequest) {
       return apiError(e, 'Failed to extract document content', 500, false)
     }
 
+    let failedPages: number[] = extraction.failedPages ?? []
+
     // Per-page hybrid: a text-rich set can still contain SHX sheets whose notes text
     // is stroke geometry (title-block-only text layer). Vision-extract just those
     // pages and splice them in — never fatal, plain text path survives any failure.
@@ -128,6 +130,7 @@ export async function POST(request: NextRequest) {
       if (sparse.length > 0 && sparse.length <= HYBRID_MAX_PAGES) {
         try {
           const hybrid = await extractPagesViaVision(buffer, sparse)
+          failedPages = [...failedPages, ...hybrid.failedPages]
           if (hybrid.segments.length > 0) {
             const byStart = new Map(hybrid.segments.map(s => [s.firstPage, s]))
             const covered = new Set(hybrid.segments.flatMap(s =>
@@ -214,6 +217,7 @@ export async function POST(request: NextRequest) {
         revision: nextRevision, status,
         errorMessage: status === 'error' ? 'New revision saved but embeddings failed.' : null,
         pageCount: extraction.pageCount, pagesExtracted: extraction.pagesExtracted, extractionPartial,
+        failedPages: failedPages.length ? failedPages : null,
       })
       return NextResponse.json({ documentId: doc.id, status, revision: nextRevision, chunkCount: chunkRows.length, charCount: textContent.length })
     }
@@ -221,7 +225,7 @@ export async function POST(request: NextRequest) {
     // New upload: chunk → save → embed → status via the shared ingestion tail.
     const { status, chunkCount } = await ingestText(
       { id: doc.id, projectId: doc.projectId }, textContent,
-      { extractionMethod, thumbnailPath, pageCount: extraction.pageCount, pagesExtracted: extraction.pagesExtracted, partial: extraction.partial },
+      { extractionMethod, thumbnailPath, pageCount: extraction.pageCount, pagesExtracted: extraction.pagesExtracted, partial: extraction.partial, failedPages: failedPages.length ? failedPages : null },
     )
     return NextResponse.json({ documentId: doc.id, status, revision: doc.revision, chunkCount, charCount: textContent.length })
   } catch (error) {

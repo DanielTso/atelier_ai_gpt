@@ -7,7 +7,7 @@ import { embedChunks } from '@/lib/embedChunks'
 export async function ingestText(
   doc: { id: number; projectId: number },
   textContent: string,
-  opts: { extractionMethod: 'text' | 'vision' | 'hybrid'; thumbnailPath?: string; pageCount?: number | null; pagesExtracted?: number | null; partial?: boolean },
+  opts: { extractionMethod: 'text' | 'vision' | 'hybrid'; thumbnailPath?: string; pageCount?: number | null; pagesExtracted?: number | null; partial?: boolean; failedPages?: number[] | null },
 ): Promise<{ status: 'ready' | 'error'; chunkCount: number }> {
   const textChunks = chunkText(textContent)
   // A repeated process call (client re-click, retry after an apparent hang) must not
@@ -26,7 +26,7 @@ export async function ingestText(
     chunkCount: saved.length, charCount: textContent.length,
     thumbnailPath: opts.thumbnailPath, extractionMethod: opts.extractionMethod,
     pageCount: opts.pageCount ?? null, pagesExtracted: opts.pagesExtracted ?? null,
-    extractionPartial,
+    extractionPartial, failedPages: opts.failedPages ?? null,
   })
   return { status, chunkCount: saved.length }
 }

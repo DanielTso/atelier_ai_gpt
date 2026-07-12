@@ -21,6 +21,7 @@ export interface DocumentSummary {
   pageCount?: number | null
   pagesExtracted?: number | null
   extractionPartial?: boolean
+  failedPages: number[] | null
   revision: number
   updatedAt: string | null
 }

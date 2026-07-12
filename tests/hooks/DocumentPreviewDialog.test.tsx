@@ -10,7 +10,7 @@ import type { DocumentSummary } from '@/types'
 const pdf: DocumentSummary = {
   id: 1, filename: 'plan.pdf', mimeType: 'application/pdf', fileSize: 10, chunkCount: 1,
   status: 'ready', errorMessage: null, url: 'signed:plan', thumbnailUrl: 'signed:t', extractionMethod: 'vision',
-  revision: 1, updatedAt: null,
+  revision: 1, updatedAt: null, failedPages: null,
 }
 
 describe('DocumentPreviewDialog', () => {

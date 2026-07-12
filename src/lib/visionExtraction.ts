@@ -39,6 +39,9 @@ function cfg() {
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
+const segPages = (seg: { firstPage: number; lastPage: number }) =>
+  Array.from({ length: seg.lastPage - seg.firstPage + 1 }, (_, i) => seg.firstPage + i)
+
 /** One generateText call per segment (inline PDF file part), bounded-concurrent
  * with retry/backoff. A segment that fails after retries yields text ''. Shared
  * by extractViaVision and extractPagesViaVision. */
@@ -114,12 +117,14 @@ export async function extractViaVision(buffer: Buffer): Promise<ExtractionResult
   const { results, truncated } = await extractSegments(segments, c, apiKey)
 
   const ok = results.filter(r => r.text)
+  const failedPages = results.filter(r => !r.text).flatMap(r => segPages(r.seg))
   const pagesExtracted = ok.reduce((n, r) => n + (r.seg.lastPage - r.seg.firstPage + 1), 0)
   return {
     text: ok.map(r => r.text).join('\n\n'),
     pageCount,
     pagesExtracted,
     partial: truncated || skippedPages > 0 || pagesExtracted < pageCount,
+    failedPages,
   }
 }
 
@@ -128,18 +133,20 @@ export async function extractViaVision(buffer: Buffer): Promise<ExtractionResult
 export async function extractPagesViaVision(
   buffer: Buffer,
   pages: number[],
-): Promise<{ segments: { firstPage: number; lastPage: number; text: string }[]; failed: number; truncated: boolean; skippedPages: number }> {
+): Promise<{ segments: { firstPage: number; lastPage: number; text: string }[]; failed: number; failedPages: number[]; truncated: boolean; skippedPages: number }> {
   const apiKey = await getGeminiApiKey()
-  if (!apiKey || pages.length === 0) return { segments: [], failed: 0, truncated: false, skippedPages: 0 }
+  if (!apiKey || pages.length === 0) return { segments: [], failed: 0, failedPages: [], truncated: false, skippedPages: 0 }
   const c = cfg()
   const { segments, skippedPages } = await splitPdfPageRuns(buffer, pages, {
     pagesPerSegment: c.segmentPages, maxSegmentBytes: c.segmentMaxBytes,
   })
   const { results, truncated } = await extractSegments(segments, c, apiKey)
   const ok = results.filter(r => r.text)
+  const failedPages = results.filter(r => !r.text).flatMap(r => segPages(r.seg))
   return {
     segments: ok.map(r => ({ firstPage: r.seg.firstPage, lastPage: r.seg.lastPage, text: r.text })),
     failed: results.length - ok.length,
+    failedPages,
     truncated,
     skippedPages,
   }

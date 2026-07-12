@@ -36,7 +36,7 @@ function req(documentId: number) {
 }
 
 describe('POST /api/documents/process', () => {
-  const extRes = (text: string, extra: Partial<{ pageCount: number | null; pagesExtracted: number | null; partial: boolean; pageTexts: string[] }> = {}) =>
+  const extRes = (text: string, extra: Partial<{ pageCount: number | null; pagesExtracted: number | null; partial: boolean; pageTexts: string[]; failedPages: number[] }> = {}) =>
     ({ text, pageCount: null, pagesExtracted: null, partial: false, ...extra })
 
   beforeEach(() => {
@@ -56,7 +56,7 @@ describe('POST /api/documents/process', () => {
     m.generateImageThumbnail.mockResolvedValue(Buffer.from('thumb'))
     m.extractViaVision.mockResolvedValue(extRes(''))
     m.extractViaVisionImage.mockResolvedValue(extRes(''))
-    m.extractPagesViaVision.mockResolvedValue({ segments: [], failed: 0, truncated: false, skippedPages: 0 })
+    m.extractPagesViaVision.mockResolvedValue({ segments: [], failed: 0, failedPages: [], truncated: false, skippedPages: 0 })
   })
 
   it('404 when the document or its storagePath is missing', async () => {
@@ -268,7 +268,34 @@ describe('POST /api/documents/process', () => {
       body: JSON.stringify({ documentId: 32, filename: 'new.pdf', mimeType: 'application/pdf', fileSize: 9 }),
     }) as never)
     expect(m.commitDocumentReplacement).toHaveBeenCalledWith(32, 1, expect.any(Array), expect.objectContaining({
-      pageCount: 12, extractionPartial: false,
+      pageCount: 12, extractionPartial: false, failedPages: null,
+    }))
+  })
+
+  it('threads vision failedPages into the status write on new upload', async () => {
+    m.getDocumentById.mockResolvedValue({ id: 33, projectId: 1, filename: 'scan.pdf', mimeType: 'application/pdf', storagePath: 'p' })
+    m.extractTextFromBuffer.mockResolvedValue(extRes(''))
+    m.extractViaVision.mockResolvedValue(extRes('V'.repeat(300), { pageCount: 80, pagesExtracted: 60, partial: true, failedPages: [12, 13, 14, 30] }))
+    const POST = await importRoute()
+    await POST(req(33) as never)
+    expect(m.updateDocumentStatus).toHaveBeenCalledWith(33, 'ready', expect.objectContaining({
+      failedPages: [12, 13, 14, 30],
+    }))
+  })
+
+  it('replace path threads vision failedPages into commitDocumentReplacement', async () => {
+    m.getDocumentById.mockResolvedValue({ id: 34, projectId: 1, revision: 1, filename: 'old.pdf', mimeType: 'application/pdf', fileSize: 5, storagePath: 'documents/1/34/old.pdf', thumbnailPath: null, charCount: 10, chunkCount: 1, extractionMethod: 'text' })
+    m.extractTextFromBuffer.mockResolvedValue(extRes(''))
+    m.extractViaVision.mockResolvedValue(extRes('V'.repeat(300), { pageCount: 20, pagesExtracted: 18, partial: true, failedPages: [5] }))
+    m.createDocumentRevision.mockResolvedValue([{ id: 1 }])
+    m.commitDocumentReplacement.mockResolvedValue(undefined)
+    const POST = await importRoute()
+    await POST(new Request('http://localhost/api/documents/process', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ documentId: 34, filename: 'new.pdf', mimeType: 'application/pdf', fileSize: 9 }),
+    }) as never)
+    expect(m.commitDocumentReplacement).toHaveBeenCalledWith(34, 1, expect.any(Array), expect.objectContaining({
+      failedPages: [5],
     }))
   })
 
@@ -278,7 +305,7 @@ describe('POST /api/documents/process', () => {
     m.extractTextFromBuffer.mockResolvedValue(extRes('D'.repeat(4000), {
       pageCount: 3, pageTexts: ['D'.repeat(2000), 'thin', 'E'.repeat(2000)],
     }))
-    m.extractPagesViaVision.mockResolvedValue({ segments: [{ firstPage: 2, lastPage: 2, text: 'VISION NOTES BODY' }], failed: 0, truncated: false, skippedPages: 0 })
+    m.extractPagesViaVision.mockResolvedValue({ segments: [{ firstPage: 2, lastPage: 2, text: 'VISION NOTES BODY' }], failed: 0, failedPages: [], truncated: false, skippedPages: 0 })
     const POST = await importRoute()
     const res = await POST(req(40) as never)
     expect(res.status).toBe(200)
@@ -298,7 +325,7 @@ describe('POST /api/documents/process', () => {
     m.extractTextFromBuffer.mockResolvedValue(extRes('D'.repeat(4000), {
       pageCount: 3, pageTexts: ['D'.repeat(2000), 'thin', 'E'.repeat(2000)],
     }))
-    m.extractPagesViaVision.mockResolvedValue({ segments: [], failed: 1, truncated: false, skippedPages: 0 })
+    m.extractPagesViaVision.mockResolvedValue({ segments: [], failed: 1, failedPages: [2], truncated: false, skippedPages: 0 })
     const POST = await importRoute()
     const res = await POST(req(41) as never)
     expect(res.status).toBe(200)
@@ -311,11 +338,24 @@ describe('POST /api/documents/process', () => {
     m.extractTextFromBuffer.mockResolvedValue(extRes('D'.repeat(4000), {
       pageCount: 3, pageTexts: ['D'.repeat(2000), 'thin', 'E'.repeat(2000)],
     }))
-    m.extractPagesViaVision.mockResolvedValue({ segments: [], failed: 0, truncated: false, skippedPages: 1 })
+    m.extractPagesViaVision.mockResolvedValue({ segments: [], failed: 0, failedPages: [], truncated: false, skippedPages: 1 })
     const POST = await importRoute()
     const res = await POST(req(42) as never)
     expect(res.status).toBe(200)
     const call = m.updateDocumentStatus.mock.calls.find((c: unknown[]) => c[1] === 'ready')
     expect(call?.[2]).toMatchObject({ extractionMethod: 'text', extractionPartial: true })
+  })
+
+  it('hybrid: failedPages from the vision splice threads into the status write', async () => {
+    m.getDocumentById.mockResolvedValue({ id: 43, projectId: 1, filename: 'plans.pdf', mimeType: 'application/pdf', storagePath: 'p' })
+    m.extractTextFromBuffer.mockResolvedValue(extRes('D'.repeat(4000), {
+      pageCount: 3, pageTexts: ['D'.repeat(2000), 'thin', 'E'.repeat(2000)],
+    }))
+    m.extractPagesViaVision.mockResolvedValue({ segments: [], failed: 1, failedPages: [2], truncated: false, skippedPages: 0 })
+    const POST = await importRoute()
+    const res = await POST(req(43) as never)
+    expect(res.status).toBe(200)
+    const call = m.updateDocumentStatus.mock.calls.find((c: unknown[]) => c[1] === 'ready')
+    expect(call?.[2]).toMatchObject({ failedPages: [2] })
   })
 })

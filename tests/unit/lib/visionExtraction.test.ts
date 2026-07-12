@@ -131,6 +131,7 @@ describe('extractPagesViaVision', () => {
     const out = await extractPagesViaVision(Buffer.from('pdf'), [2, 3, 7, 8, 9])
     expect(out.segments).toEqual([{ firstPage: 7, lastPage: 9, text: 'NOTES B' }])
     expect(out.failed).toBe(1)
+    expect(out.failedPages).toEqual([2, 3])
   })
 
   it('flags truncation', async () => {
@@ -146,13 +147,13 @@ describe('extractPagesViaVision', () => {
     mockSplitRuns.mockResolvedValue({ segments: [], skippedPages: 2 })
     const { extractPagesViaVision } = await import('@/lib/visionExtraction')
     const out = await extractPagesViaVision(Buffer.from('pdf'), [2, 3])
-    expect(out).toEqual({ segments: [], failed: 0, truncated: false, skippedPages: 2 })
+    expect(out).toEqual({ segments: [], failed: 0, failedPages: [], truncated: false, skippedPages: 2 })
   })
 
   it('returns empty without a key', async () => {
     setup(null)
     const { extractPagesViaVision } = await import('@/lib/visionExtraction')
-    expect(await extractPagesViaVision(Buffer.from('pdf'), [2])).toEqual({ segments: [], failed: 0, truncated: false, skippedPages: 0 })
+    expect(await extractPagesViaVision(Buffer.from('pdf'), [2])).toEqual({ segments: [], failed: 0, failedPages: [], truncated: false, skippedPages: 0 })
     expect(mockSplitRuns).not.toHaveBeenCalled()
   })
 })

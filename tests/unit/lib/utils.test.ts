@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { cn } from '@/lib/utils'
+import { cn, formatPageList } from '@/lib/utils'
 
 describe('cn', () => {
   it('merges class names', () => {
@@ -28,5 +28,18 @@ describe('cn', () => {
 
   it('handles array input', () => {
     expect(cn(['foo', 'bar'])).toBe('foo bar')
+  })
+})
+
+describe('formatPageList', () => {
+  it('collapses consecutive runs', () => {
+    expect(formatPageList([12, 13, 14, 30])).toBe('12–14, 30')
+  })
+  it('handles single pages and unsorted input', () => {
+    expect(formatPageList([7])).toBe('7')
+    expect(formatPageList([3, 1, 2, 9])).toBe('1–3, 9')
+  })
+  it('returns empty string for empty input', () => {
+    expect(formatPageList([])).toBe('')
   })
 })

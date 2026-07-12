@@ -7,7 +7,7 @@ import type { DocumentSummary } from '@/types'
 const base: DocumentSummary = {
   id: 1, filename: 'GradingPlan.pdf', mimeType: 'application/pdf', fileSize: 1000,
   chunkCount: 42, status: 'ready', errorMessage: null, revision: 1, updatedAt: null,
-  url: 'signed:orig', thumbnailUrl: 'signed:thumb', extractionMethod: 'vision',
+  url: 'signed:orig', thumbnailUrl: 'signed:thumb', extractionMethod: 'vision', failedPages: null,
 }
 
 describe('DocumentCard', () => {
@@ -51,6 +51,12 @@ describe('DocumentCard', () => {
   it('uses the generic Partial tooltip when page counts are unknown', () => {
     render(<DocumentCard doc={{ ...base, extractionPartial: true }} onOpen={() => {}} onDelete={() => {}} />)
     expect(screen.getByText(/partial/i).closest('[title]')?.getAttribute('title')).toMatch(/some content may be missing/i)
+  })
+
+  it('prefers the failed-pages tooltip when failedPages is populated', () => {
+    render(<DocumentCard doc={{ ...base, extractionPartial: true, pagesExtracted: 60, pageCount: 80, failedPages: [12, 13, 14, 30] }} onOpen={() => {}} onDelete={() => {}} />)
+    const badge = screen.getByText(/partial/i)
+    expect(badge.closest('[title]')?.getAttribute('title')).toBe('Vision failed on pages 12–14, 30')
   })
 
   it('shows no Partial badge when extractionPartial is falsy', () => {

@@ -470,7 +470,7 @@ export async function getDocumentById(id: number) {
 export async function updateDocumentStatus(
   id: number,
   status: 'uploading' | 'processing' | 'ready' | 'error',
-  updates?: { chunkCount?: number; errorMessage?: string; charCount?: number; thumbnailPath?: string; extractionMethod?: 'text' | 'vision' | 'hybrid'; pageCount?: number | null; pagesExtracted?: number | null; extractionPartial?: boolean }
+  updates?: { chunkCount?: number; errorMessage?: string; charCount?: number; thumbnailPath?: string; extractionMethod?: 'text' | 'vision' | 'hybrid'; pageCount?: number | null; pagesExtracted?: number | null; extractionPartial?: boolean; failedPages?: number[] | null }
 ) {
   return await db.update(documents)
     .set({ status, ...updates, updatedAt: new Date() })
@@ -583,6 +583,7 @@ export async function commitDocumentReplacement(
     pageCount?: number | null
     pagesExtracted?: number | null
     extractionPartial?: boolean
+    failedPages?: number[] | null
   },
 ) {
   return await db.transaction(async (tx) => {
@@ -600,6 +601,7 @@ export async function commitDocumentReplacement(
         revision: meta.revision, status: meta.status, errorMessage: meta.errorMessage ?? null,
         pageCount: meta.pageCount ?? null, pagesExtracted: meta.pagesExtracted ?? null,
         extractionPartial: meta.extractionPartial ?? false,
+        failedPages: meta.failedPages ?? null,
         updatedAt: new Date(),
       })
       .where(eq(documents.id, documentId))
