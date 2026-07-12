@@ -28,7 +28,7 @@ export function sliceWindow(
 ): DocWindow {
   const marks = anchors(full)
   let start = opts.offset ?? 0
-  let pageFound = true
+  const pageFound = true
   if (opts.fromPage != null) {
     const hit = marks.find(a => a.page >= opts.fromPage!)
     if (!hit) {
