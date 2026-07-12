@@ -1,8 +1,11 @@
 import type { ArtifactType, SheetSpec } from './types'
+import type { CodeLanguageId } from './code'
 
 export interface BlankTemplate {
   title: string
-  format: 'html' | 'markdown' | 'sheets'
+  /** Content format — for code artifacts this is the language id (the same
+   *  convention the artifacts table uses: type='code', format='python'). */
+  format: 'html' | 'markdown' | 'sheets' | CodeLanguageId
   content: string
 }
 
@@ -39,5 +42,7 @@ export function blankArtifactTemplate(type: ArtifactType): BlankTemplate {
       return { title: 'Untitled PDF', format: 'markdown', content: MARKDOWN_STARTER }
     case 'pptx':
       return { title: 'Untitled Slides', format: 'markdown', content: MARKDOWN_STARTER }
+    case 'code':
+      return { title: 'Untitled Script', format: 'python', content: `# Untitled script\n\nprint("hello")\n` }
   }
 }

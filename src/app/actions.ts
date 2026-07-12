@@ -877,7 +877,7 @@ export async function createBlankArtifact(type: ArtifactType): Promise<{ artifac
 
   let path: string | null = null
   try {
-    const { buffer, contentType, ext } = await renderArtifact(type, tpl.title, renderContent)
+    const { buffer, contentType, ext } = await renderArtifact(type, tpl.title, renderContent, type === 'code' ? tpl.format : undefined)
     path = artifactStoragePath(null, tpl.title, ext)
     await uploadBuffer(path, buffer, contentType)
     const [art] = await createArtifact({

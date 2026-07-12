@@ -1,4 +1,4 @@
-export type ArtifactType = 'xlsx' | 'docx' | 'pdf' | 'pptx' | 'html'
+export type ArtifactType = 'xlsx' | 'docx' | 'pdf' | 'pptx' | 'html' | 'code'
 
 export interface SheetSpec {
   name: string
@@ -8,5 +8,7 @@ export interface SheetSpec {
 export interface RenderedArtifact {
   buffer: Buffer
   contentType: string
-  ext: ArtifactType
+  /** File extension for the storage path — the type itself for document types,
+   *  the language's extension (py/sh/ts/…) for code artifacts. */
+  ext: string
 }
