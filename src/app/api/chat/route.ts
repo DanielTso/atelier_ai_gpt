@@ -1,5 +1,5 @@
 import { streamText, convertToModelMessages, stepCountIs, type UIMessage } from 'ai';
-import { getChatWithContext, getProjectContext } from '@/app/actions';
+import { getChatWithContext, getProjectContext, getProjectDocuments } from '@/app/actions';
 import { buildProjectPreamble } from '@/lib/projectPreamble';
 import { retrieveContext } from '@/lib/retrieval';
 import { createProvider } from '@/lib/providers';
@@ -7,7 +7,9 @@ import { apiError } from '@/lib/errors';
 import { chatRequestSchema } from '@/lib/validation';
 import { createGenerateArtifactTool } from '@/lib/artifacts/tool';
 import { createGenerateImageTool } from '@/lib/image/tool';
+import { createReadDocumentTool } from '@/lib/documents/tool';
 import { isStorageConfigured } from '@/lib/storage';
+import { formatPageList } from '@/lib/utils';
 
 // Experience-mode turns run long: web research + several image generations + an
 // HTML artifact build in one streamed response. Make the time budget explicit.
@@ -29,6 +31,14 @@ const TOOL_GUIDANCE =
   'EXCEPTION — visual answers: when the user explicitly asks for a visual, illustrated, or image-rich response ("use images", "make it visual", "add pictures/diagrams/illustrations"), interleave your prose with generate_image calls: write a section, generate a fitting illustration, then continue writing. You can call tools multiple times in one reply — never promise a visual and stop without generating it. ' +
   'When the user asks for articles or videos, include inline Markdown links to real, relevant pages you found via web search (link the title text), not bare claims. ' +
   'RICH EXPERIENCES: when the user asks for a full multimedia presentation or experience (images AND articles AND videos together, "make it immersive/edgy/cinematic", "build me something"), go all in: (1) research facts and links with web search; (2) generate the key illustrations with generate_image; (3) build a designed, self-contained page with generate_artifact format "html" — bold editorial typography, sections, stat callouts — embedding your generated images via each result\'s embedUrl (NOT url — url expires), linking cited sources, and presenting videos as CLICK-OUT THUMBNAIL CARDS — <a href="https://www.youtube.com/watch?v=VIDEO_ID" target="_blank" rel="noopener"><img src="https://i.ytimg.com/vi/VIDEO_ID/hqdefault.jpg" alt="…"></a> styled as a card with a play badge and caption. NEVER use <iframe> YouTube embeds: the sandboxed preview sends no Referer, so embedded players always fail with a configuration error; (4) close with a short chat summary of what you built. Keep the page self-contained and lean (roughly under 40KB of HTML — designed, not exhaustive). The page opens in a live preview beside the chat.';
+
+// Whole-document mode: retrieval chunks answer targeted questions; read_document
+// exists for set-wide/exhaustive ones. Keep it chunks-first so ordinary questions
+// stay fast and cheap.
+const READ_DOCUMENT_GUIDANCE =
+  'You can also read entire project documents with the read_document tool. Retrieved document chunks (above) answer most questions — prefer them. ' +
+  'Call read_document ONLY when the question is set-wide or exhaustive ("list every…", "count all…", "summarize the whole document") or when the chunks clearly miss what the user asked about. ' +
+  'Read additional windows (fromPage/offset) only while genuinely needed; stop as soon as you can answer.';
 
 function buildContextPrefix(
   documentContext: string | null,
@@ -84,12 +94,13 @@ export async function POST(req: Request) {
       // The project-context read and the retrieval pipeline are independent once we
       // have the chat — run them concurrently to shave a round-trip off time-to-
       // first-token. Retrieval is best-effort (nulls if providers unavailable).
-      const [ctx, retrieved] = await Promise.all([
+      const [ctx, retrieved, projectDocs] = await Promise.all([
         chat?.projectId ? getProjectContext(chat.projectId) : Promise.resolve(null),
         retrieveContext(messages as unknown as UIMessage[], {
           chatId,
           projectId: chat?.projectId ?? null,
         }),
+        chat?.projectId ? getProjectDocuments(chat.projectId).catch(() => []) : Promise.resolve([]),
       ]);
 
       // 1. System prompt (always included, never trimmed). Project Memory +
@@ -119,8 +130,8 @@ export async function POST(req: Request) {
         contextMessages = [...contextPrefix, ...recentMessages];
       }
 
-      // 4. Merge generate_artifact tool for Claude when Storage is configured.
-      //    Prepend chat-first guidance so the tool is reserved for explicit file requests.
+      // 4. Merge Claude tools when Storage is configured. Prepend chat-first
+      //    guidance so tools are reserved for explicit requests.
       if (modelName.startsWith('claude') && isStorageConfigured()) {
         const projectId = chat?.projectId ?? null;
         tools = {
@@ -128,7 +139,16 @@ export async function POST(req: Request) {
           generate_artifact: createGenerateArtifactTool({ chatId, projectId }),
           generate_image: createGenerateImageTool({ chatId, projectId }),
         };
-        systemPrompt = systemPrompt ? `${TOOL_GUIDANCE}\n\n${systemPrompt}` : TOOL_GUIDANCE;
+        let guidance = TOOL_GUIDANCE;
+        const readableDocs = projectDocs.filter(d => d.status === 'ready' && d.storagePath);
+        if (projectId && readableDocs.length > 0) {
+          tools.read_document = createReadDocumentTool({ projectId });
+          const manifest = readableDocs
+            .map(d => `- id=${d.id} "${d.filename}" — ${d.pageCount ?? '?'} pages, ${d.charCount.toLocaleString()} chars, ${d.extractionMethod ?? 'text'} extraction${d.extractionPartial ? ` (PARTIAL${d.failedPages?.length ? `; vision failed pages ${formatPageList(d.failedPages)}` : ''})` : ''}`)
+            .join('\n');
+          guidance += '\n\n' + READ_DOCUMENT_GUIDANCE + '\n[Project documents]\n' + manifest;
+        }
+        systemPrompt = systemPrompt ? `${guidance}\n\n${systemPrompt}` : guidance;
       }
     }
 

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createTestDb, testDb } from '../../helpers/test-db'
+import { documents } from '@/db/schema'
 
 // Mock db
 vi.mock('@/db', () => ({
@@ -20,6 +21,7 @@ vi.mock('ai', () => ({
   streamText: (...args: unknown[]) => mockStreamText(...args),
   convertToModelMessages: (...args: unknown[]) => mockConvertToModelMessages(...args),
   stepCountIs: (n: number) => ({ type: 'step-count', count: n }),
+  tool: (config: unknown) => config,
 }))
 
 const mockGoogleSearch = vi.fn(() => ({ type: 'provider-defined', id: 'google_search' }))
@@ -59,6 +61,7 @@ describe('POST /api/chat', () => {
       streamText: (...args: unknown[]) => mockStreamText(...args),
       convertToModelMessages: (...args: unknown[]) => mockConvertToModelMessages(...args),
       stepCountIs: (n: number) => ({ type: 'step-count', count: n }),
+      tool: (config: unknown) => config,
     }))
     vi.doMock('@ai-sdk/google', () => ({
       createGoogleGenerativeAI: () => Object.assign(
@@ -147,6 +150,41 @@ describe('POST /api/chat', () => {
     expect(mockStreamText).toHaveBeenCalledWith(
       expect.objectContaining({ system: 'Be helpful' })
     )
+  })
+
+  it('wires read_document + a document manifest for a Claude project chat with ready documents', async () => {
+    process.env.SUPABASE_URL = 'https://test.supabase.co'
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key'
+    try {
+      const [project] = await createProject('P')
+      const [chat] = await createChat(project.id, 'Chat')
+      await testDb.insert(documents).values({
+        projectId: project.id,
+        filename: 'plans.pdf',
+        mimeType: 'application/pdf',
+        fileSize: 1000,
+        status: 'ready',
+        storagePath: 'p',
+        pageCount: 4,
+        charCount: 100,
+        extractionMethod: 'hybrid',
+        extractionPartial: false,
+        failedPages: null,
+      })
+
+      const response = await postChat({
+        messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] }],
+        model: 'claude-opus-4-8',
+        chatId: chat.id,
+      })
+      expect(response.status).toBe(200)
+      expect(mockStreamText.mock.calls[0][0].tools).toHaveProperty('read_document')
+      expect(mockStreamText.mock.calls[0][0].system).toContain('[Project documents]')
+      expect(mockStreamText.mock.calls[0][0].system).toContain('id=1 "plans.pdf"')
+    } finally {
+      delete process.env.SUPABASE_URL
+      delete process.env.SUPABASE_SERVICE_ROLE_KEY
+    }
   })
 
   it('returns 500 on error', async () => {
