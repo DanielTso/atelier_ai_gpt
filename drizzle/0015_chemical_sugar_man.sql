@@ -1,0 +1,1 @@
+ALTER TABLE "documents" ADD COLUMN "failed_pages" jsonb;

@@ -1,5 +1,6 @@
 import { PGlite } from '@electric-sql/pglite'
 import { vector } from '@electric-sql/pglite/vector'
+import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm'
 import { drizzle } from 'drizzle-orm/pglite'
 import { migrate } from 'drizzle-orm/pglite/migrator'
 import { sql } from 'drizzle-orm'
@@ -21,7 +22,7 @@ const TABLES = [
  */
 export async function createTestDb() {
   if (!client) {
-    client = new PGlite({ extensions: { vector } })
+    client = new PGlite({ extensions: { vector, pg_trgm } })
     testDb = drizzle({ client, schema })
     await migrate(testDb, { migrationsFolder: './drizzle' })
   } else {

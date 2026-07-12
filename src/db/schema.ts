@@ -1,4 +1,4 @@
-import { pgTable, text, integer, boolean, timestamp, vector, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, text, integer, boolean, timestamp, vector, index, uniqueIndex, jsonb } from 'drizzle-orm/pg-core';
 
 const idPk = () => integer('id').primaryKey().generatedAlwaysAsIdentity();
 const createdAt = (name = 'created_at') => timestamp(name, { withTimezone: true }).defaultNow();
@@ -78,6 +78,7 @@ export const documents = pgTable('documents', {
   pageCount: integer('page_count'),
   pagesExtracted: integer('pages_extracted'),
   extractionPartial: boolean('extraction_partial').notNull().default(false),
+  failedPages: jsonb('failed_pages').$type<number[] | null>(),
   revision: integer('revision').notNull().default(1),
   updatedAt: timestamp('updated_at', { withTimezone: true }),
   createdAt: createdAt(),
