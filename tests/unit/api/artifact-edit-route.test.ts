@@ -63,7 +63,7 @@ describe('POST /api/artifacts/[id]/edit', () => {
     const POST = await importRoute()
     const res = await POST(req({ content: '<h1>new</h1>' }), ctx('1'))
     expect(res.status).toBe(200)
-    expect(m.renderArtifact).toHaveBeenCalledWith('html', 'Landing', '<h1>new</h1>')
+    expect(m.renderArtifact).toHaveBeenCalledWith('html', 'Landing', '<h1>new</h1>', undefined)
     expect(m.addArtifactVersion).toHaveBeenCalledWith(1, expect.objectContaining({ type: 'html', format: 'html', content: '<h1>new</h1>' }))
   })
 
@@ -98,7 +98,7 @@ describe('POST /api/artifacts/[id]/edit', () => {
     const POST = await importRoute()
     const res = await POST(req({ content: sheets }), ctx('1'))
     expect(res.status).toBe(200)
-    expect(m.renderArtifact).toHaveBeenCalledWith('xlsx', 'Budget', sheets)
+    expect(m.renderArtifact).toHaveBeenCalledWith('xlsx', 'Budget', sheets, undefined)
     // content round-trips through the route as the exact SheetSpec[] JSON (no loss)
     expect(m.addArtifactVersion).toHaveBeenCalledWith(1, expect.objectContaining({
       type: 'xlsx', format: 'sheets', content: JSON.stringify(sheets),

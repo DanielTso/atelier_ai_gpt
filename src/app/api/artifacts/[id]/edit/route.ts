@@ -38,7 +38,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
     const format = artifact.format ?? (type === 'html' ? 'html' : typeof content === 'string' ? 'markdown' : 'sheets')
 
-    const { buffer, contentType, ext } = await renderArtifact(type, title, content)
+    // Code artifacts store their language in the format column — re-derive it
+    // so the re-render keeps the right file extension.
+    const language = type === 'code' ? artifact.format ?? undefined : undefined
+    const { buffer, contentType, ext } = await renderArtifact(type, title, content, language)
     const path = artifactStoragePath(artifact.projectId, title, ext)
     await uploadBuffer(path, buffer, contentType)
 

@@ -1,6 +1,15 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { CODE_LANGUAGES, CODE_LANGUAGE_IDS, codeLanguage } from '@/lib/artifacts/code'
 import { renderArtifact } from '@/lib/artifacts/render'
+
+// The tool touches storage + DB at execute time only; schema tests never run execute.
+vi.mock('@/lib/storage', () => ({
+  uploadBuffer: vi.fn(), createSignedDownloadUrl: vi.fn(), removeObjects: vi.fn(),
+  ARTIFACT_URL_TTL_SECONDS: 1,
+}))
+vi.mock('@/app/actions', () => ({ createArtifact: vi.fn() }))
+
+import { createGenerateArtifactTool } from '@/lib/artifacts/tool'
 
 describe('code language registry', () => {
   it('has unique ids and sane extensions', () => {
@@ -26,5 +35,20 @@ describe('renderArtifact code branch', () => {
   it('rejects code without a known language', async () => {
     await expect(renderArtifact('code', 'X', 'x', undefined)).rejects.toThrow(/language/i)
     await expect(renderArtifact('code', 'X', 'x', 'cobol')).rejects.toThrow(/language/i)
+  })
+})
+
+describe('generate_artifact code inputs', () => {
+  const tool = createGenerateArtifactTool({ chatId: 1, projectId: null })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const schema = (tool as any).inputSchema
+  it('accepts code with a known language', () => {
+    expect(schema.safeParse({ type: 'code', title: 'Script', format: 'code', language: 'python', content: 'print(1)' }).success).toBe(true)
+  })
+  it('rejects code without a language', () => {
+    expect(schema.safeParse({ type: 'code', title: 'Script', format: 'code', content: 'print(1)' }).success).toBe(false)
+  })
+  it('still accepts existing types without language', () => {
+    expect(schema.safeParse({ type: 'html', title: 'Page', format: 'html', content: '<!doctype html>' }).success).toBe(true)
   })
 })

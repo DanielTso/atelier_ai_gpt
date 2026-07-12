@@ -35,10 +35,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const title = artifact.title
     const isSheets = artifact.format === 'sheets'
     const isHtml = artifact.format === 'html'
+    const isCode = type === 'code'
     const prompt = isSheets
       ? `You are revising a spreadsheet artifact titled "${title}". Current content is a JSON array of {name, rows}:\n\n${artifact.content ?? '[]'}\n\nApply this instruction: ${body.data.instruction}\n\nReturn ONLY the full updated JSON array — no prose, no code fences.`
       : isHtml
       ? `You are revising an HTML page artifact titled "${title}". Current content is a complete standalone HTML document:\n\n${artifact.content ?? ''}\n\nApply this instruction: ${body.data.instruction}\n\nReturn ONLY the full updated HTML document (inline CSS/JS, single file) — no prose, no code fences.`
+      : isCode
+      ? `You are revising a ${artifact.format ?? 'code'} source file titled "${title}". Current content:\n\n${artifact.content ?? ''}\n\nApply this instruction: ${body.data.instruction}\n\nReturn ONLY the full updated source file — no prose, no code fences.`
       : `You are revising a document artifact titled "${title}". Current content is Markdown:\n\n${artifact.content ?? ''}\n\nApply this instruction: ${body.data.instruction}\n\nReturn ONLY the full updated Markdown — no commentary, no code fences.`
 
     const anthropic = createAnthropic({ apiKey })
@@ -56,7 +59,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       content = raw
     }
 
-    const { buffer, contentType, ext } = await renderArtifact(type, title, content as string | SheetSpec[])
+    const { buffer, contentType, ext } = await renderArtifact(type, title, content as string | SheetSpec[], isCode ? artifact.format ?? undefined : undefined)
     const path = artifactStoragePath(artifact.projectId, title, ext)
     await uploadBuffer(path, buffer, contentType)
 

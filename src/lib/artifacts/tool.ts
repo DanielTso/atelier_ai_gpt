@@ -2,6 +2,7 @@ import { tool } from 'ai'
 import { z } from 'zod'
 import { renderArtifact } from './render'
 import { artifactStoragePath } from './path'
+import { CODE_LANGUAGE_IDS } from './code'
 import { uploadBuffer, createSignedDownloadUrl, removeObjects, ARTIFACT_URL_TTL_SECONDS } from '@/lib/storage'
 import { createArtifact } from '@/app/actions'
 import type { ArtifactType } from './types'
@@ -16,16 +17,22 @@ export function createGenerateArtifactTool(ctx: { chatId: number; projectId: num
       'Do NOT call this for ordinary requests. If the user asks you to write, draft, compose, or give them an email, message, summary, report, plan, list, or table to READ IN THE CONVERSATION, just write it directly in your chat reply using Markdown — do NOT generate a file. When unsure, answer in chat. ' +
       'For xlsx, pass format "sheets" with content as an array of {name, rows}; make the FIRST row a header row of column titles and keep columns consistent. ' +
       'For docx/pdf/pptx, pass format "markdown" with rich Markdown: "##"/"###" headings, "**bold**"/"*italic*", "-"/"1." lists, and GitHub-flavored "| col | col |" tables. For pptx, each top-level "# Heading" starts a new slide. ' +
-      'For html, pass format "html" with content = a COMPLETE standalone HTML document (a single file with inline <style> and inline <script>; no external build step, frameworks, or local file references).',
+      'For html, pass format "html" with content = a COMPLETE standalone HTML document (a single file with inline <style> and inline <script>; no external build step, frameworks, or local file references). ' +
+      'For a code FILE (type "code", format "code"): pass language + content = the complete source. Generate a code artifact ONLY when the user asks for a runnable/downloadable script or file ("write me a script I can run", "save as .py", "make a bash file"); code snippets, examples, and explanations stay in the chat reply as fenced code blocks.',
     inputSchema: z.object({
-      type: z.enum(['xlsx', 'docx', 'pdf', 'pptx', 'html']),
+      type: z.enum(['xlsx', 'docx', 'pdf', 'pptx', 'html', 'code']),
       title: z.string().min(1).max(200),
-      format: z.enum(['markdown', 'sheets', 'html']),
+      format: z.enum(['markdown', 'sheets', 'html', 'code']),
+      language: z.enum(CODE_LANGUAGE_IDS).optional()
+        .describe('Required for type "code": the source language (drives file extension + preview highlighting)'),
       content: z.union([z.string(), z.array(sheetSpec)]),
+    }).refine(v => v.type !== 'code' || v.language != null, {
+      message: 'language is required for code artifacts',
+      path: ['language'],
     }),
-    execute: async ({ type, title, format, content }) => {
+    execute: async ({ type, title, format, content, language }) => {
       try {
-        const { buffer, contentType, ext } = await renderArtifact(type as ArtifactType, title, content)
+        const { buffer, contentType, ext } = await renderArtifact(type as ArtifactType, title, content, language)
         // Persist the source so the artifact can be previewed/edited/regenerated.
         const contentStr = typeof content === 'string' ? content : JSON.stringify(content)
         // Upload FIRST to a uuid-keyed path, then persist the row with the real
@@ -34,7 +41,9 @@ export function createGenerateArtifactTool(ctx: { chatId: number; projectId: num
         await uploadBuffer(path, buffer, contentType)
         let row: Awaited<ReturnType<typeof createArtifact>>[number] | undefined
         try {
-          ;[row] = await createArtifact({ chatId: ctx.chatId, projectId: ctx.projectId, type, title, storagePath: path, format, content: contentStr })
+          // Code artifacts persist their LANGUAGE in the format column (type='code',
+          // format='python') so edit/regenerate can re-derive the file extension.
+          ;[row] = await createArtifact({ chatId: ctx.chatId, projectId: ctx.projectId, type, title, storagePath: path, format: type === 'code' ? language! : format, content: contentStr })
           // An empty insert result would otherwise throw on row.id AFTER upload,
           // leaving an orphan object — treat it as a failure and clean up.
           if (!row) throw new Error('artifact insert returned no row')
