@@ -8,7 +8,7 @@ const m = {
   downloadToBuffer: vi.fn(), uploadBuffer: vi.fn(),
   generatePdfThumbnail: vi.fn(), generateImageThumbnail: vi.fn(),
   extractTextFromBuffer: vi.fn(), extractViaVision: vi.fn(), extractViaVisionImage: vi.fn(),
-  extractPagesViaVision: vi.fn(),
+  extractPagesViaVision: vi.fn(), visionRunHeader: vi.fn(),
 }
 
 async function importRoute() {
@@ -23,7 +23,7 @@ async function importRoute() {
   vi.doMock('@/lib/chunking', () => ({ chunkText: m.chunkText }))
   vi.doMock('@/lib/storage', () => ({ downloadToBuffer: m.downloadToBuffer, uploadBuffer: m.uploadBuffer, sanitizeStorageName: (s: string) => s.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/^\.+$/, '_') }))
   vi.doMock('@/lib/thumbnails', () => ({ generatePdfThumbnail: m.generatePdfThumbnail, generateImageThumbnail: m.generateImageThumbnail }))
-  vi.doMock('@/lib/visionExtraction', () => ({ extractViaVision: m.extractViaVision, extractViaVisionImage: m.extractViaVisionImage, extractPagesViaVision: m.extractPagesViaVision }))
+  vi.doMock('@/lib/visionExtraction', () => ({ extractViaVision: m.extractViaVision, extractViaVisionImage: m.extractViaVisionImage, extractPagesViaVision: m.extractPagesViaVision, visionRunHeader: m.visionRunHeader }))
   vi.doMock('@/lib/fileExtraction', async (orig) => ({ ...(await (orig as () => Promise<Record<string, unknown>>)()), extractTextFromBuffer: m.extractTextFromBuffer }))
   const { POST } = await import('@/app/api/documents/process/route')
   return POST
@@ -57,6 +57,7 @@ describe('POST /api/documents/process', () => {
     m.extractViaVision.mockResolvedValue(extRes(''))
     m.extractViaVisionImage.mockResolvedValue(extRes(''))
     m.extractPagesViaVision.mockResolvedValue({ segments: [], failed: 0, failedPages: [], truncated: false, skippedPages: 0 })
+    m.visionRunHeader.mockImplementation((first: number, last: number) => first === last ? `[page ${first} · vision]` : `[pages ${first}–${last} · vision]`)
   })
 
   it('404 when the document or its storagePath is missing', async () => {
@@ -315,6 +316,7 @@ describe('POST /api/documents/process', () => {
     // The spliced text handed downstream (real ingestText → chunkText) must carry the
     // vision body and the dense page text, but NOT the replaced thin page text.
     const spliced = m.chunkText.mock.calls[0][0] as string
+    expect(spliced).toContain('[page 2 · vision]')
     expect(spliced).toContain('VISION NOTES BODY')
     expect(spliced).toContain('E'.repeat(2000))
     expect(spliced).not.toContain('thin')

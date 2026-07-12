@@ -42,6 +42,13 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 const segPages = (seg: { firstPage: number; lastPage: number }) =>
   Array.from({ length: seg.lastPage - seg.firstPage + 1 }, (_, i) => seg.firstPage + i)
 
+/** Provenance header prepended to vision-derived text runs so it lands inside
+ * chunk content and flows into retrieval context (same pattern as web ingest's
+ * Source: header). */
+export function visionRunHeader(first: number, last: number): string {
+  return first === last ? `[page ${first} · vision]` : `[pages ${first}–${last} · vision]`
+}
+
 /** One generateText call per segment (inline PDF file part), bounded-concurrent
  * with retry/backoff. A segment that fails after retries yields text ''. Shared
  * by extractViaVision and extractPagesViaVision. */
@@ -120,7 +127,7 @@ export async function extractViaVision(buffer: Buffer): Promise<ExtractionResult
   const failedPages = results.filter(r => !r.text).flatMap(r => segPages(r.seg))
   const pagesExtracted = ok.reduce((n, r) => n + (r.seg.lastPage - r.seg.firstPage + 1), 0)
   return {
-    text: ok.map(r => r.text).join('\n\n'),
+    text: ok.map(r => `${visionRunHeader(r.seg.firstPage, r.seg.lastPage)}\n${r.text}`).join('\n\n'),
     pageCount,
     pagesExtracted,
     partial: truncated || skippedPages > 0 || pagesExtracted < pageCount,

@@ -6,7 +6,7 @@ import { embedContents } from '@/lib/embedChunks'
 import { ingestText } from '@/lib/ingest'
 import { MAX_FILE_SIZE, DOCUMENT_MAX_CHARS, getExtension, isImageExtension, isSupported, extractTextFromBuffer } from '@/lib/fileExtraction'
 import type { ExtractionResult } from '@/lib/fileExtraction'
-import { extractViaVision, extractViaVisionImage, extractPagesViaVision } from '@/lib/visionExtraction'
+import { extractViaVision, extractViaVisionImage, extractPagesViaVision, visionRunHeader } from '@/lib/visionExtraction'
 import { downloadToBuffer, uploadBuffer, sanitizeStorageName } from '@/lib/storage'
 import { generatePdfThumbnail, generateImageThumbnail } from '@/lib/thumbnails'
 import { processDocumentRequestSchema } from '@/lib/validation'
@@ -139,7 +139,7 @@ export async function POST(request: NextRequest) {
             extraction.pageTexts.forEach((t, i) => {
               const page = i + 1
               const seg = byStart.get(page)
-              if (seg) parts.push(seg.text)
+              if (seg) parts.push(`${visionRunHeader(seg.firstPage, seg.lastPage)}\n${seg.text}`)
               else if (!covered.has(page)) parts.push(t)
             })
             textContent = parts.join('\n')

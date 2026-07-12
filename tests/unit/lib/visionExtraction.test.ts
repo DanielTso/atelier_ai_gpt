@@ -65,7 +65,7 @@ describe('extractViaVision (segmented)', () => {
       .mockResolvedValueOnce({ text: 'SEG TWO', finishReason: 'stop' })
     const { extractViaVision } = await import('@/lib/visionExtraction')
     const out = await extractViaVision(Buffer.from('pdf'))
-    expect(out.text).toBe('SEG TWO')
+    expect(out.text).toBe('[pages 3–4 · vision]\nSEG TWO')
     expect(out).toMatchObject({ pagesExtracted: 2, partial: true })
   })
 
@@ -78,7 +78,7 @@ describe('extractViaVision (segmented)', () => {
       .mockResolvedValueOnce({ text: 'RECOVERED', finishReason: 'stop' })
     const { extractViaVision } = await import('@/lib/visionExtraction')
     const out = await extractViaVision(Buffer.from('pdf'))
-    expect(out.text).toBe('RECOVERED')
+    expect(out.text).toBe('[pages 1–2 · vision]\nRECOVERED')
     expect(out.partial).toBe(false)
     expect(mockGenerateText).toHaveBeenCalledTimes(2)
   })
@@ -89,7 +89,7 @@ describe('extractViaVision (segmented)', () => {
     mockGenerateText.mockResolvedValue({ text: 'TRUNCATED TEXT', finishReason: 'length' })
     const { extractViaVision } = await import('@/lib/visionExtraction')
     const out = await extractViaVision(Buffer.from('pdf'))
-    expect(out.text).toBe('TRUNCATED TEXT')
+    expect(out.text).toBe('[pages 1–2 · vision]\nTRUNCATED TEXT')
     expect(out.partial).toBe(true)
   })
 
