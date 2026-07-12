@@ -34,6 +34,7 @@ export const ChatContextMenu = memo(function ChatContextMenu({
       <DropdownMenu.Trigger asChild>
         <button
           onClick={(e) => e.stopPropagation()}
+          aria-label="Chat options"
           className="opacity-0 group-hover:opacity-100 p-1 hover:bg-accent rounded transition-all"
         >
           <MoreHorizontal className="h-3.5 w-3.5" />

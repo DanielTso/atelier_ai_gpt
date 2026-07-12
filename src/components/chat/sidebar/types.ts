@@ -1,3 +1,5 @@
+import type { ChatRowActions } from '@/types'
+
 export interface Project {
   id: number
   name: string
@@ -12,7 +14,9 @@ export interface Chat {
 
 export type AppView = 'home' | 'projects' | 'artifacts' | 'images'
 
-export interface SidebarActions {
+// moveChat/renameChat/archiveChat/deleteChat come from ChatRowActions (shared
+// with the project landing page's chat rows).
+export interface SidebarActions extends ChatRowActions {
   // Project actions
   createProject: () => void
   renameProject: (id: number, name: string) => void
@@ -26,11 +30,7 @@ export interface SidebarActions {
   createChatInProject: (projectId: number) => void
   selectChat: (id: number) => void
   selectStandaloneChat: (id: number) => void
-  moveChat: (chatId: number, projectId: number | null) => void
-  renameChat: (chatId: number) => void
-  archiveChat: (chatId: number) => void
   restoreChat: (chatId: number) => void
-  deleteChat: (chatId: number) => void
   // UI actions
   toggleTheme: () => void
   toggleCollapse: () => void

@@ -8,16 +8,14 @@ import { cn } from "@/lib/utils"
 import { useLocalStorage } from "@/hooks/useLocalStorage"
 import { ProjectContextRail } from "@/components/chat/ProjectContextRail"
 import { Shimmer } from "@/components/chat/LoadingSkeletons"
-
-interface ChatPreview {
-  id: number
-  title: string
-  preview: string | null
-  createdAt: Date | null
-}
+import { ChatContextMenu } from "@/components/chat/ChatContextMenu"
+import type { ChatPreview, ChatRowActions } from "@/types"
+import type { Project } from "@/components/chat/sidebar/types"
 
 interface ProjectLandingPageProps {
   project: { id: number; name: string; memory?: string | null; instructions?: string | null }
+  /** Full project list — feeds the row menu's "Move to..." submenu. */
+  projects: Project[]
   chatPreviews: ChatPreview[]
   loading: boolean
   composer: ReactNode
@@ -27,6 +25,8 @@ interface ProjectLandingPageProps {
   onDeleteProject: (id: number) => void
   onBack: () => void
   onRename: () => void
+  /** Rename/move/archive/delete for the chat rows — same handlers the sidebar uses. */
+  chatActions: ChatRowActions
 }
 
 function formatShortDate(date: Date | null): string {
@@ -37,6 +37,7 @@ function formatShortDate(date: Date | null): string {
 
 export const ProjectLandingPage = memo(function ProjectLandingPage({
   project,
+  projects,
   chatPreviews,
   loading,
   composer,
@@ -46,6 +47,7 @@ export const ProjectLandingPage = memo(function ProjectLandingPage({
   onDeleteProject,
   onBack,
   onRename,
+  chatActions,
 }: ProjectLandingPageProps) {
   const [pinnedIds, setPinnedIds] = useLocalStorage<number[]>(
     'pinned-project-ids',
@@ -154,14 +156,23 @@ export const ProjectLandingPage = memo(function ProjectLandingPage({
             ) : (
               <div className="mt-1">
                 {chatPreviews.map((chat, idx) => (
-                  <motion.button
+                  // div+role, not <button>: the row hosts a nested menu-trigger
+                  // button (ChatContextMenu) and buttons cannot nest. Mirrors the
+                  // sidebar's ChatItem pattern, including the hover-revealed menu
+                  // (the `group` class drives the trigger's opacity).
+                  <motion.div
                     key={chat.id}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => onSelectChat(chat.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelectChat(chat.id) }
+                    }}
                     initial={{ opacity: 0, y: 6 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.25, delay: Math.min(idx * 0.03, 0.3) }}
                     className={cn(
-                      "w-full text-left px-4 py-3.5 flex items-start gap-3 hover:bg-muted/40 transition-colors",
+                      "group w-full text-left px-4 py-3.5 flex items-start gap-3 hover:bg-muted/40 transition-colors cursor-pointer",
                       idx !== chatPreviews.length - 1 && "border-b border-border/30"
                     )}
                   >
@@ -181,7 +192,17 @@ export const ProjectLandingPage = memo(function ProjectLandingPage({
                         </p>
                       )}
                     </div>
-                  </motion.button>
+                    {/* isArchived omitted: previews exclude archived chats by construction */}
+                    <ChatContextMenu
+                      chatId={chat.id}
+                      currentProjectId={project.id}
+                      projects={projects}
+                      onMove={chatActions.moveChat}
+                      onRename={chatActions.renameChat}
+                      onArchive={chatActions.archiveChat}
+                      onDelete={chatActions.deleteChat}
+                    />
+                  </motion.div>
                 ))}
               </div>
             )}

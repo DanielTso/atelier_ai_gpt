@@ -78,3 +78,23 @@ export interface MemorySuggestion {
   text: string
   createdAt: string | Date | null
 }
+
+/** A chat row on a project's landing page (title + first-message snippet), as
+ * returned by getProjectChatPreviews. Single source of truth — previously
+ * duplicated inline in page.tsx and ProjectLandingPage. */
+export interface ChatPreview {
+  id: number
+  title: string
+  preview: string | null
+  createdAt: Date | null
+}
+
+/** The chat actions ChatContextMenu surfaces on an active (non-archived) chat row.
+ * Shared by the sidebar (SidebarActions extends this) and the project landing
+ * page's chat list, so both call sites stay assignable to one narrow shape. */
+export interface ChatRowActions {
+  moveChat: (chatId: number, projectId: number | null) => void
+  renameChat: (chatId: number) => void
+  archiveChat: (chatId: number) => void
+  deleteChat: (chatId: number) => void
+}

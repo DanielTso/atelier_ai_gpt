@@ -39,7 +39,7 @@ import { ProjectLandingPage } from "@/components/chat/ProjectLandingPage"
 import type { AttachedFile, AttachedImage } from "@/lib/fileAttachments"
 import { buildFileMessage } from "@/lib/fileAttachments"
 import type { FileUIPart, UIMessage } from "ai"
-import type { Model, ArtifactSummary } from "@/types"
+import type { Model, ArtifactSummary, ChatPreview } from "@/types"
 import { useChatTitle } from "@/hooks/useChatTitle"
 import { useFollowUps } from "@/hooks/useFollowUps"
 import { FollowUpChips } from "@/components/chat/FollowUpChips"
@@ -95,7 +95,7 @@ export default function Home() {
   const [displayName, setDisplayName] = useState('')
 
   // Project landing page state
-  const [chatPreviews, setChatPreviews] = useState<{ id: number; title: string; preview: string | null; createdAt: Date | null }[]>([])
+  const [chatPreviews, setChatPreviews] = useState<ChatPreview[]>([])
   const [chatPreviewsLoading, setChatPreviewsLoading] = useState(false)
 
   // Artifact state
@@ -975,8 +975,11 @@ export default function Home() {
     setStandaloneChats(prev => prev.filter(c => c.id !== chatId))
     if (activeChatId === chatId) setActiveChatId(null)
     loadArchivedChats()
+    // Keep the project landing list in sync (archive is reachable from its rows
+    // now); no-ops when no project is active.
+    refreshChatPreviews()
     toast.success("Chat archived")
-  }, [activeChatId, loadArchivedChats])
+  }, [activeChatId, loadArchivedChats, refreshChatPreviews])
 
   const handleRestoreChat = useCallback(async (chatId: number) => {
     await restoreChat(chatId)
@@ -1284,6 +1287,7 @@ export default function Home() {
         ) : activeProjectId && !newChatCompose && projects.find(p => p.id === activeProjectId) ? (
           <ProjectLandingPage
             project={projects.find(p => p.id === activeProjectId)!}
+            projects={projects}
             chatPreviews={chatPreviews}
             loading={chatPreviewsLoading}
             composer={
@@ -1317,6 +1321,7 @@ export default function Home() {
             onDeleteProject={handleRequestDeleteProject}
             onBack={() => { setActiveView('projects'); setActiveChatId(null); setActiveProjectId(null) }}
             onRename={() => handleRequestRenameProject(activeProjectId)}
+            chatActions={sidebarActions}
           />
         ) : (
           <div className="relative isolate flex-1 flex flex-col items-center justify-center w-full max-w-(--thread-max-width) mx-auto px-4">
