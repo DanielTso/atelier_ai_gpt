@@ -1,10 +1,27 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { ArtifactSummary } from '@/types'
+import { codeToHtmlSafe } from '@/lib/highlighter'
+import { codeLanguage } from '@/lib/artifacts/code'
 
 interface SheetSpec { name: string; rows: (string | number)[][] }
+
+function CodePreview({ content, language }: { content: string; language: string | null }) {
+  const [html, setHtml] = useState<string | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    codeToHtmlSafe(content, language).then(r => { if (!cancelled) setHtml(r) })
+    return () => { cancelled = true }
+  }, [content, language])
+  if (html) {
+    // Shiki output is locally generated from stored source — trusted HTML.
+    return <div className="text-sm [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:p-3" dangerouslySetInnerHTML={{ __html: html }} />
+  }
+  return <pre className="overflow-x-auto rounded-lg bg-muted p-3 text-sm font-mono whitespace-pre">{content}</pre>
+}
 
 function SheetsPreview({ content }: { content: string }) {
   let sheets: SheetSpec[] = []
@@ -76,10 +93,14 @@ export function ArtifactPreview({ artifact }: { artifact: ArtifactSummary }) {
   const content = artifact.content ?? ''
   return (
     <div className="text-sm">
-      <p className="mb-2 text-[11px] uppercase tracking-wide text-muted-foreground/70">
-        Preview (approximate) — download for the exact file
-      </p>
-      {artifact.format === 'sheets' ? (
+      {artifact.type !== 'code' && (
+        <p className="mb-2 text-[11px] uppercase tracking-wide text-muted-foreground/70">
+          Preview (approximate) — download for the exact file
+        </p>
+      )}
+      {artifact.type === 'code' ? (
+        <CodePreview content={content} language={codeLanguage(artifact.format)?.shikiLang ?? artifact.format} />
+      ) : artifact.format === 'sheets' ? (
         <SheetsPreview content={content} />
       ) : content ? (
         <div className="prose prose-sm max-w-none break-words dark:prose-invert">

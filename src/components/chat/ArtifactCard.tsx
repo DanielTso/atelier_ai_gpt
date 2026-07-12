@@ -1,10 +1,10 @@
 'use client'
 import { memo } from 'react'
-import { FileSpreadsheet, FileText, FileType, Presentation, Code, Download } from 'lucide-react'
+import { FileSpreadsheet, FileText, FileType, Presentation, Code, FileCode, Download } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ArtifactSummary } from '@/types'
 
-const ICON: Record<string, typeof FileText> = { xlsx: FileSpreadsheet, docx: FileType, pdf: FileText, pptx: Presentation, html: Code }
+const ICON: Record<string, typeof FileText> = { xlsx: FileSpreadsheet, docx: FileType, pdf: FileText, pptx: Presentation, html: Code, code: FileCode }
 
 export const ArtifactCard = memo(function ArtifactCard({ artifact, onOpen }: { artifact: ArtifactSummary; onOpen?: (id: number) => void }) {
   const Icon = ICON[artifact.type] ?? FileText

@@ -45,7 +45,7 @@ export interface ArtifactSummary {
 }
 
 export const ARTIFACT_TYPE_LABELS: Record<string, string> = {
-  html: 'HTML', pdf: 'PDF', xlsx: 'Spreadsheet', docx: 'Document', pptx: 'Slides',
+  html: 'HTML', pdf: 'PDF', xlsx: 'Spreadsheet', docx: 'Document', pptx: 'Slides', code: 'Code',
 }
 
 /** A single artifact version (D2), as the workspace panel consumes it. */
