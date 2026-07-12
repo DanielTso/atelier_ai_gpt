@@ -166,6 +166,10 @@ export default function Home() {
 
   // Composer state (NOT in useDialogs — owned by the composer, not the dialog layer)
   const [currentSystemPrompt, setCurrentSystemPrompt] = useState<string | null>(null)
+  // True once the user explicitly picks a persona in a not-yet-created chat's
+  // composer — guards the pick against being clobbered by the async project-
+  // defaults load in createChatForProject (reset there per compose session).
+  const composePersonaPickedRef = useRef(false)
 
   // Sidebar collapse
   const [sidebarCollapsed, setSidebarCollapsed] = useLocalStorage('sidebar-collapsed', false)
@@ -625,6 +629,7 @@ export default function Home() {
     // Reflect project defaults in the composer now; persisted to the new chat on send.
     // Set the system prompt explicitly (default persona's, else null) so a previous
     // chat's prompt is never carried into — or persisted onto — the new project chat.
+    composePersonaPickedRef.current = false
     let promptToApply: string | null = null
     try {
       const defaults = await getProjectDefaults(projectId)
@@ -639,7 +644,9 @@ export default function Home() {
     } catch {
       // Defaults are optional.
     }
-    setCurrentSystemPrompt(promptToApply)
+    // A persona the user picked while the defaults round-trip was in flight WINS —
+    // without this guard the late resolve silently reverted the pick (live bug).
+    if (!composePersonaPickedRef.current) setCurrentSystemPrompt(promptToApply)
   }
 
   const handleCreateChat = async () => {
@@ -753,25 +760,30 @@ export default function Home() {
     const projectId = activeProjectIdRef.current
     if (projectId == null) return
 
-    // Derive the project's defaults (same logic as createChatForProject) so the new
-    // chat uses the project's persona prompt + model.
-    let systemPrompt: string | null = null
-    try {
-      const defaults = await getProjectDefaults(projectId)
-      if (defaults.defaultPersonaId) {
-        const persona = getPersonaById(defaults.defaultPersonaId)
-        if (persona?.prompt) {
-          systemPrompt = persona.prompt
-          setSelectedEffort(persona.effort)
-          selectedEffortRef.current = persona.effort
+    // An explicit persona picked in this composer wins (currentSystemPrompt is
+    // null on the landing surface unless the user picked one — the chat-switch
+    // effect clears it whenever activeChatId goes null). Project defaults only
+    // fill the gap. Ignoring the pick here was a live bug: selecting a persona
+    // on the landing composer silently reverted to the project default.
+    let systemPrompt: string | null = currentSystemPrompt
+    if (systemPrompt == null) {
+      try {
+        const defaults = await getProjectDefaults(projectId)
+        if (defaults.defaultPersonaId) {
+          const persona = getPersonaById(defaults.defaultPersonaId)
+          if (persona?.prompt) {
+            systemPrompt = persona.prompt
+            setSelectedEffort(persona.effort)
+            selectedEffortRef.current = persona.effort
+          }
         }
+        if (defaults.defaultModel) {
+          setSelectedModel(defaults.defaultModel)
+          selectedModelRef.current = defaults.defaultModel
+        }
+      } catch {
+        // Defaults are optional.
       }
-      if (defaults.defaultModel) {
-        setSelectedModel(defaults.defaultModel)
-        selectedModelRef.current = defaults.defaultModel
-      }
-    } catch {
-      // Defaults are optional.
     }
 
     try {
@@ -813,7 +825,7 @@ export default function Home() {
     } else {
       await sendMessage({ text: userMessage })
     }
-  }, [input, attachedFiles, attachedImages, isLoading, getPersonaById, sendMessage])
+  }, [input, attachedFiles, attachedImages, isLoading, getPersonaById, sendMessage, currentSystemPrompt])
 
   const handleProjectLandingKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -1027,6 +1039,7 @@ export default function Home() {
     // handleSendMessage. Without this, selecting a persona before sending did nothing and
     // the chip stayed on the default "General Assistant".
     if (!activeChatId) {
+      composePersonaPickedRef.current = true
       setCurrentSystemPrompt(prompt)
       return
     }
