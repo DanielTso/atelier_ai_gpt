@@ -7,7 +7,7 @@ _Authoritative current-state bootstrap for a new session. Read this first, then 
 - **Two releases shipped and live today**: **v4.48.0** (RAG Phase 3 — `read_document` whole-doc tool + hybrid FTS/trigram retrieval) and **v4.49.0** (browser back/forward + URL deep links + chat actions on project landing rows). Both deployed, CI green, **v4.49.0 user-verified live** (back/forward walk, refresh-restore, row menu all confirmed working).
 - **Supabase migrations `0015`/`0016` are APPLIED to prod** (pg_trgm, `content_tsv` backfilled, GIN indexes, `failed_pages`) — applied BEFORE the code deploy, in the mandatory order.
 - 650 unit tests green (`$env:TZ='America/Phoenix'; npx vitest run --no-file-parallelism`).
-- **Not yet done:** git tags / GitHub releases for 4.48.0+4.49.0 (`package.json` still says 4.47.0); RAG Phase 3 live acceptance test (needs the Drover plan set re-uploaded — prod DB had only 1 small doc).
+- **RAG Phase 3 acceptance PASSED (2026-07-12)**: Drover 90% DD (259 pages, 175MB) ingested in ~10 min — hybrid extraction, 920 chunks, failed-page tracking caught pages 139-140; "list every storm sheet" and the SW-101 note question both answered CORRECTLY (user-confirmed); keyword path clean in prod logs (also proves the postgres-js rowsOf branch). Quick chats do NOT see project docs — by design (tenant-isolation seed). Not yet done: git tags/GitHub releases for 4.48.0+4.49.0.
 
 ## What shipped this session (2026-07-12)
 
