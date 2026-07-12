@@ -344,3 +344,11 @@ body {
     color: var(--muted-foreground);
   }
 }
+
+/* Shiki dual-theme: light values inline; dark values flip via CSS variables
+   under the class-based dark mode (next-themes sets .dark on <html>). */
+html.dark .shiki,
+html.dark .shiki span {
+  color: var(--shiki-dark) !important;
+  background-color: var(--shiki-dark-bg) !important;
+}
