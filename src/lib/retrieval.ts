@@ -72,17 +72,31 @@ export async function retrieveContext(
             : Promise.resolve([]),
         ])
         // Vector list FIRST so shared ids keep their embedding (and similarity) for MMR.
-        let docCands: (DocCand & { rrfScore: number })[] = rrfFuse([vecCands, kwCands], cfg.rrfK)
+        let docCands: DocCand[] = rrfFuse([vecCands, kwCands], cfg.rrfK)
+        let keywordOnly: DocCand[] = []
         if (cfg.mmrEnabled) {
           // MMR needs embeddings; keyword-only hits have none but are exact
           // matches by construction — keep them alongside the MMR picks.
           const embedded = docCands.filter(c => c.embedding != null)
-          const keywordOnly = docCands.filter(c => c.embedding == null).slice(0, cfg.docTopK)
+          const kwTail = docCands.filter(c => c.embedding == null).slice(0, cfg.docTopK)
           const picked = mmr(embedded as unknown as (DocCand & MmrItem)[], cfg.docTopK * 2, cfg.mmrLambda)
           const seen = new Set(picked.map(c => c.chunkId))
-          docCands = [...picked, ...keywordOnly.filter(c => !seen.has(c.chunkId))] as (DocCand & { rrfScore: number })[]
+          keywordOnly = kwTail.filter(c => !seen.has(c.chunkId))
+          docCands = [...picked, ...keywordOnly]
         }
-        const docFinal = cfg.rerankEnabled ? await rerankCandidates(query, docCands, cfg.docTopK) : docCands.slice(0, cfg.docTopK)
+        let docFinal: DocCand[]
+        if (cfg.rerankEnabled) {
+          docFinal = await rerankCandidates(query, docCands, cfg.docTopK)
+        } else {
+          // Without rerank, a plain head-slice would consume entirely from the MMR
+          // picks (typically docTopK*2 of them) and silently drop the keyword-only
+          // tail — reserve slots for the keyword-only exact matches instead.
+          const kwIds = new Set(keywordOnly.map(c => c.chunkId))
+          docFinal = [
+            ...docCands.filter(c => !kwIds.has(c.chunkId)).slice(0, Math.max(0, cfg.docTopK - keywordOnly.length)),
+            ...keywordOnly,
+          ].slice(0, cfg.docTopK)
+        }
         return docFinal.length > 0 ? docFinal.map(c => `[From: ${c.filename}]\n${c.content}`).join('\n---\n') : null
       } catch (e) {
         console.warn('[retrieval] document retrieval failed:', e instanceof Error ? e.message : e)

@@ -138,6 +138,29 @@ describe('retrieveContext', () => {
     expect(out.documentContext).toContain('vector only')
   })
 
+  it('keyword-only hit survives the final slice when rerank is disabled', async () => {
+    setup({ rerankEnabled: false })
+    m.generateEmbedding.mockResolvedValue([1, 0, 0])
+    m.findSimilarMessages.mockResolvedValue([])
+    // Enough embedded candidates that MMR's picks alone would fill a plain
+    // head-slice of docTopK (3) — the keyword-only tail must still get a slot.
+    m.findSimilarDocumentChunks.mockResolvedValue([
+      { content: 'vec A', similarity: 0.95, chunkId: 1, documentId: 1, filename: 'a.pdf', embedding: [1, 0, 0] },
+      { content: 'vec B', similarity: 0.9, chunkId: 2, documentId: 1, filename: 'a.pdf', embedding: [0, 1, 0] },
+      { content: 'vec C', similarity: 0.85, chunkId: 3, documentId: 1, filename: 'a.pdf', embedding: [0, 0, 1] },
+      { content: 'vec D', similarity: 0.8, chunkId: 4, documentId: 1, filename: 'a.pdf', embedding: [1, 1, 0] },
+    ])
+    m.findChunksByKeyword.mockResolvedValue([
+      { content: 'SW-101 keyword-only', chunkId: 9, documentId: 2, filename: 'b.pdf', embedding: null },
+    ])
+    const { retrieveContext } = await import('@/lib/retrieval')
+    const out = await retrieveContext(msgs as never, { chatId: 1, projectId: 7 })
+    expect(m.rerankCandidates).not.toHaveBeenCalled()
+    expect(out.documentContext).toContain('SW-101 keyword-only')
+    // Reserving a slot must not push out the top vector pick.
+    expect(out.documentContext).toContain('vec A')
+  })
+
   it('degrades to vector-only when the keyword leg throws', async () => {
     setup()
     m.generateEmbedding.mockResolvedValue([1, 0, 0])
