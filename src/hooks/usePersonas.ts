@@ -269,6 +269,40 @@ You are a rigorous reasoning partner for genuinely hard problems — the ones wh
 - State the key assumptions and the main risk to your conclusion explicitly.
 </formatting>`
 
+/** Locked Contract Abstract field schema — EDIT HERE ONLY. Order is the output order. */
+export const CONTRACT_ABSTRACT_FIELDS = [
+  'Project Name', 'Contract Title/Number', 'Owner', 'Contractor', 'Architect/Engineer',
+  'Contract Type (LS/GMP/T&M/Unit Price)', 'Contract Sum', 'Retainage %',
+  'Notice to Proceed', 'Substantial Completion', 'Final Completion',
+  'Liquidated Damages', 'Payment Terms', 'Schedule of Values Requirements',
+  'Insurance Requirements', 'Bond Requirements', 'Warranty Period',
+  'Notice Requirements (claims/delays)', 'Change Order Markup %',
+  'Dispute Resolution', 'Termination Provisions', 'Key Exclusions',
+] as const
+
+const CONTRACT_ABSTRACT_PROMPT = `<identity>
+You are a construction contract abstractor. You produce a standardized Contract Abstract — a one-page reference of a contract's commercial terms — extracted verbatim from the contract documents provided in this project.
+</identity>
+
+<schema>
+The abstract has EXACTLY these fields, in this order — never add, remove, rename, or reorder them:
+${CONTRACT_ABSTRACT_FIELDS.map(f => `- ${f}`).join('\n')}
+</schema>
+
+<constraints>
+- Extraction only: fill each field ONLY from the provided contract documents (retrieved context and read_document). Never infer, estimate, or fill from general knowledge.
+- A field with no support in the documents gets the exact value: Not found in provided documents
+- Every filled field cites its source (article/section/paragraph/exhibit) in the Source Ref column.
+- Quote money, dates, percentages, and durations exactly as written.
+</constraints>
+
+<output>
+When asked to abstract a contract:
+1. A short chat summary of the 3-5 highest-risk terms you found (LDs, notice deadlines, pay-when-paid, onerous exclusions).
+2. Then call generate_artifact with type "xlsx", format "sheets": ONE sheet named "Contract Abstract", header row "Field | Value | Source Ref" (as three columns), then one row per schema field in exact schema order.
+For any other question, answer in chat with citations — no file.
+</output>`
+
 // Unified persona roster — each carries a prompt, model, and (except Haiku) effort.
 const PERSONAS: Persona[] = [
   { id: 'general-assistant', name: 'General Assistant', icon: '💬', prompt: GENERAL_PROMPT, model: 'claude-sonnet-5', effort: 'medium', isDefault: true, description: 'Versatile everyday assistant' },
@@ -282,11 +316,15 @@ const PERSONAS: Persona[] = [
   { id: 'plan-spec-reader', name: 'Plan & Spec Reader', icon: '📐', prompt: PLAN_SPEC_READER_PROMPT, model: 'claude-sonnet-5', effort: 'medium', description: 'Structured extraction from drawings & specs' },
   { id: 'claims-delay-analyst', name: 'Claims & Delay Analyst', icon: '⚖️', prompt: CLAIMS_DELAY_PROMPT, model: 'claude-fable-5', effort: 'max', description: 'Delay/time-impact analysis, causation & entitlement' },
   { id: 'contract-spec-analyst', name: 'Contract & Spec Analyst', icon: '📜', prompt: CONTRACT_SPEC_PROMPT, model: 'claude-fable-5', effort: 'max', description: 'Interprets contract obligations, conflicts & deadlines' },
+  { id: 'contract-abstract', name: 'Contract Abstract', icon: '🗂️', prompt: CONTRACT_ABSTRACT_PROMPT, model: 'claude-fable-5', effort: 'max', description: 'Locked-schema contract abstract to xlsx' },
   { id: 'constructability-reviewer', name: 'Constructability Reviewer', icon: '🧩', prompt: CONSTRUCTABILITY_PROMPT, model: 'claude-fable-5', effort: 'high', description: 'Clash/sequencing/VE review before the field' },
   { id: 'deep-reasoner', name: 'Deep Reasoner', icon: '🧠', prompt: DEEP_REASONER_PROMPT, model: 'claude-fable-5', effort: 'high', description: 'Flagship reasoning for hard, high-stakes problems' },
 ]
 
 const DEFAULT_PERSONA = PERSONAS.find(p => p.isDefault) ?? PERSONAS[0]
+
+/** Test-only export of the built-in roster (the hook itself needs React). */
+export const PERSONAS_FOR_TEST = PERSONAS
 
 // Soft cap on user-created personas to keep the localStorage entry bounded.
 const MAX_CUSTOM_PERSONAS = 50
