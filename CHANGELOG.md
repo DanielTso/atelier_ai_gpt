@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.48.0] - 2026-07-11 — RAG Phase 3: whole-document mode + hybrid keyword retrieval
+
+Spec: `docs/specs/2026-07-11-rag-phase3-whole-doc-hybrid-design.md`. Fixes two live Drover failures: **set-wide questions** ("list every storm sheet") that no top-k chunk count can cover, and **tokenizer-hostile identifiers** ("SW-101", "E203") where pure vector search returns plausible-but-wrong chunks instead of nothing.
+
+### Added
+
+- **`read_document` tool** — Claude-driven whole-document mode. `src/lib/documents/tool.ts` (new `src/lib/documents/windowing.ts` `sliceWindow`) reads a project document's stored `extracted.txt` one window at a time (`READ_DOC_WINDOW_CHARS`, default `100000` chars), cutting on `# Page n` anchors when present or falling back to character offsets; each call returns a continuation pointer. Wired into `/api/chat` for Claude project chats with ≥1 ready document, alongside a compact `[Project documents]` manifest (id/filename/page count/char count/extraction method/partial flag) and `READ_DOCUMENT_GUIDANCE` steering Claude to chunks-first, `read_document` only for set-wide/exhaustive asks or when chunks are visibly insufficient. Missing `extracted.txt` (pre-Phase-1 docs) degrades to an in-band tool error, never throws.
+- **Hybrid keyword retrieval, always on.** New `src/lib/keywordSearch.ts` `findChunksByKeyword` — Postgres full-text search (`content_tsv @@ websearch_to_tsquery`, ranked by `ts_rank_cd`) unioned with trigram-indexed `ILIKE` matches on identifier-shaped query tokens (`SW-101`, `E203`). New `src/lib/rrf.ts` `rrfFuse` merges the vector and keyword candidate lists by Reciprocal Rank Fusion before the existing MMR → rerank → top-k tail in `src/lib/retrieval.ts`; keyword-only hits (no embedding) survive MMR as exact matches, including in the no-rerank path. New `ragConfig.ts` knobs: `RAG_HYBRID_ENABLED` (default `true`), `RAG_RRF_K` (default `60`), `RAG_KEYWORD_TOP_N` (default = `RAG_TOP_N`). Keyword-path failures log and degrade to vector-only.
+- **Failed-page tracking.** `documents.failed_pages` (jsonb, migration `0015`) records the absolute page numbers a vision segment couldn't extract after retries. Plumbed from `extractViaVision`/`extractPagesViaVision` through `/api/documents/process` → `updateDocumentStatus`/`commitDocumentReplacement`/`ingestText` → `GET /api/documents` → `DocumentCard`'s Partial badge, whose tooltip is now actionable ("Vision failed on pages 12–14, 30" via new `formatPageList` in `src/lib/utils.ts`) instead of generic. `read_document` surfaces the same list as `unavailablePages`.
+- **Chunk provenance tags.** Vision-derived page runs get a `[pages 12–14 · vision]` header prepended before chunking (`visionRunHeader` in `src/lib/visionExtraction.ts`, applied in both the full-vision path and the hybrid splice) — same pattern as web ingest's `Source: <url>` header — so Claude can hedge on OCR-derived content and provenance flows into retrieval context for free.
+- **"Reading documents…" stage.** `src/lib/chatStage.ts` maps an active `read_document` tool part to a new `reading-documents` stage; `ThinkingStatus` shows "Reading documents…" (BookOpen icon) — same mechanism as `generating-image`.
+
+### Migrations
+
+- `0015_chemical_sugar_man.sql` — `documents.failed_pages jsonb`.
+- `0016_hybrid_search.sql` — `CREATE EXTENSION IF NOT EXISTS pg_trgm`, `document_chunks.content_tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', content)) STORED` + GIN index, GIN trigram index on `document_chunks.content`. Raw-SQL only (not represented in `src/db/schema.ts` — `content_tsv` is a generated column Drizzle doesn't model).
+- **Both authored but NOT yet applied to Supabase** — apply via `DIRECT_URL=... npx drizzle-kit migrate` before hybrid retrieval, failed-page reporting, or `read_document` work live in prod.
+
+### Notes
+
+- **Persistence guard confirmed unnecessary:** `saveMessage` persists assistant TEXT only — tool outputs (including `read_document` window text) never reach the `messages` table, so no output stubbing was needed. Reloads show the assistant's answer without a tool card, consistent with existing `web_search` behavior.
+- **A planned nice-to-have slice was dropped:** a pre-stream `data-stage` UI part meant to cover the ~1–2s pre-stream RAG latency with "Reading documents…" was abandoned — the chat route's `execute` is fire-and-forget, and wrapping it to emit a part ahead of the stream degraded route errors from a 500 JSON response to a masked 200 in-stream response (confirmed empirically). The tool-driven stage still ships; the now-unused `data-stage` handling in `chatStage.ts` stays as harmless, forward-compatible code.
+- `tests/helpers/test-db.ts` PGlite instance now also loads the `pg_trgm` extension alongside `vector`.
+
 ## [4.47.0] - 2026-07-11 — Living Studio: motion system, agentic experiences, hardening
 
 The largest single-day release to date. Three arcs: RAG ingestion hardening from live Drover failures, a full motion/loading-state modernization ("no more old-ChatGPT feel"), and Experience Mode — multi-step agentic responses that research, generate imagery, and build designed HTML pages, benchmarked against Manus and hardened across four live debugging rounds.

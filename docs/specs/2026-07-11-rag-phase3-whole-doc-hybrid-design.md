@@ -65,12 +65,10 @@ read_document({ documentId, pageRange?: {from, to}, offset?: number })
   set-wide/exhaustive asks ("list every…", "summarize the whole…", counting) or when
   retrieved chunks are visibly insufficient. Chat-first principle unchanged.
 
-**Persistence guard (important).** Tool outputs are NOT persisted verbatim: on save
-(`useChatPersistence` onFinish path), `read_document` output parts are replaced with a
-stub `{ documentId, filename, pagesCovered, charCount }`. Rationale: 100k-char results
-would bloat `messages` rows, reload payloads, and poison `/api/summarize`. The
-assistant's answer text carries the substance. Reload renders a compact "Read pages
-1–40 of <file>" card.
+**Persistence guard (resolved during implementation):** `saveMessage` persists assistant
+TEXT only — tool outputs never reach the `messages` table, so no stubbing is needed.
+Window text lives only in the in-flight turn; reloads show the assistant's answer
+without the tool card (consistent with `web_search`).
 
 **Failure modes.** Missing `extracted.txt` (docs ingested before Phase 1) → in-band
 tool message "full text unavailable — re-upload the document to enable whole-document
@@ -127,11 +125,14 @@ OCR-derived content. No schema change; no backfill.
 - (a) **Tool stage (ships for sure):** `src/lib/chatStage.ts` maps an active
   `read_document` tool part → new stage `reading-documents`; `ThinkingStatus` copy
   "Reading documents…". Identical mechanism to `generating-image`.
-- (b) **Retrieval-pass data part (nice-to-have slice):** emit a transient `data-stage`
-  UI-stream part before `streamText` while `retrieveContext` runs in project chats with
-  documents, so the pre-stream RAG latency (rewrite + embed + rerank, ~1–2s) shows as
-  "Reading documents…" instead of dead air. If the stream plumbing is awkward, (a)
-  alone satisfies this phase.
+- (b) **Retrieval-pass data part (nice-to-have slice) — DROPPED.** Attempted a
+  pre-stream `data-stage` UI part emitted before `streamText` while `retrieveContext`
+  runs. Dropped: in the current chat route, `execute` is fire-and-forget, so wrapping
+  it to emit a part ahead of the stream degraded route errors from a 500 JSON response
+  to a masked 200 in-stream response — confirmed empirically, not theoretical. (a)
+  alone ships this phase. The `data-stage` handling already added to `chatStage.ts`
+  stays in place — harmless and forward-compatible if a safe emission path is found
+  later.
 
 ## File layout
 
