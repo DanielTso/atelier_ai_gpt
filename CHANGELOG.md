@@ -18,7 +18,7 @@ Spec: `docs/specs/2026-07-11-rag-phase3-whole-doc-hybrid-design.md`. Fixes two l
 
 - `0015_chemical_sugar_man.sql` — `documents.failed_pages jsonb`.
 - `0016_hybrid_search.sql` — `CREATE EXTENSION IF NOT EXISTS pg_trgm`, `document_chunks.content_tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', content)) STORED` + GIN index, GIN trigram index on `document_chunks.content`. Raw-SQL only (not represented in `src/db/schema.ts` — `content_tsv` is a generated column Drizzle doesn't model).
-- **Both authored but NOT yet applied to Supabase** — apply via `DIRECT_URL=... npx drizzle-kit migrate` before hybrid retrieval, failed-page reporting, or `read_document` work live in prod.
+- **Both authored but NOT yet applied to Supabase — this is MANDATORY, not advisory: apply via `DIRECT_URL=... npx drizzle-kit migrate` BEFORE pushing/deploying this release.** The deployed code queries `documents.failed_pages`, so an unmigrated DB breaks ALL `documents` queries app-wide (document listing, uploads, the Files panel) — not just hybrid retrieval, failed-page reporting, or `read_document`.
 
 ### Notes
 

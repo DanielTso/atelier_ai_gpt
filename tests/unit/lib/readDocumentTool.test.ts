@@ -53,4 +53,23 @@ describe('read_document tool', () => {
     const r: any = await (tool as any).execute({ documentId: 7 }, {} as never)
     expect(r.error).toMatch(/re-upload/i)
   })
+
+  it('returns an error mentioning the anchor count when fromPage is beyond the document', async () => {
+    getDocMock.mockResolvedValue(doc)
+    downloadMock.mockResolvedValue(Buffer.from('# Page 1\nhello world\n# Page 2\nmore text'))
+    const tool = createReadDocumentTool({ projectId: 3 })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const r: any = await (tool as any).execute({ documentId: 7, fromPage: 99 }, {} as never)
+    expect(r.error).toMatch(/no page 99/i)
+    expect(r.error).toMatch(/2 page anchors/i)
+  })
+
+  it('yields an empty unavailablePages array when failedPages is null', async () => {
+    getDocMock.mockResolvedValue({ ...doc, failedPages: null })
+    downloadMock.mockResolvedValue(Buffer.from('# Page 1\nhello world'))
+    const tool = createReadDocumentTool({ projectId: 3 })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const r: any = await (tool as any).execute({ documentId: 7 }, {} as never)
+    expect(r.unavailablePages).toEqual([])
+  })
 })

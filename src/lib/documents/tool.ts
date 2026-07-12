@@ -55,7 +55,7 @@ export function createReadDocumentTool(ctx: { projectId: number }) {
           unavailablePages: failedPages,
           note: w.nextOffset == null
             ? 'End of document.'
-            : `Partial window — continue with offset=${w.nextOffset}${w.lastPage != null ? ` (or fromPage=${w.lastPage + 1})` : ''} if more is needed.`,
+            : `Partial window — continue with offset=${w.nextOffset} if more is needed.`,
         }
       } catch (e) {
         console.warn('[read_document] failed:', e instanceof Error ? e.message : e)

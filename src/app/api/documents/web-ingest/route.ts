@@ -49,6 +49,17 @@ export async function POST(request: NextRequest) {
     await uploadBuffer(storagePath, Buffer.from(text, 'utf-8'), 'text/markdown')
     await updateDocumentStoragePath(doc.id, storagePath)
 
+    // Also persist as extracted.txt so read_document (whole-document mode) can find
+    // it — the manifest lists this doc as ready/readable the moment ingestion
+    // succeeds, and read_document always looks for extracted.txt, never source.md.
+    // Best-effort: chunks are the retrieval path, so a failure here never fails ingestion.
+    try {
+      const extractedTxtPath = `documents/${projectId}/${doc.id}/extracted.txt`
+      await uploadBuffer(extractedTxtPath, Buffer.from(text, 'utf-8'), 'text/plain')
+    } catch (e) {
+      console.warn('[documents/web-ingest] extracted.txt upload failed:', e instanceof Error ? e.message : e)
+    }
+
     const { status } = await ingestText({ id: doc.id, projectId }, text, { extractionMethod: 'text', partial })
 
     const fresh = await getDocumentById(doc.id)

@@ -93,6 +93,9 @@ describe('POST /api/documents/web-ingest', () => {
     expect(data.document).toMatchObject({ id: 42, mimeType: 'text/markdown', url: 'https://signed/source.md' })
     expect(m.createUploadingDocument).toHaveBeenCalledWith(expect.objectContaining({ projectId: 1, mimeType: 'text/markdown', filename: 'Page A' }))
     expect(m.uploadBuffer).toHaveBeenCalledWith('documents/1/42/source.md', expect.any(Buffer), 'text/markdown')
+    // extracted.txt must also be uploaded so read_document (whole-document mode) can find it —
+    // without this, a web-ingested doc is listed ready in the manifest but read_document 404s.
+    expect(m.uploadBuffer).toHaveBeenCalledWith('documents/1/42/extracted.txt', expect.any(Buffer), 'text/plain')
     expect(m.ingestText).toHaveBeenCalledWith({ id: 42, projectId: 1 }, expect.stringContaining('Source: https://x.com/a'), { extractionMethod: 'text', partial: false })
     // secret-handling: the key never appears in the response body
     expect(JSON.stringify(data)).not.toMatch(/tvly-/)
@@ -105,6 +108,17 @@ describe('POST /api/documents/web-ingest', () => {
     expect(res.status).toBe(200)
     expect(m.ingestText).toHaveBeenCalledWith({ id: 42, projectId: 1 }, expect.any(String), { extractionMethod: 'text', partial: true })
     expect(m.ingestText.mock.calls[0][1].length).toBe(100_000) // truncated to the ceiling
+  })
+
+  it('best-effort: extracted.txt upload failure does not fail ingestion', async () => {
+    m.uploadBuffer.mockImplementation((path: string) => {
+      if (path.endsWith('extracted.txt')) return Promise.reject(new Error('storage hiccup'))
+      return Promise.resolve(undefined)
+    })
+    const POST = await importRoute()
+    const res = await POST(req({ url: 'https://x.com/a', projectId: 1 }) as never)
+    expect(res.status).toBe(200)
+    expect(m.ingestText).toHaveBeenCalled()
   })
 
   it('marks the row error and returns 500 when ingestion throws', async () => {
