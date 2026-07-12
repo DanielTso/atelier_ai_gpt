@@ -85,3 +85,18 @@ describe('extractTextFromBuffer pageTexts', () => {
     expect(out.pageTexts).toBeUndefined()
   })
 })
+
+describe('isImageUpload — raster allow-list', () => {
+  it('accepts the four raster formats by extension or MIME', async () => {
+    const { isImageUpload } = await import('@/lib/fileExtraction')
+    expect(isImageUpload('png', 'application/octet-stream')).toBe(true)
+    expect(isImageUpload('bin', 'image/jpeg')).toBe(true)
+    expect(isImageUpload('webp', 'image/webp')).toBe(true)
+  })
+  it('rejects svg and other image/* MIMEs the pipeline cannot process', async () => {
+    const { isImageUpload } = await import('@/lib/fileExtraction')
+    expect(isImageUpload('svg', 'image/svg+xml')).toBe(false)
+    expect(isImageUpload('gif', 'image/gif')).toBe(false)
+    expect(isImageUpload('tiff', 'image/tiff')).toBe(false)
+  })
+})

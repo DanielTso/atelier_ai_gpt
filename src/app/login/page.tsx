@@ -21,9 +21,11 @@ export default function LoginPage() {
       })
       if (res.ok) {
         // Return to the originally requested page if the middleware passed a safe
-        // same-origin `next` path; otherwise go home. Re-validate it here too.
+        // same-origin `next` path; otherwise go home. Re-validate it here too —
+        // including '/\': browsers normalize backslash to slash, so '/\evil.com'
+        // becomes protocol-relative '//evil.com' (same guard as proxy.ts).
         const next = new URLSearchParams(window.location.search).get('next')
-        const dest = next && next.startsWith('/') && !next.startsWith('//') ? next : '/'
+        const dest = next && next.startsWith('/') && !next.startsWith('//') && !next.startsWith('/\\') ? next : '/'
         router.replace(dest)
         router.refresh()
       } else {

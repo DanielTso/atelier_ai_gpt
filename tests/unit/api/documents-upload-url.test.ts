@@ -56,6 +56,12 @@ describe('POST /api/documents/upload-url', () => {
     expect(res.status).toBe(400)
   })
 
+  it('400 for svg smuggled via an image/* MIME (scriptable format, not in the raster allow-list)', async () => {
+    const POST = await importRoute()
+    const res = await POST(req({ projectId: 1, filename: 'logo.svg', contentType: 'image/svg+xml', size: 10 }) as never)
+    expect(res.status).toBe(400)
+  })
+
   it('creates row, sets path, returns documentId + token (image allowed)', async () => {
     const POST = await importRoute()
     const res = await POST(req({ projectId: 1, filename: 'plan.png', contentType: 'image/png', size: 10 }) as never)

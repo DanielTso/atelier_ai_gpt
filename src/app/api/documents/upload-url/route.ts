@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createUploadingDocument, updateDocumentStoragePath, getDocumentById, updateDocumentStatus } from '@/app/actions'
 import { isStorageConfigured, createSignedUploadUrl, storageBucketName, sanitizeStorageName as sanitize } from '@/lib/storage'
-import { MAX_FILE_SIZE, isSupported, isImageExtension, getExtension } from '@/lib/fileExtraction'
+import { MAX_FILE_SIZE, isSupported, isImageUpload, getExtension } from '@/lib/fileExtraction'
 import { uploadUrlRequestSchema } from '@/lib/validation'
 import { apiError } from '@/lib/errors'
 
@@ -18,7 +18,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `File too large. Maximum size is ${MAX_FILE_SIZE / (1024 * 1024)}MB.` }, { status: 400 })
     }
     const ext = getExtension(filename)
-    const isImage = isImageExtension(ext) || contentType.startsWith('image/')
+    // Allow-listed raster formats only — a client-declared image/* MIME must not
+    // smuggle in svg (scriptable) or formats the vision pipeline can't process.
+    const isImage = isImageUpload(ext, contentType)
     if (!isSupported(filename, contentType) && !isImage) {
       return NextResponse.json({ error: `Unsupported file type: ${filename}.` }, { status: 400 })
     }

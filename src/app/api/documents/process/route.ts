@@ -4,7 +4,7 @@ import { ensureEmbeddingModel } from '@/lib/embeddings'
 import { chunkText } from '@/lib/chunking'
 import { embedContents } from '@/lib/embedChunks'
 import { ingestText } from '@/lib/ingest'
-import { MAX_FILE_SIZE, DOCUMENT_MAX_CHARS, getExtension, isImageExtension, isSupported, extractTextFromBuffer } from '@/lib/fileExtraction'
+import { MAX_FILE_SIZE, DOCUMENT_MAX_CHARS, getExtension, isImageUpload, isSupported, extractTextFromBuffer } from '@/lib/fileExtraction'
 import type { ExtractionResult } from '@/lib/fileExtraction'
 import { extractViaVision, extractViaVisionImage, extractPagesViaVision, visionRunHeader } from '@/lib/visionExtraction'
 import { downloadToBuffer, uploadBuffer, sanitizeStorageName } from '@/lib/storage'
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     // contract and refuses to route an unsupported/oversized object into the extractor.)
     if (isReplace) {
       const replExt = getExtension(effFilename)
-      const replIsImage = isImageExtension(replExt) || effMimeType.startsWith('image/')
+      const replIsImage = isImageUpload(replExt, effMimeType)
       if (!replIsImage && !isSupported(effFilename, effMimeType)) {
         return NextResponse.json({ error: 'Unsupported file type' }, { status: 400 })
       }
@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
 
     await updateDocumentStatus(doc.id, 'processing')
     const ext = getExtension(effFilename)
-    const isImage = isImageExtension(ext) || effMimeType.startsWith('image/')
+    const isImage = isImageUpload(ext, effMimeType)
 
     let buffer: Buffer
     try {

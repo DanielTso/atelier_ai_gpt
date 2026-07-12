@@ -33,6 +33,15 @@ export function isImageExtension(ext: string): boolean {
   return IMAGE_EXTENSIONS.has(ext)
 }
 
+// Raster MIME allow-list matching IMAGE_EXTENSIONS. Upload routes must use
+// isImageUpload rather than `contentType.startsWith('image/')`: the MIME is
+// client-declared, and a broad prefix check let image/svg+xml (scriptable) or
+// other unsupported image formats bypass the extension allow-list.
+export const IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp'])
+export function isImageUpload(ext: string, contentType: string): boolean {
+  return IMAGE_EXTENSIONS.has(ext) || IMAGE_MIME_TYPES.has(contentType)
+}
+
 export const TEXT_MIME_PREFIXES = ['text/', 'application/json', 'application/xml']
 
 export function getExtension(filename: string): string {
