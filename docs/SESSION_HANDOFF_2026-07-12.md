@@ -33,6 +33,20 @@ Spec `docs/specs/2026-07-12-url-nav-and-chat-menu-design.md`, plan `docs/plans/2
 - **User direction: trial run with other users planned, eventual SaaS** — recorded in the 07-12 spec; favor extensible boundaries (query params → route segments is mechanical when multi-user/Clerk lands).
 - ffmpeg 8.1.2 installed via winget (frame extraction for the recording).
 
+### v4.50.0 — Code Phase A/B (built later this session under delegated authority; LOCAL, not pushed)
+
+Spec `docs/specs/2026-07-12-code-phase-ab-design.md`, plan `docs/plans/2026-07-12-code-phase-ab.md`. **User must review the spec + the Contract Abstract field list on return.**
+- Shiki v4 chat highlighting (`src/lib/highlighter.ts` lazy singleton, JS regex engine, vitesse dual themes, 150ms debounce in `CodeBlock`, plain-pre fallback).
+- `'code'` ArtifactType end to end: `src/lib/artifacts/code.ts` registry (9 languages); language persists in the `format` column (`artifactLanguage()` helper is the single read-side source); tool Zod refine (language + string content required); highlighted `ArtifactPreview`; FileCode icons everywhere; gallery Code filter + New→Code; edit/regenerate/blank-template support. No migration.
+- Contract Abstract persona (`contract-abstract`, Fable/max): extraction-only, locked 22-field schema (`CONTRACT_ABSTRACT_FIELDS` in `usePersonas.ts` — edit there only), xlsx `Field | Value | Source Ref` output.
+- 8-angle code review caught 8 findings (3 missed UI surfaces, misleading Edit label, empty-file schema hole, stale-highlight flash, 4-site duplication → helper, stale schema comment) — all fixed. Gate: typecheck 0, lint 26-warning baseline, build ok, 672 tests.
+
+### Audit Batch B — security slice (also this session, LOCAL)
+
+- `isImageUpload` raster allow-list (png/jpg/jpeg/webp only) replaces `contentType.startsWith('image/')` in upload-url + process routes — svg (scriptable) or exotic image MIMEs can no longer bypass the extension allow-list via a client-declared MIME.
+- Login `next` guard now rejects `/\` (backslash → slash normalization made `/\evil.com` protocol-relative), matching proxy.ts.
+- Batch B's perf items (db pool config, slim list payloads, useCallback pass) remain queued — do them with the full 2026-07-06 audit doc in hand.
+
 ## ⏳ Next session — open items and roadmap
 
 1. **RAG Phase 3 live acceptance** (user-side): re-upload the Drover plan set (re-ingesting also activates failed-page tracking + provenance), then "list every storm sheet" (whole-doc sweep + Reading documents… stage) and "what does note 7 on SW-101 say" (keyword path; also proves the postgres-js rowsOf branch PGlite can't test). Check Vercel logs for `[retrieval] keyword search failed` after the first query.
