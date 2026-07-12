@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.49.0] - 2026-07-12 — Browser navigation history + project chat actions
+
+Spec: `docs/specs/2026-07-12-url-nav-and-chat-menu-design.md`. Fixes two user-reported gaps: the mouse back button exited the app (no history entries were ever created), and chat rows on a project's landing page had no rename/move/archive/delete.
+
+### Added
+
+- **URL-synced browser history.** New `src/lib/navState.ts` (pure `parseNavUrl`/`navToUrl`, canonical scheme: `/` home, `?view=projects|artifacts|images`, `?project=3`, `?project=3&chat=12`, `?chat=12`) + new `src/hooks/useUrlNavSync.ts` (native History API — `pushState` on nav transitions, `popstate` restores state, mount-time deep-link/refresh restore pre-paint). Back/forward now walk chat → project landing → projects grid → home in visit order; refresh and bookmarks restore where you were. The chat URL's project segment comes from the chat's OWN record (`currentChat.projectId`), not `activeProjectId` — which goes stale when a chat opens from the artifact gallery. Stale deep links ride the existing id-validation effect; `suppressNextPush()` turns that correction into a `replaceState` so history gets no dead entry. Deliberately excluded from history: dialogs, lightboxes, the artifact panel, `newChatCompose`. `useSearchParams` avoided on purpose (would force a Suspense boundary around the whole page); `proxy.ts` already preserves query params through the login redirect.
+- **Chat actions on the project landing page.** Chat rows in `ProjectLandingPage` now carry the sidebar's `ChatContextMenu` (hover-revealed "…": Move to…, Rename, Archive, Delete), wired to the same page-level handlers via a new shared `ChatRowActions` type; `SidebarActions extends ChatRowActions`. Rows converted `motion.button` → `motion.div` with `role="button"`/keyboard activation (a native button can't nest the menu-trigger button). `ChatPreview` consolidated into `src/types.ts` (was duplicated in three places); the menu trigger gained `aria-label="Chat options"`.
+
+### Fixed
+
+- **Archiving a chat now refreshes the project landing list** — `handleArchiveChat` was the only chat mutation not calling `refreshChatPreviews()`; a pre-existing gap that became mainline once archive is reachable from the landing rows.
+
 ## [4.48.0] - 2026-07-11 — RAG Phase 3: whole-document mode + hybrid keyword retrieval
 
 Spec: `docs/specs/2026-07-11-rag-phase3-whole-doc-hybrid-design.md`. Fixes two live Drover failures: **set-wide questions** ("list every storm sheet") that no top-k chunk count can cover, and **tokenizer-hostile identifiers** ("SW-101", "E203") where pure vector search returns plausible-but-wrong chunks instead of nothing.
