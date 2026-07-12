@@ -44,9 +44,12 @@ export function CodeBlock({ children, className }: CodeBlockProps) {
   // stabilizes so streaming token updates don't thrash shiki; until then (and
   // for unsupported languages) the plain <pre> below is what renders.
   useEffect(() => {
-    if (!lang || !code) { setHtml(null); return }
     let cancelled = false
     const t = setTimeout(() => {
+      if (!lang || !code) {
+        if (!cancelled) setHtml(null)
+        return
+      }
       codeToHtmlSafe(code, lang).then(result => {
         if (!cancelled) setHtml(result)
       })

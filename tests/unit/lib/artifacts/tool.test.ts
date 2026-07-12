@@ -28,7 +28,7 @@ describe('generate_artifact tool', () => {
     const make = await load()
     const tool = make({ chatId: 3, projectId: 1 })
     const out = await tool.execute!({ type: 'xlsx', title: 'Schedule', format: 'sheets', content: [{ name: 'T', rows: [['a']] }] }, {} as never)
-    expect(mockRender).toHaveBeenCalledWith('xlsx', 'Schedule', [{ name: 'T', rows: [['a']] }])
+    expect(mockRender).toHaveBeenCalledWith('xlsx', 'Schedule', [{ name: 'T', rows: [['a']] }], undefined)
     expect(mockUpload).toHaveBeenCalled()
     expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ chatId: 3, projectId: 1, type: 'xlsx', title: 'Schedule' }))
     expect(out).toEqual({ artifactId: 9, title: 'Schedule', type: 'xlsx', downloadUrl: 'signed:url' })
@@ -39,7 +39,7 @@ describe('generate_artifact tool', () => {
     const make = await load()
     const tool = make({ chatId: 3, projectId: 1 })
     const out = await tool.execute!({ type: 'html', title: 'Landing', format: 'html', content: '<!doctype html><h1>Hi</h1>' }, {} as never)
-    expect(mockRender).toHaveBeenCalledWith('html', 'Landing', '<!doctype html><h1>Hi</h1>')
+    expect(mockRender).toHaveBeenCalledWith('html', 'Landing', '<!doctype html><h1>Hi</h1>', undefined)
     expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ type: 'html', format: 'html', content: '<!doctype html><h1>Hi</h1>' }))
     // HTML downloads go through the same-origin raw route (Supabase serves
     // text/html signed-URL downloads named .txt).

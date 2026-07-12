@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.50.0] - 2026-07-12 — Code Phase A/B: syntax highlighting, code artifacts, Contract Abstract
+
+Spec: `docs/specs/2026-07-12-code-phase-ab-design.md` (designed under delegated authority — review the spec + the Contract Abstract field list on return).
+
+### Added
+
+- **Shiki syntax highlighting in chat.** `src/lib/highlighter.ts` — lazy client-side shiki v4 singleton (fine-grained core + JS regex engine, no WASM; 14 grammars dynamic-imported on first use; aliases `sh/py/ts/js/yml/ps1…`). `CodeBlock` progressively enhances: plain `<pre>` renders immediately, highlighted HTML swaps in ~150ms after the content stabilizes (streaming-safe, no thrash), unsupported languages stay plain. Dual `vitesse-light`/`vitesse-dark` themes flip via CSS variables under `html.dark`.
+- **First-class `'code'` artifacts.** `ArtifactType` gains `'code'`; the language registry (`src/lib/artifacts/code.ts` — python/bash/typescript/javascript/sql/json/yaml/markdown/powershell) is the single source of truth for ids, labels, extensions, and shiki mapping. The language persists in the existing `format` column (`type='code'`, `format='python'`) — no migration. `generate_artifact` accepts `{ type: 'code', language, content }` (Zod refine: language required); downloads land with real filenames (`deploy.sh`, `parse_submittals.py`); `ArtifactPreview` shows shiki-highlighted source (exact, not approximate); `ArtifactCard` gets a `FileCode` icon; edit + regenerate routes re-derive the extension from `format`; blank-artifact template gains a python starter. Chat-first guidance extended: code FILES on explicit ask, snippets stay fenced in chat.
+- **Contract Abstract persona** (`contract-abstract`, Fable 5 @ max — same tier as Contract & Spec Analyst). Extraction-only from project documents (RAG + read_document), locked 22-field schema (`CONTRACT_ABSTRACT_FIELDS` in `usePersonas.ts` — **edit there only**), every field cited or `Not found in provided documents`, output = chat risk summary + a `Field | Value | Source Ref` xlsx via the existing artifact engine.
+
 ## [4.49.0] - 2026-07-12 — Browser navigation history + project chat actions
 
 Spec: `docs/specs/2026-07-12-url-nav-and-chat-menu-design.md`. Fixes two user-reported gaps: the mouse back button exited the app (no history entries were ever created), and chat rows on a project's landing page had no rename/move/archive/delete.

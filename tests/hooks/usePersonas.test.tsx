@@ -8,9 +8,9 @@ describe('usePersonas', () => {
     window.localStorage.clear()
   })
 
-  it('provides one flat list of 9 personas, each with a model', () => {
+  it('provides one flat list of built-in personas, each with a model', () => {
     const { result } = renderHook(() => usePersonas())
-    expect(result.current.personas).toHaveLength(13)
+    expect(result.current.personas).toHaveLength(14)
     expect(result.current.personas.every(p => p.model.startsWith('claude-'))).toBe(true)
   })
 
@@ -47,7 +47,7 @@ describe('usePersonas', () => {
     act(() => {
       result.current.addPersona({ name: 'Mine', icon: '🎭', prompt: 'Be mine', model: '' })
     })
-    expect(result.current.personas).toHaveLength(14)
+    expect(result.current.personas).toHaveLength(15)
     const custom = result.current.customPersonas[0]
     expect(custom.model).toBe('claude-sonnet-5')
     expect(custom.effort).toBe('medium')
@@ -58,8 +58,8 @@ describe('usePersonas', () => {
     const { result } = renderHook(() => usePersonas())
     let id: string
     act(() => { id = result.current.addPersona({ name: 'Temp', icon: '🗑️', prompt: 'temp', model: '' }).id })
-    expect(result.current.personas).toHaveLength(14)
+    expect(result.current.personas).toHaveLength(15)
     act(() => { result.current.deletePersona(id!) })
-    expect(result.current.personas).toHaveLength(13)
+    expect(result.current.personas).toHaveLength(14)
   })
 })
