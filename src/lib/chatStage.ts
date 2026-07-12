@@ -10,6 +10,7 @@ export type AssistantStage =
   | 'searching'
   | 'generating-image'
   | 'building-artifact'
+  | 'reading-documents'
   | 'writing'
 
 type StagePart = {
@@ -17,6 +18,7 @@ type StagePart = {
   toolName?: string
   state?: string
   text?: string
+  data?: { stage?: string }
 }
 
 type StageMessage = { role?: string; parts?: readonly unknown[] }
@@ -67,8 +69,10 @@ export function deriveAssistantStage(status: string, lastMessage: StageMessage |
       if (toolName === 'generate_image') return 'generating-image'
       if (toolName === 'generate_artifact') return 'building-artifact'
       if (toolName === 'web_search') return 'searching'
+      if (toolName === 'read_document') return 'reading-documents'
       return 'thinking'
     }
+    if (type === 'data-stage' && (p.data?.stage === 'reading-documents') && !hasAnswerText) return 'reading-documents'
     if (type === 'text' && (p.text ?? '').trim()) return 'writing'
     if (type === 'reasoning' && !hasAnswerText) return 'thinking'
   }

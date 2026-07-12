@@ -1,7 +1,7 @@
 'use client'
 
 import { motion, AnimatePresence } from 'framer-motion'
-import { Sparkles, Globe, ImageIcon, FileText, type LucideIcon } from 'lucide-react'
+import { Sparkles, Globe, ImageIcon, FileText, BookOpen, type LucideIcon } from 'lucide-react'
 import type { AssistantStage } from '@/lib/chatStage'
 
 // One-line staged status shown in place of the reply before any bubble content
@@ -12,6 +12,7 @@ const STAGE_META: Partial<Record<AssistantStage, { icon: LucideIcon; label: stri
   searching: { icon: Globe, label: 'Searching the web…' },
   'generating-image': { icon: ImageIcon, label: 'Creating image…' },
   'building-artifact': { icon: FileText, label: 'Building document…' },
+  'reading-documents': { icon: BookOpen, label: 'Reading documents…' },
 }
 
 export function ThinkingStatus({ stage }: { stage: AssistantStage }) {

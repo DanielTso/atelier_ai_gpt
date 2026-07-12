@@ -69,6 +69,18 @@ describe('deriveAssistantStage', () => {
   it('step-start noise parts alone read as thinking', () => {
     expect(deriveAssistantStage('streaming', assistant([{ type: 'step-start' }]))).toBe('thinking')
   })
+
+  it('maps an active read_document tool part to reading-documents', () => {
+    const msg = { role: 'assistant', parts: [{ type: 'tool-read_document', state: 'input-available' }] }
+    expect(deriveAssistantStage('streaming', msg)).toBe('reading-documents')
+  })
+
+  it('maps a data-stage part to reading-documents until content arrives', () => {
+    const msg = { role: 'assistant', parts: [{ type: 'data-stage', data: { stage: 'reading-documents' } }] }
+    expect(deriveAssistantStage('streaming', msg)).toBe('reading-documents')
+    const withText = { role: 'assistant', parts: [...msg.parts, { type: 'text', text: 'Answer' }] }
+    expect(deriveAssistantStage('streaming', withText)).toBe('writing')
+  })
 })
 
 describe('toolPartName / isRenderableTool', () => {
