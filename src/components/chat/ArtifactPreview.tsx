@@ -99,7 +99,7 @@ export function ArtifactPreview({ artifact }: { artifact: ArtifactSummary }) {
         </p>
       )}
       {artifact.type === 'code' ? (
-        <CodePreview content={content} language={codeLanguage(artifact.format)?.shikiLang ?? artifact.format} />
+        <CodePreview content={content} language={codeLanguage(artifact.format)?.shikiLang ?? artifact.format ?? null} />
       ) : artifact.format === 'sheets' ? (
         <SheetsPreview content={content} />
       ) : content ? (
