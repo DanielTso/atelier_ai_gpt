@@ -51,3 +51,15 @@ describe('findChunksByKeyword', () => {
     expect(r).toEqual([])
   })
 })
+
+describe('findChunksByKeyword oversized queries', () => {
+  it('caps a giant query (inline file attachment) instead of failing FTS', async () => {
+    const { projectId } = await seed()
+    // Seen live: a message carrying an attached contract arrives as 600k+ chars.
+    // websearch_to_tsquery rejects inputs that large — the cap must prevent the
+    // throw (matching is not expected: websearch ANDs every term, so a
+    // junk-heavy query legitimately returns nothing and vector search carries it).
+    const giant = 'abstract this contract ' + 'lorem ipsum '.repeat(60_000)
+    await expect(findChunksByKeyword(giant, projectId, 10)).resolves.toBeInstanceOf(Array)
+  })
+})

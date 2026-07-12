@@ -32,11 +32,18 @@ export function identifierTokens(query: string, max = 5): string[] {
   return out
 }
 
+// A "query" longer than this is not a keyword query — messages carrying inline
+// file attachments arrive as the FULL file text (600k+ chars, seen live with an
+// attached contract), and websearch_to_tsquery rejects inputs that large. The
+// head of the message is where the user's actual ask lives.
+const MAX_QUERY_CHARS = 2000
+
 export async function findChunksByKeyword(
   query: string,
   projectId: number,
   topN: number,
 ): Promise<KeywordChunk[]> {
+  if (query.length > MAX_QUERY_CHARS) query = query.slice(0, MAX_QUERY_CHARS)
   const fts = rowsOf(await db.execute(sql`
     SELECT dc.id AS chunk_id, dc.content, dc.document_id, d.filename
     FROM document_chunks dc
