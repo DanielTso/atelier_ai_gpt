@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.51.0] - 2026-07-13 — Audit Batch B (perf) + Batch C (cleanup) + RAG deferreds
+
+Spec: `docs/specs/2026-07-12-batch-bc-perf-cleanup-design.md` (overnight autonomous session per the 2026-07-12 handoff ground rules; all 2026-07-06 audit findings re-verified against HEAD before acting — see the spec's deviation table). Local commits only; release/tag user-gated.
+
+### Performance (Batch B)
+
+- **Bounded db pool + fail-fast guard.** `src/db/index.ts` now sets `max: 10`, `idle_timeout: 20`, `connect_timeout: 10`, `max_lifetime: 30min` (postgres-js, seconds) and throws a clear error when `DATABASE_URL` is unset instead of failing cryptically at first query.
+- **Slim chat-list payloads.** `getChats`/`getAllProjectChats`/`getStandaloneChats`/`getArchivedChats` (+ `getProjectChatPreviews`' inner select) return only `id/projectId/title/archived/createdAt` — `summary` and `systemPrompt` no longer ride every sidebar refresh (the system prompt loads per-chat via `getChatWithContext`).
+- **Artifact re-fetch gated.** The `onFinish` re-fetch of `/api/artifacts?chatId=` fires only on turns whose message actually contains `generate_artifact` output — it previously ran (rows + one signed URL per artifact) on every assistant turn.
+- **`memo(Sidebar)` holds during streaming.** The 4 sidebar create handlers (+ shared `createChatForProject`) are `useCallback`'d; they sat in the `sidebarActions` `useMemo` dep array, recreating the actions object every render and re-rendering the whole sidebar tree on every streamed token.
+- Deferred (deviation from the audit, recorded in the spec): dropping `content` from artifact LIST payloads — `ArtifactWorkspace` relies solely on list-provided content (no per-id fetch route exists) and gallery thumbnails render live previews from it; needs a `GET /api/artifacts/[id]` route + fetch-on-open design.
+
+### Cleanup (Batch C)
+
+- **Dead-code sweep** (each verified caller-less at HEAD): the orphaned pre-decomposition sidebar cluster (`ProjectsSection`, `QuickChatsSection`, `ArchivedSection`, `ProjectItem`, `useCollapseState` + its test), the `getDocumentChunksForProject` action, devDeps `@vitejs/plugin-react` + `@testing-library/jest-dom`, and 6 `@theme` color exports with zero utility usages (`--color-navy/steel-blue/canvas/soft-mist/muted-line/slate-text`; the `--brand-*` sources stay live via the semantic mapping). Audit false positives kept: `LoadingSkeletons` (5 live importers), `deleteDocumentChunks` (live via `src/lib/ingest.ts`). Note: `ArchivedSection` was the only built (never wired) archived-chats UI — recoverable at the sweep commit's parent; the `archivedChats` data plumbing in `page.tsx` is kept for the future resurrect feature.
+- **`useLocalStorage` in-tab sync.** The `storage` event only fires in other tabs, so same-tab hook instances sharing a key never synced — editing custom personas in Settings left the composer's `PersonaSelector` stale until reload. Writes now broadcast a `local-storage` CustomEvent that sibling instances adopt; a last-seen-raw ref breaks echo loops on object values.
+- **TECH_STACKS.md** rewritten — it still described the retired Turso/Qwen stack (`@libsql/client`, `dialect: "turso"`, DashScope).
+
+### Fixed (RAG deferreds)
+
+- **Replace aborts on total embed failure.** When every chunk embedding fails during a document Replace (e.g. Gemini outage), the route now aborts BEFORE any destructive write — the previous revision's chunk index stays active, status returns to `ready`, and the client gets a 502 with a clear message. Previously the unembedded new revision was swapped in with status `error`, destroying the last good index. (RAG Phase 1 final-review follow-up.)
+- **Hybrid splice page-order contract locked** — new route test asserts the vision-extracted body lands BETWEEN its neighbor pages in the ingested text, not just that it appears (P2b review follow-up).
+
 ## [4.50.0] - 2026-07-12 — Code Phase A/B: syntax highlighting, code artifacts, Contract Abstract
 
 Spec: `docs/specs/2026-07-12-code-phase-ab-design.md` (designed under delegated authority — review the spec + the Contract Abstract field list on return).
