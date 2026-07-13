@@ -2,6 +2,11 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 
+// In-tab sync channel: the browser's `storage` event only fires in OTHER tabs, so
+// instances sharing a key in the same tab broadcast their writes with this event
+// (e.g. usePersonas' custom-personas in Settings AND the composer's PersonaSelector).
+const LOCAL_SYNC_EVENT = 'local-storage'
+
 export function useLocalStorage<T>(
   key: string,
   initialValue: T,
@@ -13,6 +18,10 @@ export function useLocalStorage<T>(
   // Always initialize with defaultValue to match server render and avoid hydration mismatch
   const [storedValue, setStoredValue] = useState<T>(initialValue)
   const hasHydrated = useRef(false)
+  // The JSON string this instance last read/wrote for the key. Breaks echo loops:
+  // adopting a broadcast value would otherwise re-trigger the write effect, whose
+  // re-broadcast would bounce between instances forever on non-primitive values.
+  const rawRef = useRef<string | null>(null)
 
   // Hydrate from localStorage after mount (client-only)
   useEffect(() => {
@@ -20,7 +29,10 @@ export function useLocalStorage<T>(
       const item = window.localStorage.getItem(key)
       if (item !== null) {
         const parsed = JSON.parse(item)
-        if (!validate || validate(parsed)) setStoredValue(parsed as T)
+        if (!validate || validate(parsed)) {
+          rawRef.current = item
+          setStoredValue(parsed as T)
+        }
       }
     } catch (error) {
       console.warn(`Error reading localStorage key "${key}":`, error)
@@ -29,27 +41,48 @@ export function useLocalStorage<T>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key])
 
-  // Keep tabs in sync: adopt another tab's write for the same key (validated).
+  // Keep instances in sync: adopt a write for the same key from another tab
+  // (`storage`) or another hook instance in THIS tab (LOCAL_SYNC_EVENT).
   useEffect(() => {
-    const onStorage = (e: StorageEvent) => {
-      if (e.key !== key || e.newValue === null) return
+    const adopt = (raw: string | null) => {
+      if (raw === null || raw === rawRef.current) return
       try {
-        const parsed = JSON.parse(e.newValue)
-        if (!validate || validate(parsed)) setStoredValue(parsed as T)
+        const parsed = JSON.parse(raw)
+        if (!validate || validate(parsed)) {
+          rawRef.current = raw
+          setStoredValue(parsed as T)
+        }
       } catch {
-        // ignore malformed cross-tab payloads
+        // ignore malformed payloads
       }
     }
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === key) adopt(e.newValue)
+    }
+    const onLocalSync = (e: Event) => {
+      if ((e as CustomEvent<{ key?: string }>).detail?.key !== key) return
+      adopt(window.localStorage.getItem(key))
+    }
     window.addEventListener('storage', onStorage)
-    return () => window.removeEventListener('storage', onStorage)
+    window.addEventListener(LOCAL_SYNC_EVENT, onLocalSync)
+    return () => {
+      window.removeEventListener('storage', onStorage)
+      window.removeEventListener(LOCAL_SYNC_EVENT, onLocalSync)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key])
 
-  // Sync state to localStorage whenever it changes (skip initial write)
+  // Sync state to localStorage whenever it changes (skip initial write). A value we
+  // just adopted from a broadcast serializes to rawRef.current — skip the re-write
+  // and re-broadcast (loop terminator).
   useEffect(() => {
     if (!hasHydrated.current) return
     try {
-      window.localStorage.setItem(key, JSON.stringify(storedValue))
+      const raw = JSON.stringify(storedValue)
+      if (raw === rawRef.current) return
+      rawRef.current = raw
+      window.localStorage.setItem(key, raw)
+      window.dispatchEvent(new CustomEvent(LOCAL_SYNC_EVENT, { detail: { key } }))
     } catch (error) {
       console.warn(`Error setting localStorage key "${key}":`, error)
     }

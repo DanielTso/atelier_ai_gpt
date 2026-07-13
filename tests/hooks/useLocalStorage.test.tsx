@@ -66,4 +66,37 @@ describe('useLocalStorage', () => {
     const { result } = renderHook(() => useLocalStorage('shape', { ok: true }, isObj))
     expect(result.current[0]).toEqual({ ok: false })
   })
+
+  it('syncs a set() to OTHER instances of the same key in the same tab', async () => {
+    // Two mounted instances sharing one key (e.g. usePersonas' custom-personas in the
+    // Settings tab AND the composer's PersonaSelector). Before the in-tab sync fix the
+    // second instance stayed stale until reload — the `storage` event only fires in
+    // OTHER tabs.
+    const a = renderHook(() => useLocalStorage('shared', 'v0'))
+    const b = renderHook(() => useLocalStorage('shared', 'v0'))
+
+    await act(async () => {
+      a.result.current[1]('v1')
+    })
+
+    expect(a.result.current[0]).toBe('v1')
+    expect(b.result.current[0]).toBe('v1')
+    expect(window.localStorage.getItem('shared')).toBe(JSON.stringify('v1'))
+  })
+
+  it('in-tab sync respects the validator and does not echo-loop on objects', async () => {
+    const isObj = (v: unknown) => typeof v === 'object' && v !== null
+    const a = renderHook(() => useLocalStorage<{ n: number }>('obj-shared', { n: 0 }, isObj))
+    const b = renderHook(() => useLocalStorage<{ n: number }>('obj-shared', { n: 0 }, isObj))
+
+    await act(async () => {
+      a.result.current[1]({ n: 1 })
+    })
+    // Both instances converge on the new object; a further tick must not thrash state.
+    expect(a.result.current[0]).toEqual({ n: 1 })
+    expect(b.result.current[0]).toEqual({ n: 1 })
+    const settled = b.result.current[0]
+    await act(async () => { await new Promise(r => setTimeout(r, 10)) })
+    expect(b.result.current[0]).toBe(settled)
+  })
 })
