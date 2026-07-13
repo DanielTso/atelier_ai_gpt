@@ -47,6 +47,13 @@ Spec `docs/specs/2026-07-12-code-phase-ab-design.md`, plan `docs/plans/2026-07-1
 - Login `next` guard now rejects `/\` (backslash → slash normalization made `/\evil.com` protocol-relative), matching proxy.ts.
 - Batch B's perf items (db pool config, slim list payloads, useCallback pass) remain queued — do them with the full 2026-07-06 audit doc in hand.
 
+### Post-release live fixes (pushed, deployed: 7631ae3)
+
+- **Persona precedence bug** (found live by the user testing Contract Abstract): the landing-page composer discarded a picked persona in favor of project defaults, and the "New chat" compose flow had a defaults-load race that clobbered quick picks. Both fixed — user selection wins, defaults fill the gap. **Verified live: the persona chip now holds Contract Abstract.**
+- **Keyword-search crash on inline attachments**: a message carrying an attached 600k-char contract was passed whole as the FTS query and Postgres rejected it (degraded gracefully to vector-only). Query now capped at 2k chars.
+- Live usage note: attaching a contract inline puts the FULL text in context — for single-contract abstracting that beats RAG. The Contract Abstract xlsx flow re-test with the persona actually active is still pending user confirmation.
+- **Backlog idea from live usage**: follow-up chips are derivative work by definition — consider auto-routing them to a cheaper tier ("expensive analyst, cheap secretary"). User's current manual pattern: switch to Plan & Spec Reader (Sonnet/medium) or Construction Pro (Opus/high) for follow-ups instead of burning Fable/max.
+
 ## ⏳ Next session — open items and roadmap
 
 1. **RAG Phase 3 live acceptance** (user-side): re-upload the Drover plan set (re-ingesting also activates failed-page tracking + provenance), then "list every storm sheet" (whole-doc sweep + Reading documents… stage) and "what does note 7 on SW-101 say" (keyword path; also proves the postgres-js rowsOf branch PGlite can't test). Check Vercel logs for `[retrieval] keyword search failed` after the first query.
