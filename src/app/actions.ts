@@ -118,14 +118,25 @@ export async function getProjectContext(id: number) {
   return row ?? null
 }
 
+// Chat LIST payloads deliberately exclude the heavy columns (summary, systemPrompt):
+// the client Chat type reads only id/projectId/title/archived, and the system prompt
+// is loaded per-chat via getChatWithContext when a chat opens.
+const chatListColumns = {
+  id: chats.id,
+  projectId: chats.projectId,
+  title: chats.title,
+  archived: chats.archived,
+  createdAt: chats.createdAt,
+}
+
 export async function getChats(projectId: number) {
-  return await db.select().from(chats).where(
+  return await db.select(chatListColumns).from(chats).where(
     and(eq(chats.projectId, projectId), eq(chats.archived, false))
   ).orderBy(desc(chats.createdAt))
 }
 
 export async function getProjectChatPreviews(projectId: number) {
-  const projectChats = await db.select().from(chats).where(
+  const projectChats = await db.select({ id: chats.id, title: chats.title, createdAt: chats.createdAt }).from(chats).where(
     and(eq(chats.projectId, projectId), eq(chats.archived, false))
   ).orderBy(desc(chats.createdAt))
 
@@ -160,13 +171,13 @@ export async function getProjectChatPreviews(projectId: number) {
 
 export async function getAllProjectChats() {
   // Get all non-archived chats that belong to a project
-  return await db.select().from(chats).where(
+  return await db.select(chatListColumns).from(chats).where(
     and(isNotNull(chats.projectId), eq(chats.archived, false))
   ).orderBy(desc(chats.createdAt))
 }
 
 export async function getStandaloneChats() {
-  return await db.select().from(chats).where(
+  return await db.select(chatListColumns).from(chats).where(
     and(isNull(chats.projectId), eq(chats.archived, false))
   ).orderBy(desc(chats.createdAt))
 }
@@ -230,7 +241,7 @@ export async function restoreChat(id: number) {
 }
 
 export async function getArchivedChats() {
-  return await db.select().from(chats).where(eq(chats.archived, true)).orderBy(desc(chats.createdAt))
+  return await db.select(chatListColumns).from(chats).where(eq(chats.archived, true)).orderBy(desc(chats.createdAt))
 }
 
 // Context Management Actions
