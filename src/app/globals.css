@@ -111,16 +111,12 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
 
-  /* Direct brand palette access — use sparingly, prefer semantic tokens. */
-  --color-navy: var(--brand-navy);
-  --color-steel-blue: var(--brand-steel-blue);
+  /* Direct brand palette access — use sparingly, prefer semantic tokens. Only the
+     utilities actually used in components are exported (dead exports pruned; the
+     underlying --brand-* vars stay live via the semantic mapping above). */
   --color-ink: var(--brand-ink);
-  --color-canvas: var(--brand-canvas-light);
   --color-warm-sand: var(--brand-warm-sand);
   --color-stone-sage: var(--brand-stone-sage);
-  --color-soft-mist: var(--brand-soft-mist);
-  --color-muted-line: var(--brand-muted-line);
-  --color-slate-text: var(--brand-slate-text);
   --color-success: var(--brand-success);
   --color-warning: var(--brand-warning);
 

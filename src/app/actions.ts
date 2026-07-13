@@ -647,25 +647,6 @@ export async function getDocumentChunks(documentId: number) {
     .orderBy(documentChunks.chunkIndex)
 }
 
-export async function getDocumentChunksForProject(projectId: number) {
-  return await db.select({
-    id: documentChunks.id,
-    documentId: documentChunks.documentId,
-    projectId: documentChunks.projectId,
-    chunkIndex: documentChunks.chunkIndex,
-    content: documentChunks.content,
-    embedding: documentChunks.embedding,
-    filename: documents.filename,
-  }).from(documentChunks)
-    .innerJoin(documents, eq(documentChunks.documentId, documents.id))
-    .where(
-      and(
-        eq(documentChunks.projectId, projectId),
-        isNotNull(documentChunks.embedding)
-      )
-    )
-}
-
 // ── Message Attachment Actions ──
 
 export async function saveMessageAttachments(
