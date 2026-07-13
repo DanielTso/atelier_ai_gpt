@@ -4,18 +4,16 @@ _Authoritative current-state bootstrap for a new session. Read this first, then 
 
 ## TL;DR — where the project is
 
-- **The overnight autonomous session (per the 07-12 handoff ground rules) completed the whole queue**: Audit Batch B perf items, Audit Batch C cleanup, and both RAG deferreds — 9 local commits on `master`, **NOTHING PUSHED**. Every commit passed the full gate (typecheck 0 · lint 0 errors/26-warning baseline · build · full Vitest suite single-threaded).
-- Working tree at session end: clean except this handoff + CHANGELOG (docs commit). 676 unit tests / 121 files (was 672/122 — added sync+gate+abort+splice tests, deleted the dead `useCollapseState` test file).
-- **Prod is untouched** — still the 07-12 deploy (7631ae3 + d7d7939 fixes). No migrations, no tags, no env changes.
+- **v4.51.0 is SHIPPED (2026-07-13): pushed, tagged, GitHub-released, CI green (runs 29277300693 + 29279061717), Vercel deployed, prod 200.** The overnight autonomous session (per the 07-12 handoff ground rules) completed the whole queue — Audit Batch B perf items, Audit Batch C cleanup, both RAG deferreds — and the user said "push" + "do the release catch up" in the morning. Every commit passed the full gate (typecheck 0 · lint 0 errors/26-warning baseline · build · full Vitest suite single-threaded).
+- 676 unit tests / 121 files (was 672/122 — added sync/gate/abort/splice tests, deleted the dead `useCollapseState` test file). `package.json` = 4.51.0. No migration in this release; Supabase remains at `0000`–`0016`.
+- Release backlog is CLEAR: tags + GitHub releases exist for 4.48.0 → 4.51.0 (4.48–4.50 already existed from late 07-12 — the 07-12 handoff's "not yet done" note was stale).
 
-## ☀️ MORNING REVIEW CHECKLIST (user)
+## ☀️ Post-ship notes (user)
 
-1. **Review the 9 commits** (`git log --oneline 811ea4b..HEAD`), especially:
+1. **Reviewed-by-commit trail**: `git log --oneline 811ea4b..v4.51.0`. Notables:
    - `6102f14` dead-code sweep — **ArchivedSection was deleted** (confirmed dead, but it was the only built/never-wired UI for the future "resurrect archived chats" item; recover from the commit's parent if you'd rather keep it). `archivedChats` plumbing in page.tsx was kept.
    - The spec's deviation table (`docs/specs/2026-07-12-batch-bc-perf-cleanup-design.md`): artifact-list `content` slimming was **deferred** (needs a `GET /api/artifacts/[id]` route + fetch-on-open design); `LoadingSkeletons` + `deleteDocumentChunks` were audit false positives and were NOT deleted.
-2. **Say "push" to ship** (auto-deploys to Vercel). No migration needed for any of this.
-3. ~~Release housekeeping~~ **RESOLVED 2026-07-13**: tags + GitHub releases for 4.48.0–4.50.0 already existed on origin (created late 07-12; the 07-12 handoff note was stale) and `package.json` was already 4.50.0. This session's release is **v4.51.0** (bump + tag + gh release done on user go).
-4. **Your pending re-tests (carried, don't block push):** PDF preview post-CSP-fix + clean PDF regeneration; Contract Abstract xlsx flow with the persona active; review of the 22-field `CONTRACT_ABSTRACT_FIELDS` + the Code Phase A/B spec.
+2. **Your pending re-tests (carried):** PDF preview post-CSP-fix + clean PDF regeneration; Contract Abstract xlsx flow with the persona active; review of the 22-field `CONTRACT_ABSTRACT_FIELDS` + the Code Phase A/B spec.
 
 ## What shipped this session (all local, in order)
 
@@ -33,10 +31,9 @@ _Authoritative current-state bootstrap for a new session. Read this first, then 
 
 ## ⏳ Next session — open items and roadmap
 
-1. **Push + release housekeeping** (above) — user-gated.
-2. **Roadmap** (user-approved order, from 07-11): **Code Phase C** (Vercel Sandbox execution — needs the user's security/cost decisions first) → remaining audit **Batch D** (dependency currency; AI SDK v7 = own spec; consider `engines` field). **The iteration loop** (`docs/specs/2026-07-11-living-canvas-design-seed.md`) queued as its own item — start with `superpowers:brainstorming` WITH the user.
-3. **Deferred with design notes** (own specs when wanted): artifact-list `content` slimming (see spec Non-goals); resurrect archived chats; artifact-renderer warm re-skin; optional shared `useHighlightedCode` hook (CodeBlock/ArtifactPreview duplication — skipped overnight, low value vs. risk).
-4. Optional dead-code note: `getChats(projectId)` has no production callers (tests only) — kept deliberately as the natural API for the archived-chats resurrect.
+1. **Roadmap** (user-approved order, from 07-11): **Code Phase C** (Vercel Sandbox execution — needs the user's security/cost decisions first) → remaining audit **Batch D** (dependency currency; AI SDK v7 = own spec; consider `engines` field). **The iteration loop** (`docs/specs/2026-07-11-living-canvas-design-seed.md`) queued as its own item — start with `superpowers:brainstorming` WITH the user.
+2. **Deferred with design notes** (own specs when wanted): artifact-list `content` slimming (see spec Non-goals); resurrect archived chats; artifact-renderer warm re-skin; optional shared `useHighlightedCode` hook (CodeBlock/ArtifactPreview duplication — skipped overnight, low value vs. risk).
+3. Optional dead-code note: `getChats(projectId)` has no production callers (tests only) — kept deliberately as the natural API for the archived-chats resurrect.
 
 ## Gotchas (new this session + carried)
 

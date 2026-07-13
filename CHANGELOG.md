@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [4.51.0] - 2026-07-13 — Audit Batch B (perf) + Batch C (cleanup) + RAG deferreds
 
-Spec: `docs/specs/2026-07-12-batch-bc-perf-cleanup-design.md` (overnight autonomous session per the 2026-07-12 handoff ground rules; all 2026-07-06 audit findings re-verified against HEAD before acting — see the spec's deviation table). Local commits only; release/tag user-gated.
+Spec: `docs/specs/2026-07-12-batch-bc-perf-cleanup-design.md` (overnight autonomous session per the 2026-07-12 handoff ground rules; all 2026-07-06 audit findings re-verified against HEAD before acting — see the spec's deviation table). Released 2026-07-13 (tag `v4.51.0`, CI green, deployed). No DB migration.
 
 ### Performance (Batch B)
 
