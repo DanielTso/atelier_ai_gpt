@@ -56,6 +56,20 @@ Spec `docs/specs/2026-07-12-code-phase-ab-design.md`, plan `docs/plans/2026-07-1
 - **PDF text corruption fix (same push)**: marked's lexer HTML-escapes token text (&#39;/&amp;/&quot; leaked into PDFs — decodeEntities() in markdown.ts heals pdf/docx/pptx/xlsx at one choke point); toPdf's winAnsi now collapses whitespace BEFORE the Latin-1 filter (soft line breaks printed as '?') and drops unencodable chars (emoji printed as '??'). Old PDF artifacts keep stale bytes until re-rendered (Edit->Save version or Regenerate). User re-test of preview + clean regeneration pending.
 - **Backlog idea from live usage**: follow-up chips are derivative work by definition — consider auto-routing them to a cheaper tier ("expensive analyst, cheap secretary"). User's current manual pattern: switch to Plan & Spec Reader (Sonnet/medium) or Construction Pro (Opus/high) for follow-ups instead of burning Fable/max.
 
+## 🌙 OVERNIGHT AUTONOMOUS SESSION (user asleep — read this first)
+
+The user is starting a fresh session to run unattended. Ground rules:
+
+**DO (local commits only, full gate per task, follow the repo cadence — spec/plan for anything non-trivial):**
+1. **Audit Batch B perf items** — db pool config, slim list payloads, useCallback handler pass. Source the findings from the 2026-07-06 audit (see `docs/specs/2026-07-06-batch-a-stability-hardening-design.md` + the SESSION_HANDOFF_2026-07-08 Batch B/C/D summary). The 2 security one-liners are ALREADY DONE (this session).
+2. **Audit Batch C** — dead-code sweep (orphaned sidebar cluster, 2 dead actions, unused devDeps), TECH_STACKS.md fix, useLocalStorage in-tab sync.
+3. **RAG deferreds** — Phase 1 replace-abort when embedded===0; P2b minors (splice test breadth) — see `.superpowers/sdd/progress.md`.
+4. Optional quality passes: shared useHighlightedCode hook (CodeBlock + CodePreview duplication, noted in the v4.50 review); ArtifactWorkspace deferred minors.
+
+**DO NOT (user-gated, no exceptions):** push to master (auto-deploys); apply migrations; create/push tags or releases; `vercel env` changes; anything touching prod. Do NOT start Code Phase C (Vercel Sandbox — needs the user's security/cost decisions) or the iteration-loop brainstorm (needs the user). Leave clear commits + an updated handoff; the user reviews and says "push" in the morning.
+
+**Pending user re-tests (don't block on these):** PDF preview renders post-CSP-fix + regenerated PDF reads clean; Contract Abstract xlsx flow with the persona active; review of the 22-field CONTRACT_ABSTRACT_FIELDS + Code Phase A/B spec.
+
 ## ⏳ Next session — open items and roadmap
 
 1. **RAG Phase 3 live acceptance** (user-side): re-upload the Drover plan set (re-ingesting also activates failed-page tracking + provenance), then "list every storm sheet" (whole-doc sweep + Reading documents… stage) and "what does note 7 on SW-101 say" (keyword path; also proves the postgres-js rowsOf branch PGlite can't test). Check Vercel logs for `[retrieval] keyword search failed` after the first query.
