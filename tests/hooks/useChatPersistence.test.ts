@@ -258,8 +258,8 @@ describe('useChatPersistence', () => {
     expect(memoryCalls.length).toBe(0)
   })
 
-  // (e) artifact re-fetch updates setArtifacts
-  it('(e) re-fetches artifacts and calls setArtifacts with the result', async () => {
+  // (e) artifact re-fetch updates setArtifacts — only on turns that produced an artifact
+  it('(e) re-fetches artifacts and calls setArtifacts when the turn produced an artifact', async () => {
     const chatId = 8
     const fakeFetch = vi.fn()
       .mockResolvedValue({ ok: true, json: async () => ({ artifacts: [{ id: 1, title: 'Report' }] }) })
@@ -269,7 +269,7 @@ describe('useChatPersistence', () => {
     const { result } = renderHook(() => useChatPersistence(opts))
 
     await act(async () => {
-      await result.current({ message: makeMessage({ id: 'art-msg' }) })
+      await result.current({ message: makeMessage({ id: 'art-msg', hasArtifact: true }) })
     })
 
     // Let any dangling promises settle
@@ -280,6 +280,29 @@ describe('useChatPersistence', () => {
     )
     expect(artifactFetches.length).toBeGreaterThanOrEqual(1)
     expect(opts.setArtifacts).toHaveBeenCalledWith([{ id: 1, title: 'Report' }])
+  })
+
+  // (e2) a plain text turn must NOT re-fetch artifacts (the fetch was a per-turn no-op)
+  it('(e2) does not re-fetch artifacts on a turn with no artifact output', async () => {
+    const chatId = 8
+    const fakeFetch = vi.fn()
+      .mockResolvedValue({ ok: true, json: async () => ({ artifacts: [] }) })
+    vi.stubGlobal('fetch', fakeFetch)
+
+    const opts = makeOpts({ chatId })
+    const { result } = renderHook(() => useChatPersistence(opts))
+
+    await act(async () => {
+      await result.current({ message: makeMessage({ id: 'text-msg' }) })
+    })
+
+    await act(async () => { await new Promise(r => setTimeout(r, 20)) })
+
+    const artifactFetches = fakeFetch.mock.calls.filter(
+      (c: unknown[]) => typeof c[0] === 'string' && (c[0] as string).includes('/api/artifacts')
+    )
+    expect(artifactFetches.length).toBe(0)
+    expect(opts.setArtifacts).not.toHaveBeenCalled()
   })
 
   // (f) media-only turn (no text, has image output) still saves

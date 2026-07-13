@@ -167,11 +167,16 @@ export function useChatPersistence(opts: UseChatPersistenceOpts) {
         // Auto-generate the chat title once there's a full exchange (best-effort).
         maybeGenerateTitle(currentChatId)
 
-        // Best-effort: re-fetch artifacts so a freshly-generated one appears
-        fetch(`/api/artifacts?chatId=${currentChatId}`)
-          .then(r => r.ok ? r.json() : null)
-          .then(data => { if (data?.artifacts) setArtifacts(data.artifacts) })
-          .catch(() => {})
+        // Best-effort: re-fetch artifacts so a freshly-generated one appears. Gated on
+        // the turn actually producing one — loadMessages already fetches on chat open,
+        // so on artifact-less turns this round-trip (rows + a signed URL per artifact)
+        // was a pure no-op.
+        if (hasArtifactOutput) {
+          fetch(`/api/artifacts?chatId=${currentChatId}`)
+            .then(r => r.ok ? r.json() : null)
+            .then(data => { if (data?.artifacts) setArtifacts(data.artifacts) })
+            .catch(() => {})
+        }
       }
     },
     // Refs and stable callbacks don't change identity — list them so React can
