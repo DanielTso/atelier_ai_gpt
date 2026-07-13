@@ -14,7 +14,7 @@ _Authoritative current-state bootstrap for a new session. Read this first, then 
    - `6102f14` dead-code sweep — **ArchivedSection was deleted** (confirmed dead, but it was the only built/never-wired UI for the future "resurrect archived chats" item; recover from the commit's parent if you'd rather keep it). `archivedChats` plumbing in page.tsx was kept.
    - The spec's deviation table (`docs/specs/2026-07-12-batch-bc-perf-cleanup-design.md`): artifact-list `content` slimming was **deferred** (needs a `GET /api/artifacts/[id]` route + fetch-on-open design); `LoadingSkeletons` + `deleteDocumentChunks` were audit false positives and were NOT deleted.
 2. **Say "push" to ship** (auto-deploys to Vercel). No migration needed for any of this.
-3. **Release housekeeping still pending** (carried from 07-12): `package.json` is still 4.47.0; tags/GitHub releases for **4.48.0, 4.49.0, 4.50.0** don't exist yet, and this session adds **4.51.0** (CHANGELOG entry written). One combined catch-up (bump + 4 tags + releases) needs your go.
+3. ~~Release housekeeping~~ **RESOLVED 2026-07-13**: tags + GitHub releases for 4.48.0–4.50.0 already existed on origin (created late 07-12; the 07-12 handoff note was stale) and `package.json` was already 4.50.0. This session's release is **v4.51.0** (bump + tag + gh release done on user go).
 4. **Your pending re-tests (carried, don't block push):** PDF preview post-CSP-fix + clean PDF regeneration; Contract Abstract xlsx flow with the persona active; review of the 22-field `CONTRACT_ABSTRACT_FIELDS` + the Code Phase A/B spec.
 
 ## What shipped this session (all local, in order)
