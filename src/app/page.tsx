@@ -597,9 +597,12 @@ export default function Home() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [dialogs.commandPalette])
 
-  const handleCreateProject = async () => {
+  // The sidebar-facing create handlers below are useCallback'd because they sit in the
+  // sidebarActions useMemo dep array — a plain function here recreates sidebarActions
+  // every render, defeating memo(Sidebar) on every streamed token.
+  const handleCreateProject = useCallback(async () => {
     dialogs.createProject.setOpen(true)
-  }
+  }, [dialogs.createProject])
 
   const handleConfirmCreateProject = async (name: string) => {
     try {
@@ -620,7 +623,7 @@ export default function Home() {
   // project-scoped compose surface and pre-apply the project's defaults to the composer.
   // The actual chat is created on the first message send (handleSendMessage), so hitting
   // "New chat" and walking away never spawns an empty "New Chat" row.
-  const createChatForProject = async (projectId: number) => {
+  const createChatForProject = useCallback(async (projectId: number) => {
     setActiveProjectId(projectId)
     setActiveChatId(null)
     setNewChatCompose(true)
@@ -647,28 +650,31 @@ export default function Home() {
     // A persona the user picked while the defaults round-trip was in flight WINS —
     // without this guard the late resolve silently reverted the pick (live bug).
     if (!composePersonaPickedRef.current) setCurrentSystemPrompt(promptToApply)
-  }
+  }, [getPersonaById])
 
-  const handleCreateChat = async () => {
+  const handleCreateChat = useCallback(async () => {
     if (!activeProjectId) {
       toast.error("Select a project first")
       return
     }
     await createChatForProject(activeProjectId)
-  }
+  }, [activeProjectId, createChatForProject])
 
-  const handleCreateChatInProject = (projectId: number) => createChatForProject(projectId)
+  const handleCreateChatInProject = useCallback(
+    (projectId: number) => createChatForProject(projectId),
+    [createChatForProject],
+  )
 
   // "New chat" goes to a fresh Home compose — it does NOT persist an empty chat.
   // The first message sent auto-creates the standalone chat (see handleSendMessage),
   // so clicking New chat repeatedly no longer spawns empty "New Chat" rows.
-  const handleCreateStandaloneChat = () => {
+  const handleCreateStandaloneChat = useCallback(() => {
     setActiveView('home')
     setActiveChatId(null)
     setActiveProjectId(null)
     setNewChatCompose(false)
     setInput('')
-  }
+  }, [])
 
   const handleSendMessage = async () => {
     if ((!input.trim() && attachedFiles.length === 0 && attachedImages.length === 0) || isLoading) return
