@@ -46,3 +46,16 @@ describe('toPdf', () => {
     expect(buf.length).toBeGreaterThan(1000)
   })
 })
+
+describe('winAnsi sanitation', () => {
+  it('turns soft line breaks into spaces, not question marks', async () => {
+    const { winAnsi } = await import('@/lib/artifacts/toPdf')
+    expect(winAnsi('Price**\nA spending cap'.replace(/\*/g, ''))).toBe('Price A spending cap')
+    expect(winAnsi('a\r\n\tb')).toBe('a b')
+  })
+  it('drops emoji instead of printing question marks', async () => {
+    const { winAnsi } = await import('@/lib/artifacts/toPdf')
+    expect(winAnsi('💰 Money & Pricing')).toBe(' Money & Pricing')
+    expect(winAnsi('💰 Money')).not.toContain('?')
+  })
+})

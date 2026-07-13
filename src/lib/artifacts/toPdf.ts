@@ -8,9 +8,12 @@ const MARGIN = 54
 const MAX_W = PAGE.w - MARGIN * 2
 
 // pdf-lib StandardFonts are WinAnsi-encoded and throw on non-Latin-1 input.
-// Map common smart punctuation to ASCII, then replace any remaining
-// character above the Latin-1 range so drawText never throws.
-function winAnsi(s: string): string {
+// Map common smart punctuation to ASCII, collapse whitespace (a paragraph's
+// SOFT line breaks reach drawText, and a newline is below the printable
+// range - it rendered as '?' between term and definition, seen live), then
+// DROP any remaining character outside Latin-1: emoji rendered as '??'
+// (surrogate pairs) when substituted with '?'. Exported for tests.
+export function winAnsi(s: string): string {
   return s
     .replace(/[''‚′]/g, "'")
     .replace(/[""„″]/g, '"')
@@ -18,7 +21,8 @@ function winAnsi(s: string): string {
     .replace(/…/g, '...')
     .replace(/[•‣◦]/g, '-')
     .replace(/ /g, ' ')
-    .replace(/[^ -ÿ]/g, '?')
+    .replace(/\s+/g, ' ')
+    .replace(/[^ -ÿ]/g, '')
 }
 
 function wrap(text: string, font: PDFFont, size: number, maxW: number): string[] {

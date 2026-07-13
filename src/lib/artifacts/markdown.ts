@@ -2,6 +2,19 @@
 import { marked, type Token, type Tokens } from 'marked'
 
 export type Inline = { text: string; bold?: boolean; italic?: boolean; code?: boolean; href?: string }
+
+// marked's lexer HTML-escapes the .text of inline text/codespan tokens (& < > " ')
+// — decode here, at the single choke point, so every binary renderer (pdf/docx/
+// pptx/xlsx plain text) emits real characters instead of &#39;/&amp;/&quot;.
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&#(\d+);/g, (_, n: string) => String.fromCodePoint(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, h: string) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+}
 export type Block =
   | { type: 'heading'; level: number; inlines: Inline[] }
   | { type: 'paragraph'; inlines: Inline[] }
@@ -16,7 +29,7 @@ function inlines(tokens: Token[] | undefined, ctx: { bold?: boolean; italic?: bo
     switch (t.type) {
       case 'strong': out.push(...inlines((t as Tokens.Strong).tokens, { ...ctx, bold: true })); break
       case 'em': out.push(...inlines((t as Tokens.Em).tokens, { ...ctx, italic: true })); break
-      case 'codespan': out.push({ text: (t as Tokens.Codespan).text, code: true }); break
+      case 'codespan': out.push({ text: decodeEntities((t as Tokens.Codespan).text), code: true }); break
       case 'link': {
         // Keep the destination on each emitted run so binary renderers (docx/pdf/pptx)
         // can surface it — previously href was dropped and links became bare text.
@@ -32,7 +45,7 @@ function inlines(tokens: Token[] | undefined, ctx: { bold?: boolean; italic?: bo
         // list items is parsed instead of leaking raw `**`/`*` markers.
         const nested = (t as { tokens?: Token[] }).tokens
         if (Array.isArray(nested) && nested.length) { out.push(...inlines(nested, ctx)); break }
-        const text = 'text' in t ? String((t as { text: unknown }).text) : ''
+        const text = 'text' in t ? decodeEntities(String((t as { text: unknown }).text)) : ''
         if (text) out.push({ text, ...ctx })
       }
     }

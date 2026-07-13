@@ -73,3 +73,19 @@ describe('mdToPlainText', () => {
     expect(mdToPlainText('Total')).toBe('Total')
   })
 })
+
+describe('HTML entity decoding (marked escapes token text)', () => {
+  it('decodes apostrophes, ampersands, and quotes back to real characters', () => {
+    const [p] = parseMarkdown(`You'll hear GMP & "pay app" a lot`)
+    if (p.type !== 'paragraph') throw new Error('expected paragraph')
+    const text = p.inlines.map(i => i.text).join('')
+    expect(text).toBe(`You'll hear GMP & "pay app" a lot`)
+    expect(text).not.toContain('&#39;')
+    expect(text).not.toContain('&amp;')
+    expect(text).not.toContain('&quot;')
+  })
+  it('decodes entities inside code spans and plain-text output', () => {
+    expect(mdToPlainText('`a && b`')).toBe('a && b')
+    expect(mdToPlainText(`it's "quoted" & fine`)).toBe(`it's "quoted" & fine`)
+  })
+})
