@@ -50,7 +50,13 @@ const csp = [
   // (clickjacking) is still blocked. Pairs with X-Frame-Options: SAMEORIGIN below.
   "frame-ancestors 'self'",
   "base-uri 'self'",
-  "object-src 'none'",
+  // 'self' (not 'none'): Chromium's PDF viewer (post-OOPIF migration) treats an
+  // iframe'd PDF as plugin content governed by the EMBEDDER's object-src — 'none'
+  // blocks the in-app PDF artifact preview with "This content is blocked" (seen
+  // live). 'self' allows only same-origin plugin docs (our own /api/artifacts/:id/raw
+  // PDFs); cross-origin embeds stay blocked, and the sandboxed artifact HTML preview
+  // has an opaque origin, which never matches 'self'.
+  "object-src 'self'",
   "form-action 'self'",
 ].join("; ");
 
