@@ -192,15 +192,22 @@ export async function POST(request: NextRequest) {
       const textChunks = chunkText(textContent)
       // Replace: embed FIRST (no destructive writes yet), then snapshot the old
       // revision and atomically swap (delete old chunks + insert new + update row).
-      // A commit/transaction failure rolls back, leaving the prior revision intact. A
-      // TOTAL embed failure still swaps in the new (unembedded) revision with status
-      // 'error' — the old file is kept as a revision snapshot, but its chunk index is
-      // replaced. (Retry/backoff makes total failure unlikely; aborting the swap to
-      // preserve the last good index is a deferred follow-up.)
+      // A commit/transaction failure rolls back, leaving the prior revision intact.
       const { embeddings, embedded, failed } = await embedContents(textChunks.map(c => c.content))
       const chunkRows = textChunks.map((c, i) => ({ chunkIndex: c.index, content: c.content, embedding: embeddings[i] }))
       if (failed > 0) console.warn(`[documents/process] ${failed}/${textChunks.length} chunks failed to embed`)
-      const status: 'ready' | 'error' = embedded === 0 && textChunks.length > 0 ? 'error' : 'ready'
+      if (embedded === 0 && textChunks.length > 0) {
+        // TOTAL embed failure (e.g. Gemini outage mid-re-upload): abort before any
+        // destructive write so the previous revision's chunk index stays active.
+        // The new rev<N> storage objects written above are left as orphans —
+        // consistent with the Stage-1 orphan-sweep deferral; a retry overwrites the
+        // same rev<N> paths.
+        await updateDocumentStatus(doc.id, 'ready')
+        return NextResponse.json(
+          { error: 'Replace failed: embeddings unavailable; the previous revision is still active.' },
+          { status: 502 },
+        )
+      }
       // A partial extraction (char-truncation / page-capping) OR any post-retry embed
       // failure is a fidelity hole — surface it, never hide it.
       const extractionPartial = extraction.partial || failed > 0
@@ -211,15 +218,17 @@ export async function POST(request: NextRequest) {
         storagePath: doc.storagePath, thumbnailPath: doc.thumbnailPath,
         charCount: doc.charCount, chunkCount: doc.chunkCount, extractionMethod: doc.extractionMethod,
       })
+      // Reaching here means at least one chunk embedded (or the doc is empty), so the
+      // committed revision is always usable: status 'ready', partial covers the rest.
       await commitDocumentReplacement(doc.id, doc.projectId, chunkRows, {
         filename: effFilename, mimeType: effMimeType, fileSize: effFileSize, storagePath: sourcePath,
         thumbnailPath, charCount: textContent.length, chunkCount: chunkRows.length, extractionMethod,
-        revision: nextRevision, status,
-        errorMessage: status === 'error' ? 'New revision saved but embeddings failed.' : null,
+        revision: nextRevision, status: 'ready',
+        errorMessage: null,
         pageCount: extraction.pageCount, pagesExtracted: extraction.pagesExtracted, extractionPartial,
         failedPages: failedPages.length ? failedPages : null,
       })
-      return NextResponse.json({ documentId: doc.id, status, revision: nextRevision, chunkCount: chunkRows.length, charCount: textContent.length })
+      return NextResponse.json({ documentId: doc.id, status: 'ready', revision: nextRevision, chunkCount: chunkRows.length, charCount: textContent.length })
     }
 
     // New upload: chunk → save → embed → status via the shared ingestion tail.

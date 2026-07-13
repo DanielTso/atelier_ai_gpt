@@ -192,20 +192,22 @@ describe('POST /api/documents/process', () => {
     expect(m.saveDocumentChunks).not.toHaveBeenCalled()
   })
 
-  it('replace path: all embeddings fail → committed with status error (old revision not lost mid-flight)', async () => {
+  it('replace path: all embeddings fail → abort with 502, previous revision stays active', async () => {
     m.getDocumentById.mockResolvedValue({ id: 21, projectId: 1, revision: 3, filename: 'old.pdf', mimeType: 'application/pdf', fileSize: 5, storagePath: 'p', thumbnailPath: null, charCount: 10, chunkCount: 1, extractionMethod: 'text' })
     m.extractTextFromBuffer.mockResolvedValue(extRes('A'.repeat(300)))
     m.embedContents.mockResolvedValue({ embeddings: [null], embedded: 0, failed: 1 })
-    m.createDocumentRevision.mockResolvedValue([{ id: 1 }])
-    m.commitDocumentReplacement.mockResolvedValue(undefined)
     const POST = await importRoute()
     const res = await POST(new Request('http://localhost/api/documents/process', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ documentId: 21, filename: 'new.pdf', mimeType: 'application/pdf', fileSize: 9 }),
     }) as never)
-    const data = await res.json()
-    expect(data.status).toBe('error')
-    expect(m.commitDocumentReplacement).toHaveBeenCalledWith(21, 1, expect.any(Array), expect.objectContaining({ status: 'error' }))
+    expect(res.status).toBe(502)
+    // No destructive write happened: no old-revision snapshot, no swap — the prior
+    // chunk index is untouched (a total embed failure must not replace a good index).
+    expect(m.createDocumentRevision).not.toHaveBeenCalled()
+    expect(m.commitDocumentReplacement).not.toHaveBeenCalled()
+    // The processing flag is rolled back so the doc doesn't sit stuck until the reaper.
+    expect(m.updateDocumentStatus).toHaveBeenCalledWith(21, 'ready')
   })
 
   it('replace path: rejects an unsupported declared file type before downloading', async () => {
@@ -320,6 +322,26 @@ describe('POST /api/documents/process', () => {
     expect(spliced).toContain('VISION NOTES BODY')
     expect(spliced).toContain('E'.repeat(2000))
     expect(spliced).not.toContain('thin')
+  })
+
+  it('hybrid: splice preserves page order (vision body lands between its neighbor pages)', async () => {
+    // P2b review follow-up: containment alone can't catch a splice that appends the
+    // vision run at the end — lock the page-ordered merge contract.
+    m.getDocumentById.mockResolvedValue({ id: 44, projectId: 1, filename: 'plans.pdf', mimeType: 'application/pdf', storagePath: 'p' })
+    m.extractTextFromBuffer.mockResolvedValue(extRes('D'.repeat(4000), {
+      pageCount: 3, pageTexts: ['D'.repeat(2000), 'thin', 'E'.repeat(2000)],
+    }))
+    m.extractPagesViaVision.mockResolvedValue({ segments: [{ firstPage: 2, lastPage: 2, text: 'VISION NOTES BODY' }], failed: 0, failedPages: [], truncated: false, skippedPages: 0 })
+    const POST = await importRoute()
+    const res = await POST(req(44) as never)
+    expect(res.status).toBe(200)
+    const spliced = m.chunkText.mock.calls[0][0] as string
+    const page1At = spliced.indexOf('D'.repeat(2000))
+    const visionAt = spliced.indexOf('VISION NOTES BODY')
+    const page3At = spliced.indexOf('E'.repeat(2000))
+    expect(page1At).toBeGreaterThanOrEqual(0)
+    expect(visionAt).toBeGreaterThan(page1At)
+    expect(page3At).toBeGreaterThan(visionAt)
   })
 
   it('hybrid: a failed run keeps the thin text and flags partial', async () => {
