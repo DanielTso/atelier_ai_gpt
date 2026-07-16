@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.52.0] - Unreleased — Audit Batch D safe slice: dependency currency
+
+### Changed
+
+- **In-range dependency refresh** (`npm update`, lockfile-only for ranged deps): AI SDK v6 line (`ai` 6.0.86→6.0.228, `@ai-sdk/anthropic` →3.0.97, `@ai-sdk/google` →3.0.94, `@ai-sdk/react` →3.0.230), Next/eslint-config-next →16.2.10, Tailwind 4.1.18→**4.3.3** (⚠️ minor of a fast-moving CSS framework — gate-green but pending a user visual smoke), Playwright →1.61.1, Radix patches, `@supabase/supabase-js` →2.110.7, `zod` →4.4.3, `framer-motion` →12.42.2, `mammoth` →1.12.0, `unpdf` →1.6.2, `vitest` →4.1.10, misc types. **No major migrations** (deliberate, own specs later): `ai` v7, `@ai-sdk/*` v4, eslint 10, TypeScript 7, marked 18, pdfjs-dist 6, jsdom 29, lucide 1.x, `@napi-rs/canvas` 1.x. PGlite stays pinned `^0.4.6` (0.5.x drops the `./vector` export).
+- **`engines: { node: ">=22" }`** added to package.json (CI pins Node 22, local runs 24 — makes the floor explicit).
+- **`eslint-plugin-react-hooks` pinned to 7.0.1 via `overrides`**: 7.1.x (pulled transitively by eslint-config-next's `^7.0.0`) activates React-Compiler-powered rules as ERRORS — 51 findings across the codebase (`set-state-in-effect`, `refs-during-render`, `memoization-preservation`). Pinned to keep the lint baseline (0 errors/26 warnings); **adopting the 7.1 rule set is a queued follow-up** — the `refs-during-render` findings in particular deserve a real review, not a bulk disable.
+- npm audit unchanged: 8 moderate, all transitive via `exceljs`, fix is breaking-only — monitor, don't force (per the 2026-07-06 audit).
+
 ## [4.51.0] - 2026-07-13 — Audit Batch B (perf) + Batch C (cleanup) + RAG deferreds
 
 Spec: `docs/specs/2026-07-12-batch-bc-perf-cleanup-design.md` (overnight autonomous session per the 2026-07-12 handoff ground rules; all 2026-07-06 audit findings re-verified against HEAD before acting — see the spec's deviation table). Released 2026-07-13 (tag `v4.51.0`, CI green, deployed). No DB migration.

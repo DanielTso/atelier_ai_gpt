@@ -29,9 +29,13 @@ _Authoritative current-state bootstrap for a new session. Read this first, then 
 | `312734d` | fix(hooks): `useLocalStorage` in-tab sync via `local-storage` CustomEvent + echo-loop breaker (fixes stale custom-personas across Settings/composer) |
 | (this commit) | fix(documents): replace aborts on total embed failure (502, previous revision stays active — no more good-index destruction) + hybrid splice page-order test + CHANGELOG 4.51.0 + this handoff |
 
+## Batch D safe slice (added later on 2026-07-13, local pending push)
+
+In-range `npm update` (AI SDK v6 line, Tailwind 4.3.3 ⚠️ needs user visual smoke, Playwright, Radix, supabase-js, zod, etc. — NO major migrations), `engines: node >=22`, and **`eslint-plugin-react-hooks` pinned 7.0.1 via `overrides`** — 7.1.x turns React-Compiler rules into 51 lint ERRORS; adopting that rule set is a queued follow-up (the `refs-during-render` findings deserve real review). Gate green on the final tree; CHANGELOG §4.52.0-Unreleased. Tag/push user-gated.
+
 ## ⏳ Next session — open items and roadmap
 
-1. **Roadmap** (user-approved order, from 07-11): **Code Phase C** (Vercel Sandbox execution — needs the user's security/cost decisions first) → remaining audit **Batch D** (dependency currency; AI SDK v7 = own spec; consider `engines` field). **The iteration loop** (`docs/specs/2026-07-11-living-canvas-design-seed.md`) queued as its own item — start with `superpowers:brainstorming` WITH the user.
+1. **Roadmap** (user-approved order, from 07-11): **Code Phase C** (Vercel Sandbox execution — needs the user's security/cost decisions first) → Batch D remainder (major migrations: AI SDK v7 own spec; eslint 10; TS 7; react-hooks 7.1 rule adoption). **The iteration loop** (`docs/specs/2026-07-11-living-canvas-design-seed.md`) queued as its own item — start with `superpowers:brainstorming` WITH the user.
 2. **Deferred with design notes** (own specs when wanted): artifact-list `content` slimming (see spec Non-goals); resurrect archived chats; artifact-renderer warm re-skin; optional shared `useHighlightedCode` hook (CodeBlock/ArtifactPreview duplication — skipped overnight, low value vs. risk).
 3. Optional dead-code note: `getChats(projectId)` has no production callers (tests only) — kept deliberately as the natural API for the archived-chats resurrect.
 
