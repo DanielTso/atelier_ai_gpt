@@ -29,9 +29,11 @@ _Authoritative current-state bootstrap for a new session. Read this first, then 
 | `312734d` | fix(hooks): `useLocalStorage` in-tab sync via `local-storage` CustomEvent + echo-loop breaker (fixes stale custom-personas across Settings/composer) |
 | (this commit) | fix(documents): replace aborts on total embed failure (502, previous revision stays active — no more good-index destruction) + hybrid splice page-order test + CHANGELOG 4.51.0 + this handoff |
 
-## Batch D safe slice (added later on 2026-07-13, local pending push)
+## Batch D safe slice (2026-07-17, PUSHED + DEPLOYED, untagged)
 
-In-range `npm update` (AI SDK v6 line, Tailwind 4.3.3 ⚠️ needs user visual smoke, Playwright, Radix, supabase-js, zod, etc. — NO major migrations), `engines: node >=22`, and **`eslint-plugin-react-hooks` pinned 7.0.1 via `overrides`** — 7.1.x turns React-Compiler rules into 51 lint ERRORS; adopting that rule set is a queued follow-up (the `refs-during-render` findings deserve real review). Gate green on the final tree; CHANGELOG §4.52.0-Unreleased. Tag/push user-gated.
+In-range `npm update` (AI SDK v6 line → ai 6.0.230, Tailwind 4.3.3 ⚠️ **user visual smoke still pending**, Playwright 1.61, Radix, supabase-js, zod, etc. — NO major migrations), `engines: node >=22`, and **`eslint-plugin-react-hooks` pinned 7.0.1 via `overrides`** — 7.1.x turns React-Compiler rules into 51 lint ERRORS; adopting that rule set is a queued follow-up (the `refs-during-render` findings deserve real review). CHANGELOG §4.52.0 stays **Unreleased** — tag on user go.
+
+**Lockfile saga (gotcha for the future):** the first two pushes failed CI at `npm ci` — npm 11 (local, Node 24) and npm 10 (CI, Node 22) each write locks the other rejects. npm 11's cold-regenerated lock carried 27 `@esbuild/*` platform entries flagged `extraneous` without `optional` (EBADPLATFORM on linux); a pure npm 10 resolve instead omits `@napi-rs/canvas-*` optionals that npm 11 requires. Fix that stuck (`7221c14`): patch the npm 11 lock's 27 entries (drop `extraneous`, set `optional: true`) and **validate with BOTH `npm ci --dry-run` and `npx npm@10 ci --dry-run` before pushing any future lockfile change**. Consider aligning CI to Node 24/npm 11 (or `npm i -g npm@11` in the workflow) as a permanent fix — queued, needs a CI edit.
 
 ## ⏳ Next session — open items and roadmap
 
