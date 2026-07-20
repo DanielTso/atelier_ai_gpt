@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { createTestDb, testDb } from '../../helpers/test-db'
+import { documentChunks } from '@/db/schema'
+import { eq, asc } from 'drizzle-orm'
 
 const mockSaveDocumentChunks = vi.fn()
 const mockDeleteDocumentChunks = vi.fn()
@@ -61,5 +64,60 @@ describe('ingestText', () => {
     const { ingestText } = await load()
     const res = await ingestText({ id: 9, projectId: 1 }, 'text', { extractionMethod: 'text' })
     expect(res.status).toBe('error')
+  })
+})
+
+// Page stamping goes through the real chunker + real actions into PGlite — the
+// mock-everything loader above can't see the pageStart/pageEnd columns land.
+describe('ingestText page stamping (PGlite)', () => {
+  async function loadReal() {
+    vi.resetModules()
+    // The mock-based describe above registers doMocks for these — undo them so the
+    // real chunker/actions/embed pipeline runs against the in-process Postgres.
+    vi.doUnmock('@/app/actions')
+    vi.doUnmock('@/lib/chunking')
+    vi.doUnmock('@/lib/embedChunks')
+    vi.doMock('@/db', () => ({ get db() { return testDb } }))
+    vi.doMock('@/lib/embeddings', () => ({ generateEmbedding: vi.fn().mockResolvedValue(new Array(768).fill(0.1)) }))
+    const { ingestText } = await import('@/lib/ingest')
+    const actions = await import('@/app/actions')
+    return { ingestText, actions }
+  }
+
+  beforeEach(async () => { await createTestDb() })
+
+  async function seedDoc(actions: Awaited<ReturnType<typeof loadReal>>['actions']) {
+    const [p] = await actions.createProject('Pages')
+    const [doc] = await actions.createUploadingDocument({ projectId: p.id, filename: 'plan.pdf', mimeType: 'application/pdf', fileSize: 10 })
+    return { projectId: p.id, docId: doc.id }
+  }
+
+  it('stamps chunk page ranges from # Page anchors in the extracted text', async () => {
+    const { ingestText, actions } = await loadReal()
+    const { projectId, docId } = await seedDoc(actions)
+    // Anchor 12 at offset 0; anchor 13 lands past the first chunk boundary (~2000),
+    // so chunk 0 sits wholly in page 12 and the last chunk spans 12→13.
+    const text = `# Page 12\n${'a'.repeat(2500)}\n# Page 13\n${'b'.repeat(500)}`
+    await ingestText({ id: docId, projectId }, text, { extractionMethod: 'vision' })
+    const rows = await testDb.select().from(documentChunks)
+      .where(eq(documentChunks.documentId, docId)).orderBy(asc(documentChunks.chunkIndex))
+    expect(rows.length).toBeGreaterThan(1)
+    expect(rows[0].pageStart).toBe(12)
+    expect(rows[0].pageEnd).toBe(12)
+    const last = rows[rows.length - 1]
+    expect(last.pageStart).toBe(12)
+    expect(last.pageEnd).toBe(13)
+  })
+
+  it('leaves page fields null for anchor-less text', async () => {
+    const { ingestText, actions } = await loadReal()
+    const { projectId, docId } = await seedDoc(actions)
+    await ingestText({ id: docId, projectId }, 'plain extracted text with no page anchors', { extractionMethod: 'text' })
+    const rows = await testDb.select().from(documentChunks).where(eq(documentChunks.documentId, docId))
+    expect(rows.length).toBeGreaterThan(0)
+    for (const r of rows) {
+      expect(r.pageStart).toBeNull()
+      expect(r.pageEnd).toBeNull()
+    }
   })
 })

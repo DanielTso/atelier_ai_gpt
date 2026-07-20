@@ -579,7 +579,7 @@ export async function getDocumentRevisions(documentId: number) {
 export async function commitDocumentReplacement(
   documentId: number,
   projectId: number,
-  chunks: { chunkIndex: number; content: string; embedding: number[] | null }[],
+  chunks: { chunkIndex: number; content: string; embedding: number[] | null; pageStart?: number | null; pageEnd?: number | null }[],
   meta: {
     filename: string
     mimeType: string
@@ -603,6 +603,7 @@ export async function commitDocumentReplacement(
     if (chunks.length > 0) {
       await tx.insert(documentChunks).values(chunks.map(c => ({
         documentId, projectId, chunkIndex: c.chunkIndex, content: c.content, embedding: c.embedding,
+        pageStart: c.pageStart ?? null, pageEnd: c.pageEnd ?? null,
       })))
     }
     await tx.update(documents)
@@ -625,6 +626,8 @@ export async function saveDocumentChunks(chunks: {
   projectId: number
   chunkIndex: number
   content: string
+  pageStart?: number | null
+  pageEnd?: number | null
 }[]) {
   if (chunks.length === 0) return []
   return await db.insert(documentChunks).values(chunks).returning()

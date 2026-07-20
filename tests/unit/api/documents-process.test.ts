@@ -262,7 +262,15 @@ describe('POST /api/documents/process', () => {
 
   it('replace path threads fidelity fields into commitDocumentReplacement', async () => {
     m.getDocumentById.mockResolvedValue({ id: 32, projectId: 1, revision: 1, filename: 'old.pdf', mimeType: 'application/pdf', fileSize: 5, storagePath: 'documents/1/32/old.pdf', thumbnailPath: null, charCount: 10, chunkCount: 1, extractionMethod: 'text' })
-    m.extractTextFromBuffer.mockResolvedValue(extRes('A'.repeat(300), { pageCount: 12, pagesExtracted: null, partial: false }))
+    // Anchored text: '# Page 12' at offset 0, '# Page 13' at offset 15 — the real
+    // buildPageMap runs over this in the route, so the chunk offsets below map to
+    // real page ranges (chunk 0 within page 12; chunk 1 crosses into page 13).
+    const anchored = `# Page 12\nAAAA\n# Page 13\nBBBB`
+    m.extractTextFromBuffer.mockResolvedValue(extRes(anchored, { pageCount: 12, pagesExtracted: null, partial: false }))
+    m.chunkText.mockReturnValue([
+      { index: 0, content: anchored.slice(0, 14), start: 0, end: 14 },
+      { index: 1, content: anchored.slice(10, 29), start: 10, end: 29 },
+    ])
     m.createDocumentRevision.mockResolvedValue([{ id: 1 }])
     m.commitDocumentReplacement.mockResolvedValue(undefined)
     const POST = await importRoute()
@@ -270,7 +278,10 @@ describe('POST /api/documents/process', () => {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ documentId: 32, filename: 'new.pdf', mimeType: 'application/pdf', fileSize: 9 }),
     }) as never)
-    expect(m.commitDocumentReplacement).toHaveBeenCalledWith(32, 1, expect.any(Array), expect.objectContaining({
+    expect(m.commitDocumentReplacement).toHaveBeenCalledWith(32, 1, [
+      expect.objectContaining({ chunkIndex: 0, pageStart: 12, pageEnd: 12 }),
+      expect.objectContaining({ chunkIndex: 1, pageStart: 12, pageEnd: 13 }),
+    ], expect.objectContaining({
       pageCount: 12, extractionPartial: false, failedPages: null,
     }))
   })
