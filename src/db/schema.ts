@@ -114,6 +114,8 @@ export const documentChunks = pgTable('document_chunks', {
   chunkIndex: integer('chunk_index').notNull(),
   content: text('content').notNull(),
   embedding: vector('embedding', { dimensions: 768 }),
+  pageStart: integer('page_start'),
+  pageEnd: integer('page_end'),
   createdAt: createdAt(),
 }, (table) => [
   index('idx_chunks_document_id').on(table.documentId),
