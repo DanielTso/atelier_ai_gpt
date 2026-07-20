@@ -10,11 +10,11 @@ export function chunkText(
   text: string,
   maxSize: number = 2000,
   overlap: number = 400
-): { index: number; content: string }[] {
+): { index: number; content: string; start: number; end: number }[] {
   if (!text || text.trim().length === 0) return []
-  if (text.length <= maxSize) return [{ index: 0, content: text }]
+  if (text.length <= maxSize) return [{ index: 0, content: text, start: 0, end: text.length }]
 
-  const chunks: { index: number; content: string }[] = []
+  const chunks: { index: number; content: string; start: number; end: number }[] = []
   let start = 0
   let chunkIndex = 0
   let previousStart = -1
@@ -28,7 +28,7 @@ export function chunkText(
 
     if (end >= text.length) {
       // Last chunk — take everything remaining
-      chunks.push({ index: chunkIndex, content: text.slice(start) })
+      chunks.push({ index: chunkIndex, content: text.slice(start), start, end: text.length })
       break
     }
 
@@ -47,7 +47,7 @@ export function chunkText(
       end = bestBreak
     }
 
-    chunks.push({ index: chunkIndex, content: text.slice(start, end) })
+    chunks.push({ index: chunkIndex, content: text.slice(start, end), start, end })
     chunkIndex++
     start = end - overlap
 

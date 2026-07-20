@@ -11,7 +11,7 @@ describe('chunkText', () => {
     const text = 'Hello world'
     const chunks = chunkText(text, 2000, 400)
     expect(chunks).toHaveLength(1)
-    expect(chunks[0]).toEqual({ index: 0, content: text })
+    expect(chunks[0]).toEqual({ index: 0, content: text, start: 0, end: text.length })
   })
 
   it('splits text into overlapping chunks', () => {
@@ -60,5 +60,40 @@ describe('chunkText', () => {
     chunks.forEach((chunk, i) => {
       expect(chunk.index).toBe(i)
     })
+  })
+
+  it('records exact char offsets — slice(start, end) === content', () => {
+    // Mixed content with sentence boundaries so bestBreak logic engages
+    const text = ('The quick brown fox. ' + 'y'.repeat(1800) + '! ').repeat(6)
+    const chunks = chunkText(text, 2000, 400)
+    expect(chunks.length).toBeGreaterThan(1)
+    for (const c of chunks) {
+      expect(text.slice(c.start, c.end)).toBe(c.content)
+    }
+  })
+
+  it('single-chunk path carries full-span offsets', () => {
+    const text = 'Hello world'
+    const chunks = chunkText(text, 2000, 400)
+    expect(chunks).toHaveLength(1)
+    expect(chunks[0]).toEqual({ index: 0, content: text, start: 0, end: text.length })
+  })
+
+  it('last chunk end equals text length', () => {
+    const text = 'x'.repeat(5000)
+    const chunks = chunkText(text, 2000, 400)
+    expect(chunks[chunks.length - 1].end).toBe(text.length)
+  })
+
+  it('next chunk start is previous end minus overlap (modulo clamp)', () => {
+    // Uniform text → no sentence boundary, deterministic offsets
+    const text = 'x'.repeat(5000)
+    const overlap = 400
+    const chunks = chunkText(text, 2000, overlap)
+    expect(chunks.length).toBeGreaterThan(1)
+    // Second chunk: start = end0 - overlap unless clamped forward
+    const expected = chunks[0].end - overlap
+    const clamped = Math.max(expected, 0 + 1)
+    expect(chunks[1].start).toBe(clamped)
   })
 })

@@ -14,11 +14,11 @@ export interface DocWindow {
   pageFound: boolean
 }
 
-const ANCHOR_RE = /^# Page (\d+)\s*$/gm
+export const PAGE_ANCHOR_RE = /^# Page (\d+)\s*$/gm
 
 function anchors(full: string): { page: number; index: number }[] {
   const out: { page: number; index: number }[] = []
-  for (const m of full.matchAll(ANCHOR_RE)) out.push({ page: Number(m[1]), index: m.index ?? 0 })
+  for (const m of full.matchAll(PAGE_ANCHOR_RE)) out.push({ page: Number(m[1]), index: m.index ?? 0 })
   return out
 }
 
