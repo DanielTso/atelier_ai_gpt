@@ -1,6 +1,6 @@
 import { embed } from 'ai'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
-import { sql, eq, cosineDistance } from 'drizzle-orm'
+import { sql, eq, and, not, inArray, cosineDistance } from 'drizzle-orm'
 import { db } from '@/db'
 import { messageEmbeddings, documentChunks, documents } from '@/db/schema'
 import { getGeminiApiKey } from './settings'
@@ -115,8 +115,9 @@ export async function findSimilarDocumentChunks(
   projectId: number,
   topK: number = 3,
   threshold: number = 0.5,
-  includeEmbedding: boolean = true
-): Promise<{ content: string; similarity: number; chunkId: number; documentId: number; filename: string; embedding: number[] | null }[]> {
+  includeEmbedding: boolean = true,
+  excludeDocumentIds?: number[]
+): Promise<{ content: string; similarity: number; chunkId: number; documentId: number; filename: string; pageStart: number | null; pageEnd: number | null; embedding: number[] | null }[]> {
   // Order by raw cosine distance ascending to keep the HNSW index in play; apply the
   // threshold as a post-filter (see findSimilarMessages for the rationale).
   const distance = cosineDistance(documentChunks.embedding, queryEmbedding)
@@ -127,20 +128,26 @@ export async function findSimilarDocumentChunks(
     chunkId: documentChunks.id,
     documentId: documentChunks.documentId,
     filename: documents.filename,
+    pageStart: documentChunks.pageStart,
+    pageEnd: documentChunks.pageEnd,
   }
+  const scopeFilter = excludeDocumentIds && excludeDocumentIds.length > 0
+    ? and(eq(documentChunks.projectId, projectId), not(inArray(documentChunks.documentId, excludeDocumentIds)))
+    : eq(documentChunks.projectId, projectId)
   // The embedding column is only consumed by MMR; skip it when MMR is disabled.
   const rows = includeEmbedding
     ? await db.select({ ...baseCols, embedding: documentChunks.embedding })
         .from(documentChunks).innerJoin(documents, eq(documentChunks.documentId, documents.id))
-        .where(eq(documentChunks.projectId, projectId)).orderBy(distance).limit(topK)
+        .where(scopeFilter).orderBy(distance).limit(topK)
     : await db.select(baseCols)
         .from(documentChunks).innerJoin(documents, eq(documentChunks.documentId, documents.id))
-        .where(eq(documentChunks.projectId, projectId)).orderBy(distance).limit(topK)
+        .where(scopeFilter).orderBy(distance).limit(topK)
   return rows
     .filter((r) => r.similarity > threshold)
     .map((r) => ({
       content: r.content, similarity: r.similarity, chunkId: r.chunkId,
       documentId: r.documentId, filename: r.filename,
+      pageStart: r.pageStart, pageEnd: r.pageEnd,
       embedding: 'embedding' in r ? (r.embedding as number[]) : null,
     }))
 }

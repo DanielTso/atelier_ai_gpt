@@ -12,10 +12,12 @@ export interface KeywordChunk {
   chunkId: number
   documentId: number
   filename: string
+  pageStart: number | null
+  pageEnd: number | null
   embedding: null
 }
 
-type Row = { chunk_id: number; content: string; document_id: number; filename: string }
+type Row = { chunk_id: number; content: string; document_id: number; filename: string; page_start: number | null; page_end: number | null }
 
 const rowsOf = (r: unknown): Row[] => (Array.isArray(r) ? r : (r as { rows: Row[] }).rows) as Row[]
 
@@ -42,13 +44,18 @@ export async function findChunksByKeyword(
   query: string,
   projectId: number,
   topN: number,
+  excludeDocumentIds?: number[],
 ): Promise<KeywordChunk[]> {
   if (query.length > MAX_QUERY_CHARS) query = query.slice(0, MAX_QUERY_CHARS)
+  // Parameterized scalar list keeps both drivers (postgres-js / PGlite) happy.
+  const excl = excludeDocumentIds && excludeDocumentIds.length > 0
+    ? sql` AND dc.document_id NOT IN (${sql.join(excludeDocumentIds.map(id => sql`${id}`), sql`, `)})`
+    : sql``
   const fts = rowsOf(await db.execute(sql`
-    SELECT dc.id AS chunk_id, dc.content, dc.document_id, d.filename
+    SELECT dc.id AS chunk_id, dc.content, dc.document_id, d.filename, dc.page_start, dc.page_end
     FROM document_chunks dc
     JOIN documents d ON d.id = dc.document_id
-    WHERE dc.project_id = ${projectId}
+    WHERE dc.project_id = ${projectId}${excl}
       AND dc.content_tsv @@ websearch_to_tsquery('english', ${query})
     ORDER BY ts_rank_cd(dc.content_tsv, websearch_to_tsquery('english', ${query})) DESC
     LIMIT ${topN}`))
@@ -58,10 +65,10 @@ export async function findChunksByKeyword(
   if (tokens.length > 0) {
     const likes = sql.join(tokens.map(t => sql`dc.content ILIKE ${'%' + t + '%'}`), sql` OR `)
     trg = rowsOf(await db.execute(sql`
-      SELECT dc.id AS chunk_id, dc.content, dc.document_id, d.filename
+      SELECT dc.id AS chunk_id, dc.content, dc.document_id, d.filename, dc.page_start, dc.page_end
       FROM document_chunks dc
       JOIN documents d ON d.id = dc.document_id
-      WHERE dc.project_id = ${projectId} AND (${likes})
+      WHERE dc.project_id = ${projectId}${excl} AND (${likes})
       LIMIT ${topN}`))
   }
 
@@ -70,7 +77,10 @@ export async function findChunksByKeyword(
   for (const r of [...fts, ...trg]) {
     if (seen.has(r.chunk_id)) continue
     seen.add(r.chunk_id)
-    out.push({ content: r.content, chunkId: r.chunk_id, documentId: r.document_id, filename: r.filename, embedding: null })
+    out.push({
+      content: r.content, chunkId: r.chunk_id, documentId: r.document_id, filename: r.filename,
+      pageStart: r.page_start, pageEnd: r.page_end, embedding: null,
+    })
     if (out.length >= topN) break
   }
   return out

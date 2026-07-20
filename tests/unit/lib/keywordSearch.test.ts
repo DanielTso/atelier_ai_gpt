@@ -15,11 +15,28 @@ async function seed() {
     projectId: p.id, filename: 'plans.pdf', mimeType: 'application/pdf', fileSize: 1, charCount: 1,
   }).returning()
   await testDb.insert(documentChunks).values([
-    { documentId: d.id, projectId: p.id, chunkIndex: 0, content: 'Storm drain profile sheet SW-101 with general notes' },
+    { documentId: d.id, projectId: p.id, chunkIndex: 0, content: 'Storm drain profile sheet SW-101 with general notes', pageStart: 2, pageEnd: 4 },
     { documentId: d.id, projectId: p.id, chunkIndex: 1, content: 'Electrical single line diagram E-203 panel schedule' },
     { documentId: d.id, projectId: p.id, chunkIndex: 2, content: 'Landscape irrigation legend and plant schedule' },
   ])
   return { projectId: p.id }
+}
+
+async function seedTwoDocs() {
+  await createTestDb()
+  const { projects, documents, documentChunks } = await import('@/db/schema')
+  const [p] = await testDb.insert(projects).values({ name: 'p' }).returning()
+  const [d1] = await testDb.insert(documents).values({
+    projectId: p.id, filename: 'keep.pdf', mimeType: 'application/pdf', fileSize: 1, charCount: 1,
+  }).returning()
+  const [d2] = await testDb.insert(documents).values({
+    projectId: p.id, filename: 'skip.pdf', mimeType: 'application/pdf', fileSize: 1, charCount: 1,
+  }).returning()
+  await testDb.insert(documentChunks).values([
+    { documentId: d1.id, projectId: p.id, chunkIndex: 0, content: 'Storm drain profile sheet SW-101 kept' },
+    { documentId: d2.id, projectId: p.id, chunkIndex: 0, content: 'Storm drain outfall sheet SW-101 skipped' },
+  ])
+  return { projectId: p.id, keepId: d1.id, skipId: d2.id }
 }
 
 describe('identifierTokens', () => {
@@ -49,6 +66,32 @@ describe('findChunksByKeyword', () => {
     const { projectId } = await seed()
     const r = await findChunksByKeyword('storm drain', projectId + 999, 10)
     expect(r).toEqual([])
+  })
+
+  it('returns pageStart/pageEnd (stamped and null) on hits', async () => {
+    const { projectId } = await seed()
+    const paged = await findChunksByKeyword('storm drain', projectId, 10)
+    expect(paged[0].pageStart).toBe(2)
+    expect(paged[0].pageEnd).toBe(4)
+    const unpaged = await findChunksByKeyword('irrigation legend', projectId, 10)
+    expect(unpaged[0].pageStart).toBeNull()
+    expect(unpaged[0].pageEnd).toBeNull()
+  })
+
+  it('excludes chunks from excluded documents (FTS leg)', async () => {
+    const { projectId, skipId } = await seedTwoDocs()
+    const all = await findChunksByKeyword('storm drain', projectId, 10)
+    expect(all.length).toBe(2)
+    const filtered = await findChunksByKeyword('storm drain', projectId, 10, [skipId])
+    expect(filtered.length).toBe(1)
+    expect(filtered[0].filename).toBe('keep.pdf')
+  })
+
+  it('excludes chunks from excluded documents (identifier ILIKE leg)', async () => {
+    const { projectId, skipId } = await seedTwoDocs()
+    const filtered = await findChunksByKeyword('what is on SW-101', projectId, 10, [skipId])
+    expect(filtered.length).toBeGreaterThan(0)
+    expect(filtered.every(c => c.filename === 'keep.pdf')).toBe(true)
   })
 })
 

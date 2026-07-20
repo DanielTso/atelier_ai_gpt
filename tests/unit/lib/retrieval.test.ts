@@ -119,7 +119,7 @@ describe('retrieveContext', () => {
     m.rerankCandidates.mockImplementation((_q: unknown, c: unknown) => Promise.resolve(c))
     const { retrieveContext } = await import('@/lib/retrieval')
     const out = await retrieveContext(msgs as never, { chatId: 1, projectId: 7 })
-    expect(m.findChunksByKeyword).toHaveBeenCalledWith('foundation spec?', 7, 20)
+    expect(m.findChunksByKeyword).toHaveBeenCalledWith('foundation spec?', 7, 20, undefined)
     expect(out.documentContext).toContain('vector hit')
     expect(out.documentContext).toContain('SW-101 keyword hit')
   })
@@ -159,6 +159,57 @@ describe('retrieveContext', () => {
     expect(out.documentContext).toContain('SW-101 keyword-only')
     // Reserving a slot must not push out the top vector pick.
     expect(out.documentContext).toContain('vec A')
+  })
+
+  it('renders a source header with a page range and §c anchor', async () => {
+    setup()
+    m.generateEmbedding.mockResolvedValue([1, 0, 0])
+    m.findSimilarMessages.mockResolvedValue([])
+    m.findSimilarDocumentChunks.mockResolvedValue([
+      { content: 'foundation: 4000psi', similarity: 0.9, chunkId: 12, documentId: 4, filename: 'spec.pdf', embedding: [1, 0, 0], pageStart: 3, pageEnd: 5 },
+    ])
+    m.rerankCandidates.mockImplementation((_q: unknown, c: unknown) => Promise.resolve(c))
+    const { retrieveContext } = await import('@/lib/retrieval')
+    const out = await retrieveContext(msgs as never, { chatId: 1, projectId: 7 })
+    expect(out.documentContext).toContain('[Source: doc 4 "spec.pdf" p.3–5 §c12]\nfoundation: 4000psi')
+  })
+
+  it('renders a single-page header without a range dash', async () => {
+    setup()
+    m.generateEmbedding.mockResolvedValue([1, 0, 0])
+    m.findSimilarMessages.mockResolvedValue([])
+    m.findSimilarDocumentChunks.mockResolvedValue([
+      { content: 'note 7', similarity: 0.9, chunkId: 8, documentId: 2, filename: 'notes.pdf', embedding: [1, 0, 0], pageStart: 4, pageEnd: 4 },
+    ])
+    m.rerankCandidates.mockImplementation((_q: unknown, c: unknown) => Promise.resolve(c))
+    const { retrieveContext } = await import('@/lib/retrieval')
+    const out = await retrieveContext(msgs as never, { chatId: 1, projectId: 7 })
+    expect(out.documentContext).toContain('[Source: doc 2 "notes.pdf" p.4 §c8]\nnote 7')
+  })
+
+  it('renders a header without pages (null pageStart) but always with the §c anchor', async () => {
+    setup()
+    m.generateEmbedding.mockResolvedValue([1, 0, 0])
+    m.findSimilarMessages.mockResolvedValue([])
+    m.findSimilarDocumentChunks.mockResolvedValue([
+      { content: 'legacy chunk', similarity: 0.9, chunkId: 3, documentId: 1, filename: 'old.pdf', embedding: [1, 0, 0], pageStart: null, pageEnd: null },
+    ])
+    m.rerankCandidates.mockImplementation((_q: unknown, c: unknown) => Promise.resolve(c))
+    const { retrieveContext } = await import('@/lib/retrieval')
+    const out = await retrieveContext(msgs as never, { chatId: 1, projectId: 7 })
+    expect(out.documentContext).toContain('[Source: doc 1 "old.pdf" §c3]\nlegacy chunk')
+  })
+
+  it('threads excludeDocumentIds to both document finders', async () => {
+    setup()
+    m.generateEmbedding.mockResolvedValue([1, 0, 0])
+    m.findSimilarMessages.mockResolvedValue([])
+    m.findSimilarDocumentChunks.mockResolvedValue([])
+    m.rerankCandidates.mockImplementation((_q: unknown, c: unknown) => Promise.resolve(c))
+    const { retrieveContext } = await import('@/lib/retrieval')
+    await retrieveContext(msgs as never, { chatId: 1, projectId: 7, excludeDocumentIds: [5, 9] })
+    expect(m.findSimilarDocumentChunks).toHaveBeenCalledWith([1, 0, 0], 7, 20, 0.5, true, [5, 9])
+    expect(m.findChunksByKeyword).toHaveBeenCalledWith('foundation spec?', 7, 20, [5, 9])
   })
 
   it('degrades to vector-only when the keyword leg throws', async () => {
