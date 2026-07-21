@@ -23,8 +23,10 @@ export function useLocalStorage<T>(
   // re-broadcast would bounce between instances forever on non-primitive values.
   const rawRef = useRef<string | null>(null)
 
-  // Hydrate from localStorage after mount (client-only)
+  // Hydrate from localStorage after mount (client-only). Re-runs on a KEY change
+  // (dynamic keys, e.g. project-doc-scope-<id>).
   useEffect(() => {
+    let adopted = false
     try {
       const item = window.localStorage.getItem(key)
       if (item !== null) {
@@ -32,10 +34,24 @@ export function useLocalStorage<T>(
         if (!validate || validate(parsed)) {
           rawRef.current = item
           setStoredValue(parsed as T)
+          adopted = true
         }
       }
     } catch (error) {
       console.warn(`Error reading localStorage key "${key}":`, error)
+    }
+    // No (valid) entry under this key: prime rawRef with the serialized initial
+    // so the write effect doesn't persist the untouched initial value as a
+    // phantom entry. On a KEY CHANGE (already hydrated) also reset the state —
+    // otherwise the previous key's value leaks into the new key (dynamic keys,
+    // e.g. project-doc-scope-<id>); on first mount the state already holds it.
+    if (!adopted) {
+      try {
+        rawRef.current = JSON.stringify(initialValue)
+      } catch {
+        rawRef.current = null
+      }
+      if (hasHydrated.current) setStoredValue(initialValue)
     }
     hasHydrated.current = true
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -74,9 +90,16 @@ export function useLocalStorage<T>(
 
   // Sync state to localStorage whenever it changes (skip initial write). A value we
   // just adopted from a broadcast serializes to rawRef.current — skip the re-write
-  // and re-broadcast (loop terminator).
+  // and re-broadcast (loop terminator). A KEY change is owned by the hydrate effect
+  // above (re-read or reset) — this effect fires for it with the OLD key's state
+  // still in place, which must never be written under the new key.
+  const writeKeyRef = useRef(key)
   useEffect(() => {
     if (!hasHydrated.current) return
+    if (writeKeyRef.current !== key) {
+      writeKeyRef.current = key
+      return
+    }
     try {
       const raw = JSON.stringify(storedValue)
       if (raw === rawRef.current) return

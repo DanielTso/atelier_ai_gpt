@@ -51,10 +51,11 @@ interface MessagesListProps {
   /** Opens a document from a citation chip click. Defaults to a no-op until
    *  page.tsx wires the real handler. */
   onOpenCitation?: OnOpenCitation
-  /** Per-turn grounded flag (ephemeral — the composer's current grounded state).
-   *  Drives the "Answered from project documents" floor caption when a grounded
-   *  reply cites nothing. */
-  grounded?: boolean
+  /** Membership test: did this assistant message finish THIS SESSION with
+   *  grounded on? Drives the "Answered from project documents" floor caption
+   *  when such a reply cites nothing — historical/reloaded messages never
+   *  qualify (session-gated, review F3). */
+  isGroundedTurn?: (messageId: string) => boolean
 }
 
 // True when the text carries at least one well-formed cite marker. Uses CITE_RE
@@ -231,6 +232,7 @@ const MARKDOWN_COMPONENTS = {
 const EMPTY_URL_SET: ReadonlySet<string> = new Set()
 const EMPTY_DOCUMENTS_BY_ID: DocumentsById = new Map()
 const NOOP_ON_OPEN_CITATION: OnOpenCitation = () => {}
+const NEVER_GROUNDED = () => false
 
 // Raw props a `citation-chip` hast element carries (see remarkCitations.ts —
 // `hProperties` keys land here verbatim as component props).
@@ -342,10 +344,6 @@ const MessageBody = memo(function MessageBody({
         </SmoothStreamingWrapper>
       </div>
       {m.role === 'assistant' && <SourcesList sources={getMessageSources(m)} />}
-      {/* Grounded-floor caption ("Answered from project documents" when a
-          grounded turn's text carries zero cite markers) needs the per-turn
-          `grounded` flag, which doesn't exist on the client until Task 9
-          threads it through the send path. Deferred there. */}
     </div>
   )
 })
@@ -362,7 +360,7 @@ export const MessagesList = memo(function MessagesList({
   status,
   documentsById = EMPTY_DOCUMENTS_BY_ID,
   onOpenCitation = NOOP_ON_OPEN_CITATION,
-  grounded = false,
+  isGroundedTurn = NEVER_GROUNDED,
 }: MessagesListProps) {
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
   const onImageClick = useCallback((url: string) => setLightboxUrl(url), [])
@@ -460,11 +458,13 @@ export const MessagesList = memo(function MessagesList({
             // Show streaming cursor on last assistant message while loading
             const isStreamingMessage = isLoading && m.role === 'assistant' && index === lastAssistantIndex
 
-            // Grounded floor: the just-finished grounded reply, with document
-            // context available, that cited nothing — reassure the user it was
-            // still answered from the documents (not the web / general knowledge).
+            // Grounded floor: a grounded turn that finished THIS SESSION, with
+            // document context available, that cited nothing — reassure the user
+            // it was still answered from the documents (not the web / general
+            // knowledge). Session-gated by message id so reloaded history never
+            // false-positives (review F3); a streaming turn is not yet in the set.
             const showGroundedFloor =
-              grounded && !isLoading && m.role === 'assistant' && index === lastAssistantIndex &&
+              m.role === 'assistant' && isGroundedTurn(m.id) &&
               documentsById.size > 0 && !hasCiteMarker(getMessageText(m))
 
             return (

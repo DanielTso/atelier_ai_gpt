@@ -36,6 +36,22 @@ describe('useGroundedCompose', () => {
     expect(result.current.grounded).toBe(true)
   })
 
+  // Review F2/F4: opening an existing chat resets the pill OFF and clears the
+  // pick guard — the exact call sequence page.tsx's chat-open effect runs.
+  it('chat-open reset (resetPick + applyPersonaDefault(false)) forces OFF even after a manual toggle', () => {
+    const { result } = renderHook(() => useGroundedCompose(false))
+    act(() => result.current.toggle()) // grounded ON in a previous surface
+    expect(result.current.grounded).toBe(true)
+    act(() => {
+      result.current.resetPick()
+      result.current.applyPersonaDefault(false)
+    })
+    expect(result.current.grounded).toBe(false)
+    // The guard is clear: a later persona default applies normally again.
+    act(() => result.current.applyPersonaDefault(true))
+    expect(result.current.grounded).toBe(true)
+  })
+
   it('resetPick clears the guard so the next persona default applies again', () => {
     const { result } = renderHook(() => useGroundedCompose(false))
     act(() => result.current.toggle()) // picked ON

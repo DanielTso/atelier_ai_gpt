@@ -36,6 +36,7 @@ import { useLocalStorage } from "@/hooks/useLocalStorage"
 import { useSmartDefaults } from "@/hooks/useSmartDefaults"
 import { usePersonas, type Effort } from "@/hooks/usePersonas"
 import { useGroundedCompose } from "@/hooks/useGroundedCompose"
+import { useDocScope, scopeProjectIdFor } from "@/hooks/useDocScope"
 import { PersonaSuggestionBanner } from "@/components/chat/PersonaSuggestionBanner"
 import { ProjectLandingPage } from "@/components/chat/ProjectLandingPage"
 import type { AttachedFile, AttachedImage } from "@/lib/fileAttachments"
@@ -231,14 +232,20 @@ export default function Home() {
     useGroundedCompose(!!defaultPersona.grounded)
   const groundedRef = useRef(grounded)
   groundedRef.current = grounded
+  // Assistant message ids completed THIS SESSION with grounded on (review F3).
+  // Gates the "Answered from project documents" floor caption in MessagesList —
+  // historical/reloaded messages can never show it.
+  const groundedTurnIdsRef = useRef<Set<string>>(new Set())
+  const isGroundedTurn = useCallback((id: string) => groundedTurnIdsRef.current.has(id), [])
 
-  // Per-chat source scoping (grounded retrieval): EXCLUDED document ids. Keyed by
-  // the active chat; the compose surface (no chat) shows no scoping UI.
-  const [excludedDocIds, setExcludedDocIds] = useLocalStorage<number[]>(
-    'chat-doc-scope-' + activeChatId,
-    [],
-    v => Array.isArray(v) && v.every(x => typeof x === 'number'),
-  )
+  // Project-level source scoping (review F1): EXCLUDED document ids, persisted per
+  // PROJECT ('project-doc-scope-<id>'). The checkboxes live on the project landing
+  // rail, and a chat inherits its own project's exclusions — the key derives from
+  // currentChat.projectId first (activeProjectId goes stale, see the useUrlNavSync
+  // comment above). Projectless context → 'none': always [] and never written.
+  // Legacy 'chat-doc-scope-*' entries are deliberately never read.
+  const scopeProjectId = scopeProjectIdFor(currentChat?.projectId, activeProjectId)
+  const { excludedDocIds, setExcludedDocIds } = useDocScope(scopeProjectId)
   const excludedDocIdsRef = useRef(excludedDocIds)
   excludedDocIdsRef.current = excludedDocIds
 
@@ -278,7 +285,14 @@ export default function Home() {
     error: chatError
   } = useChat({
     transport,
-    onFinish: useCallback((args: { message: UIMessage }) => onFinishRef.current(args), []),
+    onFinish: useCallback((args: { message: UIMessage }) => {
+      // Record grounded completions BEFORE the persistence pipeline (review F3):
+      // the floor caption may render as soon as the stream settles.
+      if (args.message.role === 'assistant' && groundedRef.current) {
+        groundedTurnIdsRef.current.add(args.message.id)
+      }
+      return onFinishRef.current(args)
+    }, []),
   })
 
   // Suggested follow-up chips after each finished response (best-effort, Gemini Flash).
@@ -555,6 +569,14 @@ export default function Home() {
       if (skipLoadOnceRef.current === activeChatId) {
         skipLoadOnceRef.current = null
       } else {
+        // Opening an existing chat always starts ungrounded (review F2/F4): a
+        // previous chat's or compose surface's grounded state must not leak in —
+        // outside a project the pill can be hidden, so a leaked ON would silently
+        // answer "Not found" with no visible cause. Clears the manual-pick guard
+        // too (pickedRef). The user re-toggles per chat as needed; fresh composes
+        // are untouched — they run their own reset + persona-default paths.
+        resetGroundedPick()
+        applyGroundedDefault(false)
         // Clear the previous chat's content immediately: without this a chat→chat
         // switch renders the OLD chat's messages under the new chat's key while
         // the fetch is in flight (and the loading skeleton never shows).
@@ -1303,7 +1325,7 @@ export default function Home() {
                 status={status}
                 documentsById={documentsById}
                 onOpenCitation={handleOpenCitation}
-                grounded={grounded}
+                isGroundedTurn={isGroundedTurn}
               />
             </div>
 

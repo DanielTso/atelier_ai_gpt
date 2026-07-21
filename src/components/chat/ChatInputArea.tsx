@@ -43,7 +43,9 @@ interface ChatInputAreaProps {
   selectedEffort?: Effort
   onEffortChange?: (effort?: Effort) => void
   /** Grounded answers: restrict Claude to project documents + require citations.
-   *  The pill only renders in a project context (see showGroundedPill). */
+   *  The OFF-state pill only renders in a project context (showGroundedPill),
+   *  but an ON state always renders — it must stay visible and dismissable
+   *  even outside project context (review F2 safety valve). */
   grounded?: boolean
   onGroundedToggle?: () => void
   showGroundedPill?: boolean
@@ -327,7 +329,7 @@ export const ChatInputArea = memo(function ChatInputArea({
           {onEffortChange && selectedModel?.startsWith('claude') && !selectedModel.startsWith('claude-haiku') && (
             <EffortPill value={selectedEffort} onChange={onEffortChange} side="top" />
           )}
-          {showGroundedPill && onGroundedToggle && (
+          {(showGroundedPill || grounded) && onGroundedToggle && (
             <button
               type="button"
               onClick={onGroundedToggle}

@@ -77,10 +77,10 @@ Layered mitigations for the model-discipline weakness (locked with user):
   - No target / clamp failure: dialog opens as today (document level).
 - Zero-marker grounded floor: if the live turn was grounded, had doc context, and produced no markers, show a muted "Answered from project documents" caption under the message (client-side; uses the request's grounded flag + a response signal — if no clean signal exists, key off grounded flag alone; ephemeral, not persisted).
 
-### C6 — Per-chat source scoping
+### C6 — Source scoping (per project — amended 2026-07-21)
 
 - UI: checkbox on each ready document row in the Files rail (`ProjectContextRail`); header shows `n of m sources active`; default all-on.
-- State: `useLocalStorage('chat-doc-scope-<chatId>')` storing EXCLUDED ids (empty = all on). Per chat, not per project. (DB column on `chats` = SaaS-era note.)
+- State: `useLocalStorage('project-doc-scope-<projectId>')` storing EXCLUDED ids (empty = all on). **Per PROJECT, not per chat** — amended 2026-07-21 at Task 9 review. Rationale: the scoping surface (the Files rail checkboxes) lives on the project landing page, where no chat is active — the originally-spec'd per-chat key shipped as an inert approximation (a session-global `chat-doc-scope-null` bucket that never followed any chat). The scope key derives from the active project context: inside a chat, the chat's own `projectId` (never the stale `activeProjectId`); on the landing page, `activeProjectId`; no project on either side → exclusions are treated as `[]` and never persisted. Legacy `chat-doc-scope-*` entries are never read. "True per-chat scoping + a mid-chat scoping surface" moved to Follow-ups. (DB column on `projects` = SaaS-era note.)
 - Request: excluded ids ride the chat body → route filters:
   - `findSimilarDocumentChunks` + `findChunksByKeyword` gain optional `excludeDocumentIds` (SQL `NOT IN`, skipped when empty).
   - `[Project documents]` manifest filters them out.
@@ -120,4 +120,4 @@ Standard gate per task. Key tests: `buildPageMap`/`pageRangeFor` (anchors, empty
 
 ## Follow-ups captured (not this release)
 
-- @-mention composer scoping; `grounded`/scope as DB columns (SaaS multi-device); Gemini-Flash citation repair pass (data-gated); ingest digests + starter questions; templated report presets; drive-time audio brief (own brainstorm); citation chips for message-retrieval context.
+- @-mention composer scoping; **true per-chat source scoping + a mid-chat scoping surface** (per-project scoping shipped instead — §C6 amendment, 2026-07-21); `grounded`/scope as DB columns (SaaS multi-device); Gemini-Flash citation repair pass (data-gated); ingest digests + starter questions; templated report presets; drive-time audio brief (own brainstorm); citation chips for message-retrieval context.

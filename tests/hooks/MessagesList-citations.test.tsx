@@ -47,3 +47,44 @@ describe('MessagesList citation render seam', () => {
     expect(screen.queryByText(/p\.3/)).toBeNull()
   })
 })
+
+// Review F3: the floor caption is gated on a SESSION set of grounded-finished
+// message ids (isGroundedTurn), not the composer's current grounded flag —
+// historical/reloaded messages can never false-positive.
+describe('grounded floor caption (session-gated)', () => {
+  const CAPTION = 'Answered from project documents'
+
+  function renderList(text: string, isGroundedTurn?: (id: string) => boolean) {
+    const messages: ChatMessage[] = [
+      { id: 'a1', role: 'assistant', parts: [{ type: 'text', text }], createdAt: new Date() } as unknown as ChatMessage,
+    ]
+    render(
+      <MessagesList
+        messages={messages}
+        isLoading={false}
+        activeChatId={7}
+        selectedModel="claude-sonnet-5"
+        documentsById={documentsById}
+        isGroundedTurn={isGroundedTurn}
+      />,
+    )
+  }
+
+  it('shows the caption for a session-grounded turn with zero cite markers', () => {
+    renderList('Plain answer with no markers.', id => id === 'a1')
+    expect(screen.getByText(CAPTION)).toBeTruthy()
+  })
+
+  it('never shows the caption for historical messages (not in the session set)', () => {
+    // Default membership (nothing finished grounded this session) — a loaded
+    // marker-less history message must not get the caption.
+    renderList('Plain answer with no markers.')
+    expect(screen.queryByText(CAPTION)).toBeNull()
+  })
+
+  it('suppresses the caption when the grounded turn carries a cite marker', async () => {
+    renderList('Cited answer [cite:1 p3].', id => id === 'a1')
+    expect(await screen.findByText('GradingPlan.pdf · p.3')).toBeTruthy()
+    expect(screen.queryByText(CAPTION)).toBeNull()
+  })
+})

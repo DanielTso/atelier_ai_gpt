@@ -84,6 +84,31 @@ describe('useLocalStorage', () => {
     expect(window.localStorage.getItem('shared')).toBe(JSON.stringify('v1'))
   })
 
+  it('re-hydrates when the key changes to one with a stored value', () => {
+    window.localStorage.setItem('k-b', JSON.stringify('bee'))
+    const { result, rerender } = renderHook(
+      ({ k }: { k: string }) => useLocalStorage(k, 'init'),
+      { initialProps: { k: 'k-a' } },
+    )
+    expect(result.current[0]).toBe('init')
+    rerender({ k: 'k-b' })
+    expect(result.current[0]).toBe('bee')
+  })
+
+  it('resets to the initial value on a key change to an empty bucket (no carry-over, no phantom write)', () => {
+    const { result, rerender } = renderHook(
+      ({ k }: { k: string }) => useLocalStorage(k, 'init'),
+      { initialProps: { k: 'k-a' } },
+    )
+    act(() => result.current[1]('touched'))
+    expect(window.localStorage.getItem('k-a')).toBe(JSON.stringify('touched'))
+    // 'k-b' has no entry: the previous key's value must NOT leak in, and the
+    // reset must not be persisted as a phantom entry under the new key.
+    rerender({ k: 'k-b' })
+    expect(result.current[0]).toBe('init')
+    expect(window.localStorage.getItem('k-b')).toBeNull()
+  })
+
   it('in-tab sync respects the validator and does not echo-loop on objects', async () => {
     const isObj = (v: unknown) => typeof v === 'object' && v !== null
     const a = renderHook(() => useLocalStorage<{ n: number }>('obj-shared', { n: 0 }, isObj))
