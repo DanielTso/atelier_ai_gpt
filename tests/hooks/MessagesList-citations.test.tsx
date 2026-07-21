@@ -46,6 +46,18 @@ describe('MessagesList citation render seam', () => {
     expect(await screen.findByText(/Missing source/)).toBeTruthy()
     expect(screen.queryByText(/p\.3/)).toBeNull()
   })
+
+  it('renders a near-miss marker (p-dot + en-dash range) as a chip, not literal text', async () => {
+    renderWithCite('See the note [cite:1 p.34–36] for details.')
+    expect(await screen.findByText('GradingPlan.pdf · p.34–36')).toBeTruthy()
+    expect(screen.queryByText(/\[cite/)).toBeNull()
+  })
+
+  it('strips an unparseable-but-cite-intended token from the rendered text', async () => {
+    renderWithCite('Broken marker [cite:1 x9] should vanish.')
+    expect(await screen.findByText(/Broken marker\s+should vanish\./)).toBeTruthy()
+    expect(screen.queryByText(/\[cite/)).toBeNull()
+  })
 })
 
 // Review F3: the floor caption is gated on a SESSION set of grounded-finished
@@ -84,6 +96,14 @@ describe('grounded floor caption (session-gated)', () => {
 
   it('suppresses the caption when the grounded turn carries a cite marker', async () => {
     renderList('Cited answer [cite:1 p3].', id => id === 'a1')
+    expect(await screen.findByText('GradingPlan.pdf · p.3')).toBeTruthy()
+    expect(screen.queryByText(CAPTION)).toBeNull()
+  })
+
+  it('suppresses the caption when the only marker is a near-miss (normalized view)', async () => {
+    // hasCiteMarker counts PARSEABLE markers in the same normalized text the
+    // renderer chips from — a p-dot marker still counts as a citation.
+    renderList('Cited answer [cite:1 p.3].', id => id === 'a1')
     expect(await screen.findByText('GradingPlan.pdf · p.3')).toBeTruthy()
     expect(screen.queryByText(CAPTION)).toBeNull()
   })

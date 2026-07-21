@@ -25,10 +25,10 @@ export function createReadDocumentTool(ctx: { projectId: number; excludeDocument
     }),
     execute: async ({ documentId, fromPage, offset }) => {
       try {
-        // Per-chat source scoping (defense in depth — the manifest already hides
-        // excluded docs). In-band error, never a throw.
+        // Project-level source scoping (defense in depth — the manifest already
+        // hides excluded docs). In-band error, never a throw.
         if (ctx.excludeDocumentIds?.includes(documentId)) {
-          return { error: `Document ${documentId} is excluded from this chat's sources.` }
+          return { error: `Document ${documentId} is excluded from this project's sources.` }
         }
         const doc = await getDocumentById(documentId)
         if (!doc || doc.projectId !== ctx.projectId) {

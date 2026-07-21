@@ -1,14 +1,89 @@
 import { describe, it, expect } from 'vitest'
 import {
   CITE_RE,
+  LOOSE_CITE_RE,
   parseCitation,
   splitOnCitations,
   hideIncompleteTrailingCite,
+  normalizeCitationText,
 } from '@/lib/citations'
 
 describe('CITE_RE', () => {
   it('is a global regex (splitOnCitations relies on matchAll)', () => {
     expect(CITE_RE.flags).toContain('g')
+  })
+})
+
+describe('LOOSE_CITE_RE', () => {
+  it('is a global regex', () => {
+    expect(LOOSE_CITE_RE.flags).toContain('g')
+  })
+
+  it.each([
+    '[cite:12]',
+    '[cite:12 p34]',
+    '[cite:12 p34-36]',
+    '[cite:12 c456]',
+  ])('matches everything CITE_RE matches: %s', (token) => {
+    expect(new RegExp(`^${LOOSE_CITE_RE.source}$`).test(token)).toBe(true)
+  })
+
+  it.each([
+    ['[cite:12 p.34]', 'p-dot page'],
+    ['[cite:12 p34–36]', 'en-dash range'],
+    ['[cite: 12]', 'space after colon'],
+    ['[cite:1 x9]', 'unknown modifier'],
+  ])('matches intended-but-malformed token %s (%s)', (token) => {
+    expect(new RegExp(`^${LOOSE_CITE_RE.source}$`).test(token)).toBe(true)
+  })
+
+  it('does not match bracket text without the cite prefix + digits', () => {
+    expect(new RegExp(LOOSE_CITE_RE.source).test('[citation needed]')).toBe(false)
+    expect(new RegExp(LOOSE_CITE_RE.source).test('[cite:abc]')).toBe(false)
+    expect(new RegExp(LOOSE_CITE_RE.source).test('[see page 12]')).toBe(false)
+  })
+})
+
+describe('normalizeCitationText', () => {
+  it('converts an en-dash range inside a cite token to the hyphen form', () => {
+    expect(normalizeCitationText('See [cite:12 p34–36] here.')).toBe(
+      'See [cite:12 p34-36] here.',
+    )
+  })
+
+  it('converts p. before a digit inside a cite token to p', () => {
+    expect(normalizeCitationText('See [cite:12 p.34] here.')).toBe(
+      'See [cite:12 p34] here.',
+    )
+  })
+
+  it('normalizes mixed deviations in one token (p-dot + en-dash range)', () => {
+    expect(normalizeCitationText('A [cite:5 p.6–7] B')).toBe('A [cite:5 p6-7] B')
+  })
+
+  it('is idempotent on canonical markers', () => {
+    const canonical = 'A [cite:1] B [cite:2 p3] C [cite:4 p5-6] D [cite:7 c8] E'
+    expect(normalizeCitationText(canonical)).toBe(canonical)
+    expect(normalizeCitationText(normalizeCitationText(canonical))).toBe(canonical)
+  })
+
+  it('never rewrites en dashes or p. in general prose (even with brackets)', () => {
+    const prose = 'Pages 3–4 discuss p.12 of the spec [see appendix 9–10, p.2].'
+    expect(normalizeCitationText(prose)).toBe(prose)
+  })
+
+  it('normalizes each cite token independently, leaving surrounding prose intact', () => {
+    expect(normalizeCitationText('range 1–2 then [cite:3 p.4–5] then p.6')).toBe(
+      'range 1–2 then [cite:3 p4-5] then p.6',
+    )
+  })
+
+  it('makes a near-miss token parseable', () => {
+    expect(parseCitation(normalizeCitationText('[cite:12 p.34–36]'))).toEqual({
+      docId: 12,
+      page: 34,
+      pageEnd: 36,
+    })
   })
 })
 

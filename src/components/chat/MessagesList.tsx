@@ -21,7 +21,7 @@ import type { ArtifactSummary } from "@/types"
 import { ArtifactCard } from "./ArtifactCard"
 import { CitationChip, type CitationDoc } from "./CitationChip"
 import remarkCitations from "@/lib/remarkCitations"
-import { hideIncompleteTrailingCite, CITE_RE, type Citation } from "@/lib/citations"
+import { hideIncompleteTrailingCite, normalizeCitationText, CITE_RE, type Citation } from "@/lib/citations"
 import { Lightbox } from "@/components/ui/Lightbox"
 import { MessageSkeleton } from "./LoadingSkeletons"
 import { staggerDelay } from "@/lib/motion"
@@ -58,10 +58,13 @@ interface MessagesListProps {
   isGroundedTurn?: (messageId: string) => boolean
 }
 
-// True when the text carries at least one well-formed cite marker. Uses CITE_RE
+// True when the text carries at least one PARSEABLE cite marker. Tests the same
+// normalized view the renderer chips from (remarkCitations normalizes near-miss
+// markers before splitting), so a turn whose only marker is a near-miss still
+// counts as cited and the grounded floor caption stays suppressed. Uses CITE_RE
 // via a fresh (non-global) regex so its shared `lastIndex` is never touched.
 function hasCiteMarker(text: string): boolean {
-  return new RegExp(CITE_RE.source).test(text)
+  return new RegExp(CITE_RE.source).test(normalizeCitationText(text))
 }
 
 // Helper to extract text content from message parts, stripping file prefix for display

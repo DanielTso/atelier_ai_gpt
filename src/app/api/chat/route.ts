@@ -10,6 +10,7 @@ import { createGenerateImageTool } from '@/lib/image/tool';
 import { createReadDocumentTool } from '@/lib/documents/tool';
 import { isStorageConfigured } from '@/lib/storage';
 import { formatPageList } from '@/lib/utils';
+import { CITE_RE, LOOSE_CITE_RE } from '@/lib/citations';
 
 // Experience-mode turns run long: web research + several image generations + an
 // HTML artifact build in one streamed response. Make the time budget explicit.
@@ -207,7 +208,12 @@ export async function POST(req: Request) {
       // streamText onFinish — NOT the createUIMessageStream wrapper, which
       // masks route 500s (documented trap, see the 07-12 handoff).
       onFinish: ({ text }) => {
-        console.log('[cite-compliance]', JSON.stringify({ chatId, grounded, docCtx: !!documentContext, markers: (text.match(/\[cite:\d+[^\]]*\]/g) ?? []).length }));
+        // markers = parseable (canonical grammar); loose = cite-intended tokens
+        // that fail the grammar (near-misses the renderer normalizes or strips).
+        // Fresh regexes from .source — never match on the shared /g exports.
+        const markers = (text.match(new RegExp(CITE_RE.source, 'g')) ?? []).length;
+        const loose = (text.match(new RegExp(LOOSE_CITE_RE.source, 'g')) ?? []).length - markers;
+        console.log('[cite-compliance]', JSON.stringify({ chatId, grounded, docCtx: !!documentContext, markers, loose }));
       },
     });
 

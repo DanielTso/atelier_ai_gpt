@@ -69,7 +69,7 @@ describe('read_document tool', () => {
     const tool = createReadDocumentTool({ projectId: 3, excludeDocumentIds: [7, 9] })
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const r: any = await (tool as any).execute({ documentId: 7 }, {} as never)
-    expect(r.error).toBe("Document 7 is excluded from this chat's sources.")
+    expect(r.error).toBe("Document 7 is excluded from this project's sources.")
     expect(downloadMock).not.toHaveBeenCalled()
   })
 

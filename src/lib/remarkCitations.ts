@@ -10,7 +10,21 @@
 // the top-level node_modules — no new dependency added here.
 import { visit } from 'unist-util-visit'
 import type { Root, Text } from 'mdast'
-import { splitOnCitations, type Citation } from './citations'
+import {
+  splitOnCitations,
+  normalizeCitationText,
+  LOOSE_CITE_RE,
+  type Citation,
+} from './citations'
+
+// Display-layer strip (locked design: splitOnCitations stays pure — the
+// strip decision lives here in the renderer). A token matching LOOSE_CITE_RE
+// that survived normalize + split is an INTENDED citation that still fails the
+// grammar → spec says it never renders as literal text. Truly arbitrary
+// bracket text (no cite prefix + digits) doesn't match and stays untouched.
+function stripLooseCites(value: string): string {
+  return value.replace(new RegExp(LOOSE_CITE_RE.source, 'g'), '')
+}
 
 type Run =
   | { type: 'text'; value: string }
@@ -41,12 +55,27 @@ export default function remarkCitations() {
   return (tree: Root) => {
     visit(tree, 'text', (node, index, parent) => {
       if (!parent || index === undefined) return
-      const runs = splitOnCitations(node.value)
-      // No markers found: splitOnCitations returns the whole string as a
-      // single text run — nothing to replace, leave the node untouched.
-      if (runs.length === 1 && runs[0].type === 'text') return
+      // Near-miss markers (en-dash ranges, p-dot pages) normalize to canonical
+      // grammar BEFORE splitting so they render as chips instead of leaking.
+      const normalized = normalizeCitationText(node.value)
+      const runs = splitOnCitations(normalized)
+      // No parseable markers: still strip any remaining loose (cite-intended
+      // but malformed) tokens; if nothing changed, leave the node untouched.
+      if (runs.length === 1 && runs[0].type === 'text') {
+        const stripped = stripLooseCites(runs[0].value)
+        if (stripped === node.value) return
+        if (stripped === '') {
+          parent.children.splice(index, 1)
+          return index
+        }
+        node.value = stripped
+        return
+      }
 
-      const replacement = runs.map(toReplacementNode)
+      const replacement = runs
+        .map((run): Run => (run.type === 'text' ? { type: 'text', value: stripLooseCites(run.value) } : run))
+        .filter((run) => run.type !== 'text' || run.value !== '')
+        .map(toReplacementNode)
       // Custom node types aren't part of mdast's Content union — the cast is
       // the accepted escape hatch for remark plugins minting hName/hProperties
       // nodes (mdast-util-to-hast only cares about `type`/`data` at runtime).

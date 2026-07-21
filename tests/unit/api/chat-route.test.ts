@@ -390,10 +390,11 @@ describe('POST /api/chat', () => {
     expect(typeof onFinish).toBe('function')
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
     try {
-      onFinish({ text: 'Retainage is 10% [cite:1 p2]. General fact. [cite:1 c5]' })
+      // Two parseable markers + one near-miss (p-dot) → markers=2, loose=1.
+      onFinish({ text: 'Retainage is 10% [cite:1 p2]. General fact. [cite:1 c5] Near-miss [cite:1 p.3].' })
       expect(logSpy).toHaveBeenCalledWith(
         '[cite-compliance]',
-        JSON.stringify({ chatId: chat.id, grounded: true, docCtx: true, markers: 2 })
+        JSON.stringify({ chatId: chat.id, grounded: true, docCtx: true, markers: 2, loose: 1 })
       )
     } finally {
       logSpy.mockRestore()

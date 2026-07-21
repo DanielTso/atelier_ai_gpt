@@ -14,6 +14,27 @@
 // directly or repeated calls will desync.
 export const CITE_RE = /\[cite:(\d+)(?:\s+(?:p(\d+)(?:-(\d+))?|c(\d+)))?\]/g
 
+// Loose marker shape: bracket + cite prefix + digits, up to the closing bracket.
+// Matches every token CITE_RE matches PLUS intended-but-malformed variants
+// ([cite:12 p.34], en-dash ranges, [cite: 12], [cite:1 x9]). Used to (a) scope
+// normalizeCitationText so it never rewrites general prose and (b) let the
+// renderer strip cite-intended tokens that still fail the grammar, and the
+// compliance log count them. Same /g lastIndex hazard as CITE_RE — always
+// rebuild a fresh regex from `.source` before matching.
+export const LOOSE_CITE_RE = /\[cite:\s*\d+[^\]]*\]/g
+
+// Normalize display-form deviations INSIDE loose cite tokens to the canonical
+// CITE_RE grammar: an en dash (U+2013) between digits becomes a hyphen
+// ("p34–36" → "p34-36") and "p." directly before a digit becomes "p"
+// ("p.34" → "p34"). Deliberately conservative: replacements run only within
+// LOOSE_CITE_RE matches, so en dashes and "p." in ordinary prose are never
+// touched, and canonical tokens pass through unchanged (idempotent).
+export function normalizeCitationText(text: string): string {
+  return text.replace(new RegExp(LOOSE_CITE_RE.source, 'g'), (token) =>
+    token.replace(/(\d)–(\d)/g, '$1-$2').replace(/p\.(?=\d)/g, 'p'),
+  )
+}
+
 export interface Citation {
   docId: number
   page?: number

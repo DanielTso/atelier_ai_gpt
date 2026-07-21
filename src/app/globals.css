@@ -15,6 +15,8 @@
 @source not "./api";
 @source not "../lib/citations.ts";
 @source not "../lib/documents/tool.ts";
+@source not "../../CLAUDE.md";
+@source not "../../CHANGELOG.md";
 
 @custom-variant dark (&:where(.dark, .dark *));
 

@@ -103,7 +103,7 @@ export async function retrieveContext(
         return docFinal.length > 0
           ? docFinal.map(c => {
               const pages = c.pageStart != null
-                ? ` p.${c.pageStart}${c.pageEnd !== c.pageStart ? `–${c.pageEnd}` : ''}` : ''
+                ? ` p.${c.pageStart}${c.pageEnd != null && c.pageEnd !== c.pageStart ? `–${c.pageEnd}` : ''}` : ''
               return `[Source: doc ${c.documentId} "${c.filename}"${pages} §c${c.chunkId}]\n${c.content}`
             }).join('\n---\n')
           : null
