@@ -3,6 +3,19 @@
 @plugin "tailwindcss-animate";
 @plugin "@tailwindcss/typography";
 
+/* Tailwind v4 scans ALL non-gitignored files for utility candidates. Citation
+   marker literals like "[cite:12 p34]" (chat guidance strings, the citations
+   lib, tests, specs) parse as arbitrary-property candidates and can emit
+   BROKEN css declarations — a nested test fixture took down cold builds with
+   "Missed semicolon" (2026-07-21). Exclude every non-UI tree that legitimately
+   contains marker literals; none of these contain Tailwind classes. */
+@source not "../../tests";
+@source not "../../docs";
+@source not "../../e2e";
+@source not "./api";
+@source not "../lib/citations.ts";
+@source not "../lib/documents/tool.ts";
+
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* ----------------------------------------------------------------
