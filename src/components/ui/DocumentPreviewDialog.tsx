@@ -1,6 +1,6 @@
 'use client'
 
-import { memo, useState, useEffect } from 'react'
+import { memo, useState, useEffect, useRef } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { DIALOG_OVERLAY_ANIM, DIALOG_CONTENT_ANIM } from '@/lib/motion'
 import { X, FileText, Loader2 } from 'lucide-react'
@@ -9,19 +9,30 @@ import { formatFileSize, getFileTypeBadge } from '@/lib/fileUtils'
 import { getDocumentChunks } from '@/app/actions'
 import type { DocumentSummary } from '@/types'
 
+/** Deep-link target for a citation chip: a PDF page or an extracted-text chunk. */
+interface PreviewTarget {
+  page?: number
+  chunkId?: number
+}
+
 interface DocumentPreviewDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   document: DocumentSummary | null
+  target?: PreviewTarget
 }
 
 export const DocumentPreviewDialog = memo(function DocumentPreviewDialog({
   open,
   onOpenChange,
   document: doc,
+  target,
 }: DocumentPreviewDialogProps) {
-  const [content, setContent] = useState('')
+  const [chunks, setChunks] = useState<{ id: number; text: string }[]>([])
+  const [loadError, setLoadError] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [highlightChunkId, setHighlightChunkId] = useState<number | null>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
 
   // hasVisual must be computed before hooks — safe with optional chaining when doc is null
   const hasVisual = !!doc && !!doc.url && (doc.mimeType.startsWith('image/') || doc.mimeType === 'application/pdf')
@@ -31,18 +42,44 @@ export const DocumentPreviewDialog = memo(function DocumentPreviewDialog({
   useEffect(() => {
     if (!open || !doc) return
     setLoading(true)
-    setContent('')
-    getDocumentChunks(doc.id).then(chunks => {
-      // Chunks have overlap — deduplicate by using only the non-overlapping portion
-      // except for the last chunk which we take in full
-      const texts = chunks.map(c => c.content)
-      setContent(deduplicateChunks(texts))
+    setChunks([])
+    setLoadError(false)
+    getDocumentChunks(doc.id).then(rows => {
+      // Chunks have overlap — trim it off using only the non-overlapping portion
+      // of each chunk (except the first, taken in full), keeping each chunk's id
+      // attached so the Extracted-text tab can scroll a citation to the right spot.
+      setChunks(reconstructChunks(rows))
     }).catch(() => {
-      setContent('Failed to load document content.')
+      setLoadError(true)
     }).finally(() => {
       setLoading(false)
     })
   }, [open, doc])
+
+  // A chunk-target citation always opens on the Extracted-text tab, even for a
+  // visual (PDF/image) document that would otherwise default to Preview
+  // (valid draft-state pattern, see ChatHeader.tsx precedent).
+  useEffect(() => {
+    if (!open) return
+    if (target?.chunkId != null) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setTab('text')
+    }
+  }, [open, target?.chunkId])
+
+  // Once the targeted chunk is on the page, scroll it into view and flash a
+  // highlight. A missing/unmatched chunk id silently no-ops (tab still opens,
+  // just at the top) — this never surfaces as an error.
+  useEffect(() => {
+    if (!open || target?.chunkId == null) return
+    const el = contentRef.current?.querySelector<HTMLElement>(`[data-chunk-id="${target.chunkId}"]`)
+    if (!el) return
+    el.scrollIntoView({ block: 'start' })
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setHighlightChunkId(target.chunkId)
+    const timer = setTimeout(() => setHighlightChunkId(null), 1500)
+    return () => clearTimeout(timer)
+  }, [open, target?.chunkId, chunks])
 
   if (!doc) return null
 
@@ -50,6 +87,16 @@ export const DocumentPreviewDialog = memo(function DocumentPreviewDialog({
   // Clamp rather than reset via an effect (avoids setState-in-effect): a doc with
   // no visual original always shows the text tab regardless of the last selection.
   const activeTab: 'preview' | 'text' = hasVisual ? tab : 'text'
+
+  // Page-target: append a '#page=N' fragment to the signed PDF URL, clamped to
+  // the doc's known pageCount (CitationChip already clamps at render time — this
+  // is a defensive second clamp for any other caller). Recomputed every render
+  // off props/state only, so a target change while open flows straight into a
+  // fresh iframe src (the `key` below forces the remount some PDF viewers need).
+  const pageFragment = doc.mimeType === 'application/pdf' && target?.page != null
+    ? `#page=${doc.pageCount != null ? Math.min(target.page, doc.pageCount) : target.page}`
+    : ''
+  const previewUrl = doc.url ? `${doc.url}${pageFragment}` : null
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -100,17 +147,31 @@ export const DocumentPreviewDialog = memo(function DocumentPreviewDialog({
           </div>
 
           {/* Content panel */}
-          <div className="flex-1 overflow-y-auto min-h-0 rounded-lg bg-muted border border-border">
+          <div ref={contentRef} className="flex-1 overflow-y-auto min-h-0 rounded-lg bg-muted border border-border">
             {hasVisual && activeTab === 'preview' ? (
               doc.mimeType.startsWith('image/')
                 // eslint-disable-next-line @next/next/no-img-element -- signed Supabase URL, not a static asset
                 ? <img src={doc.url!} alt={doc.filename} className="w-full h-full object-contain" />
-                : <iframe src={doc.url!} title={doc.filename} className="w-full h-full min-h-[60vh]" />
+                : <iframe key={previewUrl} src={previewUrl!} title={doc.filename} className="w-full h-full min-h-[60vh]" />
             ) : (
               <div className="p-4">
                 {loading
                   ? <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                  : <pre className="text-sm text-foreground/90 whitespace-pre-wrap break-words font-mono leading-relaxed">{content}</pre>}
+                  : loadError
+                    ? <p className="text-sm text-muted-foreground">Failed to load document content.</p>
+                    : (
+                      <pre className="text-sm text-foreground/90 whitespace-pre-wrap break-words font-mono leading-relaxed">
+                        {chunks.map(c => (
+                          <span
+                            key={c.id}
+                            data-chunk-id={c.id}
+                            className={cn(highlightChunkId === c.id && 'bg-warm-sand rounded-sm transition-colors duration-500')}
+                          >
+                            {c.text}
+                          </span>
+                        ))}
+                      </pre>
+                    )}
               </div>
             )}
           </div>
@@ -122,14 +183,16 @@ export const DocumentPreviewDialog = memo(function DocumentPreviewDialog({
 
 /**
  * Chunks are created with 400-char overlap. Reconstruct the original text by
- * finding and removing the overlapping prefix of each subsequent chunk.
+ * finding and removing the overlapping prefix of each subsequent chunk, keeping
+ * each chunk's id attached to the trimmed piece it produced (for citation scroll
+ * targeting on the Extracted-text tab).
  */
-function deduplicateChunks(texts: string[]): string {
-  if (texts.length === 0) return ''
-  let result = texts[0]
-  for (let i = 1; i < texts.length; i++) {
-    const prev = texts[i - 1]
-    const curr = texts[i]
+function reconstructChunks(rows: { id: number; content: string }[]): { id: number; text: string }[] {
+  if (rows.length === 0) return []
+  const result: { id: number; text: string }[] = [{ id: rows[0].id, text: rows[0].content }]
+  for (let i = 1; i < rows.length; i++) {
+    const prev = rows[i - 1].content
+    const curr = rows[i].content
     // Find the longest suffix of prev that is a prefix of curr
     let overlap = 0
     const maxCheck = Math.min(prev.length, curr.length, 500)
@@ -138,7 +201,7 @@ function deduplicateChunks(texts: string[]): string {
         overlap = len
       }
     }
-    result += curr.substring(overlap)
+    result.push({ id: rows[i].id, text: curr.substring(overlap) })
   }
   return result
 }
