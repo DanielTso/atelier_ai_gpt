@@ -64,6 +64,37 @@ describe('read_document tool', () => {
     expect(r.error).toMatch(/2 page anchors/i)
   })
 
+  it('returns an in-band error for excluded documents without touching storage', async () => {
+    getDocMock.mockResolvedValue(doc)
+    const tool = createReadDocumentTool({ projectId: 3, excludeDocumentIds: [7, 9] })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const r: any = await (tool as any).execute({ documentId: 7 }, {} as never)
+    expect(r.error).toBe("Document 7 is excluded from this chat's sources.")
+    expect(downloadMock).not.toHaveBeenCalled()
+  })
+
+  it('reads normally when the document is not in the exclusion list', async () => {
+    getDocMock.mockResolvedValue(doc)
+    downloadMock.mockResolvedValue(Buffer.from('# Page 1\nhello world'))
+    const tool = createReadDocumentTool({ projectId: 3, excludeDocumentIds: [9] })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const r: any = await (tool as any).execute({ documentId: 7 }, {} as never)
+    expect(r.error).toBeUndefined()
+    expect(r.text).toContain('hello world')
+  })
+
+  it('prepends the cite-hint header to window text', async () => {
+    getDocMock.mockResolvedValue(doc)
+    downloadMock.mockResolvedValue(Buffer.from('# Page 1\nhello world'))
+    const tool = createReadDocumentTool({ projectId: 3 })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const r: any = await (tool as any).execute({ documentId: 7 }, {} as never)
+    expect(r.text.startsWith(
+      'Cite as [cite:7 p<N>] using the # Page N markers in this text; if no page markers, cite [cite:7].\n'
+    )).toBe(true)
+    expect(r.text).toContain('# Page 1')
+  })
+
   it('yields an empty unavailablePages array when failedPages is null', async () => {
     getDocMock.mockResolvedValue({ ...doc, failedPages: null })
     downloadMock.mockResolvedValue(Buffer.from('# Page 1\nhello world'))

@@ -24,6 +24,8 @@ vi.mock('ai', () => ({
   tool: (config: unknown) => config,
 }))
 
+const mockRetrieveContext = vi.fn()
+
 const mockGoogleSearch = vi.fn(() => ({ type: 'provider-defined', id: 'google_search' }))
 const mockGoogleFn = Object.assign(
   vi.fn((model: string) => ({ modelId: model, provider: 'google' })),
@@ -48,6 +50,7 @@ describe('POST /api/chat', () => {
   beforeEach(async () => {
     await createTestDb()
     vi.clearAllMocks()
+    mockRetrieveContext.mockResolvedValue({ semanticContext: null, documentContext: null })
     process.env.GOOGLE_GENERATIVE_AI_API_KEY = 'test-key'
   })
 
@@ -80,7 +83,7 @@ describe('POST /api/chat', () => {
       getAnthropicApiKey: () => Promise.resolve('test-anthropic-key'),
     }))
     vi.doMock('@/lib/retrieval', () => ({
-      retrieveContext: () => Promise.resolve({ semanticContext: null, documentContext: null }),
+      retrieveContext: (...args: unknown[]) => mockRetrieveContext(...args),
     }))
 
     const { POST } = await import('@/app/api/chat/route')
@@ -184,6 +187,216 @@ describe('POST /api/chat', () => {
     } finally {
       delete process.env.SUPABASE_URL
       delete process.env.SUPABASE_SERVICE_ROLE_KEY
+    }
+  })
+
+  it('appends CITATION_GUIDANCE when document context is injected (no GROUNDED without the flag)', async () => {
+    const [project] = await createProject('P')
+    const [chat] = await createChat(project.id, 'Chat')
+    mockRetrieveContext.mockResolvedValue({
+      semanticContext: null,
+      documentContext: '[Source: doc 1 "plans.pdf" p.2 §c5]\nRetainage is 10%.',
+    })
+
+    const response = await postChat({
+      messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] }],
+      model: 'gemini-3.5-flash',
+      chatId: chat.id,
+    })
+    expect(response.status).toBe(200)
+    const system = mockStreamText.mock.calls[0][0].system as string
+    expect(system).toContain('CITATIONS:')
+    expect(system).not.toContain('GROUNDED MODE:')
+  })
+
+  it('appends GROUNDED_GUIDANCE additionally when grounded is true', async () => {
+    const [project] = await createProject('P')
+    const [chat] = await createChat(project.id, 'Chat')
+    mockRetrieveContext.mockResolvedValue({
+      semanticContext: null,
+      documentContext: '[Source: doc 1 "plans.pdf" p.2 §c5]\nRetainage is 10%.',
+    })
+
+    const response = await postChat({
+      messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] }],
+      model: 'gemini-3.5-flash',
+      chatId: chat.id,
+      grounded: true,
+    })
+    expect(response.status).toBe(200)
+    const system = mockStreamText.mock.calls[0][0].system as string
+    expect(system).toContain('CITATIONS:')
+    expect(system).toContain('GROUNDED MODE:')
+  })
+
+  it('appends GROUNDED_GUIDANCE when grounded even without document context (exclude-all case)', async () => {
+    const [project] = await createProject('P')
+    const [chat] = await createChat(project.id, 'Chat')
+
+    const response = await postChat({
+      messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] }],
+      model: 'gemini-3.5-flash',
+      chatId: chat.id,
+      grounded: true,
+    })
+    expect(response.status).toBe(200)
+    const system = mockStreamText.mock.calls[0][0].system as string
+    expect(system).toContain('GROUNDED MODE:')
+    expect(system).not.toContain('CITATIONS:')
+  })
+
+  it('omits both guidance strings when no document context and no read_document tool', async () => {
+    const [project] = await createProject('P')
+    const [chat] = await createChat(project.id, 'Chat')
+    await updateChatSystemPrompt(chat.id, 'Be helpful')
+
+    const response = await postChat({
+      messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] }],
+      model: 'gemini-3.5-flash',
+      chatId: chat.id,
+    })
+    expect(response.status).toBe(200)
+    const system = mockStreamText.mock.calls[0][0].system as string
+    expect(system).not.toContain('CITATIONS:')
+    expect(system).not.toContain('GROUNDED MODE:')
+  })
+
+  it('appends CITATION_GUIDANCE when read_document is wired (manifest path)', async () => {
+    process.env.SUPABASE_URL = 'https://test.supabase.co'
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key'
+    try {
+      const [project] = await createProject('P')
+      const [chat] = await createChat(project.id, 'Chat')
+      await testDb.insert(documents).values({
+        projectId: project.id,
+        filename: 'plans.pdf',
+        mimeType: 'application/pdf',
+        fileSize: 1000,
+        status: 'ready',
+        storagePath: 'p',
+        pageCount: 4,
+        charCount: 100,
+        extractionMethod: 'hybrid',
+        extractionPartial: false,
+        failedPages: null,
+      })
+
+      const response = await postChat({
+        messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] }],
+        model: 'claude-opus-4-8',
+        chatId: chat.id,
+      })
+      expect(response.status).toBe(200)
+      const system = mockStreamText.mock.calls[0][0].system as string
+      expect(system).toContain('CITATIONS:')
+    } finally {
+      delete process.env.SUPABASE_URL
+      delete process.env.SUPABASE_SERVICE_ROLE_KEY
+    }
+  })
+
+  it('filters excluded documents out of the manifest and passes exclusions to retrieveContext', async () => {
+    process.env.SUPABASE_URL = 'https://test.supabase.co'
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key'
+    try {
+      const [project] = await createProject('P')
+      const [chat] = await createChat(project.id, 'Chat')
+      const shared = {
+        projectId: project.id,
+        mimeType: 'application/pdf',
+        fileSize: 1000,
+        status: 'ready',
+        storagePath: 'p',
+        pageCount: 4,
+        charCount: 100,
+        extractionMethod: 'text',
+        extractionPartial: false,
+        failedPages: null,
+      }
+      await testDb.insert(documents).values({ ...shared, filename: 'plans.pdf' })
+      await testDb.insert(documents).values({ ...shared, filename: 'specs.pdf' })
+
+      const response = await postChat({
+        messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] }],
+        model: 'claude-opus-4-8',
+        chatId: chat.id,
+        excludedDocumentIds: [2],
+      })
+      expect(response.status).toBe(200)
+      const system = mockStreamText.mock.calls[0][0].system as string
+      expect(system).toContain('id=1 "plans.pdf"')
+      expect(system).not.toContain('specs.pdf')
+      expect(mockRetrieveContext).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ excludeDocumentIds: [2] })
+      )
+    } finally {
+      delete process.env.SUPABASE_URL
+      delete process.env.SUPABASE_SERVICE_ROLE_KEY
+    }
+  })
+
+  it('accepts grounded and excludedDocumentIds in the request body', async () => {
+    const response = await postChat({
+      messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] }],
+      model: 'gemini-3.5-flash',
+      grounded: false,
+      excludedDocumentIds: [1, 2, 3],
+    })
+    expect(response.status).toBe(200)
+  })
+
+  it('rejects excludedDocumentIds with more than 200 entries', async () => {
+    const response = await postChat({
+      messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] }],
+      model: 'gemini-3.5-flash',
+      excludedDocumentIds: Array.from({ length: 201 }, (_, i) => i + 1),
+    })
+    expect(response.status).toBe(400)
+  })
+
+  it('rejects non-integer and non-positive excludedDocumentIds', async () => {
+    const nonInt = await postChat({
+      messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] }],
+      model: 'gemini-3.5-flash',
+      excludedDocumentIds: [1.5],
+    })
+    expect(nonInt.status).toBe(400)
+
+    const nonPositive = await postChat({
+      messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] }],
+      model: 'gemini-3.5-flash',
+      excludedDocumentIds: [0],
+    })
+    expect(nonPositive.status).toBe(400)
+  })
+
+  it('logs a [cite-compliance] line from streamText onFinish', async () => {
+    const [project] = await createProject('P')
+    const [chat] = await createChat(project.id, 'Chat')
+    mockRetrieveContext.mockResolvedValue({
+      semanticContext: null,
+      documentContext: '[Source: doc 1 "plans.pdf" p.2 §c5]\nRetainage is 10%.',
+    })
+
+    const response = await postChat({
+      messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] }],
+      model: 'gemini-3.5-flash',
+      chatId: chat.id,
+      grounded: true,
+    })
+    expect(response.status).toBe(200)
+    const onFinish = mockStreamText.mock.calls[0][0].onFinish as (r: { text: string }) => void
+    expect(typeof onFinish).toBe('function')
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      onFinish({ text: 'Retainage is 10% [cite:1 p2]. General fact. [cite:1 c5]' })
+      expect(logSpy).toHaveBeenCalledWith(
+        '[cite-compliance]',
+        JSON.stringify({ chatId: chat.id, grounded: true, docCtx: true, markers: 2 })
+      )
+    } finally {
+      logSpy.mockRestore()
     }
   })
 

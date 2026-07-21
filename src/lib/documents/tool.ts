@@ -6,7 +6,7 @@ import { sliceWindow } from './windowing'
 
 const windowChars = () => Number(process.env.READ_DOC_WINDOW_CHARS) || 100_000
 
-export function createReadDocumentTool(ctx: { projectId: number }) {
+export function createReadDocumentTool(ctx: { projectId: number; excludeDocumentIds?: number[] }) {
   return tool({
     description:
       'Read the FULL extracted text of a project document, one window at a time. ' +
@@ -25,6 +25,11 @@ export function createReadDocumentTool(ctx: { projectId: number }) {
     }),
     execute: async ({ documentId, fromPage, offset }) => {
       try {
+        // Per-chat source scoping (defense in depth — the manifest already hides
+        // excluded docs). In-band error, never a throw.
+        if (ctx.excludeDocumentIds?.includes(documentId)) {
+          return { error: `Document ${documentId} is excluded from this chat's sources.` }
+        }
         const doc = await getDocumentById(documentId)
         if (!doc || doc.projectId !== ctx.projectId) {
           return { error: 'Document not found in this project. Use an id from the document manifest.' }
@@ -45,7 +50,9 @@ export function createReadDocumentTool(ctx: { projectId: number }) {
           documentId: doc.id,
           filename: doc.filename,
           totalChars: full.length,
-          text: w.text,
+          // Cite-hint header so whole-document reads carry the citation contract
+          // (retrieval chunks get theirs from the [Source: …] headers).
+          text: `Cite as [cite:${doc.id} p<N>] using the # Page N markers in this text; if no page markers, cite [cite:${doc.id}].\n${w.text}`,
           startOffset: w.startOffset,
           endOffset: w.endOffset,
           nextOffset: w.nextOffset,

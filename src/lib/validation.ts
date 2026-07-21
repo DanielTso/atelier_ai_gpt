@@ -31,6 +31,10 @@ export const chatRequestSchema = z.object({
   model: modelEnum.optional(),
   chatId: z.number().nullable().optional(),
   effort: z.enum(['low', 'medium', 'high', 'max']).optional(),
+  // Grounded & Cited Answers: grounded restricts answers to project documents;
+  // excludedDocumentIds scopes retrieval/manifest/read_document per chat.
+  grounded: z.boolean().optional(),
+  excludedDocumentIds: z.array(z.number().int().positive()).max(200).optional(),
 })
 
 export const summarizeRequestSchema = z.object({

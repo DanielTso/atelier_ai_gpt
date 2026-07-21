@@ -39,7 +39,24 @@ const TOOL_GUIDANCE =
 const READ_DOCUMENT_GUIDANCE =
   'You can also read entire project documents with the read_document tool. Retrieved document chunks (above) answer most questions — prefer them. ' +
   'Call read_document ONLY when the question is set-wide or exhaustive ("list every…", "count all…", "summarize the whole document") or when the chunks clearly miss what the user asked about. ' +
-  'Read additional windows (fromPage/offset) only while genuinely needed; stop as soon as you can answer.';
+  'Read additional windows (fromPage/offset) only while genuinely needed; stop as soon as you can answer.'
+
+// Citation contract: included whenever document context is in play (retrieved
+// chunks or the read_document tool), so document-sourced claims carry [cite:…]
+// markers the client renders as chips.
+const CITATION_GUIDANCE =
+  'CITATIONS: when a claim comes from project documents, end that sentence with a citation marker copied from the [Source: …] header of the chunk you used: ' +
+  '[cite:12 p34] for doc 12 page 34, [cite:12 p34-36] for a page range, [cite:12 c456] when the header shows §c456 and no pages, [cite:12] as a last resort. ' +
+  'Example: "Retainage is 10% until substantial completion [cite:12 p4]." ' +
+  'Never invent citations, never cite documents not shown to you, and never add markers to general-knowledge statements.'
+
+// Grounded mode: additionally restricts answers to the project documents. Sent
+// alone when scoping excluded every document — the model then answers
+// "Not found in project documents" instead of falling back to general knowledge.
+const GROUNDED_GUIDANCE =
+  'GROUNDED MODE: answer EXCLUSIVELY from the provided project-document context and the read_document tool. ' +
+  'If the documents do not contain the answer, reply "Not found in project documents" (optionally noting which document might cover it). ' +
+  'Do not use general knowledge to fill gaps.';
 
 function buildContextPrefix(
   documentContext: string | null,
@@ -74,7 +91,7 @@ export async function POST(req: Request) {
     if (!body.success) {
       return apiError(body.error, 'Invalid request body', 400);
     }
-    const { messages, model, chatId, effort } = body.data;
+    const { messages, model, chatId, effort, grounded, excludedDocumentIds } = body.data;
     const modelName = model || 'claude-opus-4-8';
 
     // Create provider (routes by model-name prefix; returns the model, tools, and provider options)
@@ -100,6 +117,7 @@ export async function POST(req: Request) {
         retrieveContext(messages as unknown as UIMessage[], {
           chatId,
           projectId: chat?.projectId ?? null,
+          excludeDocumentIds: excludedDocumentIds,
         }),
         chat?.projectId ? getProjectDocuments(chat.projectId).catch(() => []) : Promise.resolve([]),
       ]);
@@ -141,15 +159,27 @@ export async function POST(req: Request) {
           generate_image: createGenerateImageTool({ chatId, projectId }),
         };
         let guidance = TOOL_GUIDANCE;
-        const readableDocs = projectDocs.filter(d => d.status === 'ready' && d.storagePath);
+        const excluded = new Set(excludedDocumentIds ?? []);
+        const readableDocs = projectDocs.filter(d => d.status === 'ready' && d.storagePath && !excluded.has(d.id));
         if (projectId && readableDocs.length > 0) {
-          tools.read_document = createReadDocumentTool({ projectId });
+          tools.read_document = createReadDocumentTool({ projectId, excludeDocumentIds: excludedDocumentIds });
           const manifest = readableDocs
             .map(d => `- id=${d.id} "${d.filename}" — ${d.pageCount ?? '?'} pages, ${d.charCount.toLocaleString()} chars, ${d.extractionMethod ?? 'text'} extraction${d.extractionPartial ? ` (PARTIAL${d.failedPages?.length ? `; vision failed pages ${formatPageList(d.failedPages)}` : ''})` : ''}`)
             .join('\n');
           guidance += '\n\n' + READ_DOCUMENT_GUIDANCE + '\n[Project documents]\n' + manifest;
         }
         systemPrompt = systemPrompt ? `${guidance}\n\n${systemPrompt}` : guidance;
+      }
+
+      // 5. Citation contract + grounded mode. CITATION_GUIDANCE whenever document
+      //    context is in play (retrieved chunks or read_document); GROUNDED_GUIDANCE
+      //    additionally when grounded — and even without doc context, so excluding
+      //    every source yields an explicit "Not found in project documents".
+      if (documentContext || tools?.read_document) {
+        systemPrompt = systemPrompt ? `${systemPrompt}\n\n${CITATION_GUIDANCE}` : CITATION_GUIDANCE;
+      }
+      if (grounded === true) {
+        systemPrompt = systemPrompt ? `${systemPrompt}\n\n${GROUNDED_GUIDANCE}` : GROUNDED_GUIDANCE;
       }
     }
 
@@ -173,6 +203,12 @@ export async function POST(req: Request) {
       // never executes (seen live: "Building document…" stuck forever). 32k covers
       // a large page + prose across every Claude model in the picker.
       maxOutputTokens: 32000,
+      // Citation-compliance log (server-side; visible in Vercel logs). Plain
+      // streamText onFinish — NOT the createUIMessageStream wrapper, which
+      // masks route 500s (documented trap, see the 07-12 handoff).
+      onFinish: ({ text }) => {
+        console.log('[cite-compliance]', JSON.stringify({ chatId, grounded, docCtx: !!documentContext, markers: (text.match(/\[cite:\d+[^\]]*\]/g) ?? []).length }));
+      },
     });
 
     return result.toUIMessageStreamResponse({ sendSources: true, sendReasoning: true });
