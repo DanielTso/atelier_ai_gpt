@@ -68,7 +68,7 @@ Settings → **Model Defaults** tab → add a persona: name, icon, prompt, model
 
 Any persona can use project documents: retrieval feeds relevant chunks automatically, and Claude can read whole documents with the `read_document` tool when a question is exhaustive ("list every storm sheet"). The construction-suite personas are prompted to lean on documents harder and cite what they use.
 
-*Coming (spec'd 2026-07-17):* a **Grounded** composer pill — answers restricted to project documents with clickable page citations. Contract Abstract, Contract & Spec Analyst, and Plan & Spec Reader will default to grounded-on. See `docs/specs/2026-07-17-grounded-cited-answers-design.md`.
+**Grounded mode (built 2026-07-21, ships with v4.53.0):** the **Grounded** pill in the composer (project chats) restricts answers to your project documents — gaps come back as `Not found in project documents` instead of general-knowledge guesses, and document-derived claims carry **clickable citation chips** that open the source at the cited PDF page (or the cited passage for text-extracted docs). Contract Abstract, Contract & Spec Analyst, and Plan & Spec Reader default to grounded-on; your toggle always wins, and opening an existing chat starts ungrounded. Custom personas get a "Grounded answers" toggle in the editor. You can also scope which documents may answer via the checkboxes in the project Files rail ("N of M sources active" — per project). Design: `docs/specs/2026-07-17-grounded-cited-answers-design.md`.
 
 ## Under the hood (for maintainers)
 

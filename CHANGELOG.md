@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.53.0] - Unreleased — Grounded & Cited Answers
+
+Spec: `docs/specs/2026-07-17-grounded-cited-answers-design.md` (incl. the §C6 scoping amendment of 2026-07-21). Subagent-driven build, 10 tasks + per-task reviews; the closest thing Atelier had to NotebookLM's citation UX, built for construction-grade defensibility. **Migration `0017` must be applied to Supabase BEFORE deploy.**
+
+### Added
+
+- **Clickable citations.** Claude cites document-derived claims with inline `[cite:…]` markers; the client renders them as chips (`filename · p.34`) via a remark plugin + `CitationChip`. Clicking opens `DocumentPreviewDialog` at the cited PDF page (`#page=N` on the signed URL) or, for docs without page anchors, scrolls the Extracted-text tab to the cited chunk with a flash highlight. Markers live in message text → citations survive reload with zero new persistence. Validation at every boundary: unknown-doc markers stripped, pages clamped to `pageCount`, malformed tokens never render, half-streamed markers hidden until complete.
+- **Chunk page-mapping** (migration `0017`): `document_chunks.page_start/page_end`, stamped at ingest from `# Page n` anchors (vision/hybrid docs) via the new `src/lib/pageMap.ts` + offset-bearing `chunkText`. Retrieved chunks now carry self-describing source headers (`[Source: doc 12 "plans.pdf" p.34–36 §c456]`) so citing is copy-down, not recall. No backfill — old docs gain pages on re-upload.
+- **Grounded mode.** `GROUNDED_GUIDANCE` restricts answers to project documents with a verbatim `Not found in project documents` for gaps. Controlled by persona defaults (`grounded: true` on Contract Abstract, Contract & Spec Analyst, Plan & Spec Reader; custom-persona toggle) + a composer **Grounded pill** (project-context; always visible when ON) — user toggle wins over late-loading defaults, and opening an existing chat resets to OFF. Grounded answers with zero citations get a session-gated "Answered from project documents" caption. Citation compliance is logged server-side (`[cite-compliance]`, streamText `onFinish`).
+- **Project-level source scoping.** Checkboxes on ready-document rows in the Files rail ("N of M sources active"); excluded docs are filtered from vector + keyword retrieval, the `[Project documents]` manifest, and `read_document` (in-band tool error). Persisted per project (`project-doc-scope-<id>`, localStorage). Amended from the spec's original per-chat design at review — per-chat + mid-chat scoping surface moved to follow-ups.
+
+### Fixed
+
+- **`useLocalStorage` dynamic-key defects** (latent, exposed by scoping): on a key change the previous key's value leaked into empty buckets and could be persisted under the wrong key; initial values were phantom-written on mount. Key changes now re-hydrate/reset correctly and nothing is written until a real set. All nine existing consumers audited unaffected.
+- **Tailwind content-scanner build break**: literal citation-marker examples in source parsed as arbitrary-property utility candidates and emitted unparseable CSS on COLD builds only (warm `.next` caches masked it — including on Vercel). `@source not` now excludes tests/docs/e2e/api/citation-lib files; gate builds are cold from now on.
+
 ## [4.52.0] - Unreleased — Audit Batch D safe slice: dependency currency
 
 ### Changed
