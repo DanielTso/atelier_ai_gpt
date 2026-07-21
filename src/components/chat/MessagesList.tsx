@@ -1,6 +1,6 @@
 "use client"
 
-import { memo, useState, useCallback, useEffect } from "react"
+import { memo, useState, useCallback, useEffect, useMemo } from "react"
 import { Folder, MessageSquare, ExternalLink, Globe, Paperclip, Sparkles, ChevronRight } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
@@ -19,9 +19,17 @@ import { parseFileMetadata, stripFilePrefix, getFileTypeLabel, type FileMetadata
 import { formatFileSize } from "@/lib/fileUtils"
 import type { ArtifactSummary } from "@/types"
 import { ArtifactCard } from "./ArtifactCard"
+import { CitationChip, type CitationDoc } from "./CitationChip"
+import remarkCitations from "@/lib/remarkCitations"
+import { hideIncompleteTrailingCite, type Citation } from "@/lib/citations"
 import { Lightbox } from "@/components/ui/Lightbox"
 import { MessageSkeleton } from "./LoadingSkeletons"
 import { staggerDelay } from "@/lib/motion"
+
+/** docId → document lookup used to resolve citation chips. */
+export type DocumentsById = Map<number, CitationDoc>
+/** Opens a document (optionally jumping to a page or chunk) from a citation chip. */
+export type OnOpenCitation = (docId: number, target: { page?: number; chunkId?: number }) => void
 
 export type ChatMessage = UIMessage & { createdAt?: Date }
 
@@ -37,6 +45,12 @@ interface MessagesListProps {
   messagesLoading?: boolean
   /** useChat status — drives the staged thinking/tool indicator. */
   status?: string
+  /** docId → document lookup for resolving citation chips. Defaults to empty
+   *  (no project documents known) until page.tsx threads the real map. */
+  documentsById?: DocumentsById
+  /** Opens a document from a citation chip click. Defaults to a no-op until
+   *  page.tsx wires the real handler. */
+  onOpenCitation?: OnOpenCitation
 }
 
 // Helper to extract text content from message parts, stripping file prefix for display
@@ -205,6 +219,31 @@ const MARKDOWN_COMPONENTS = {
 }
 
 const EMPTY_URL_SET: ReadonlySet<string> = new Set()
+const EMPTY_DOCUMENTS_BY_ID: DocumentsById = new Map()
+const NOOP_ON_OPEN_CITATION: OnOpenCitation = () => {}
+
+// Raw props a `citation-chip` hast element carries (see remarkCitations.ts —
+// `hProperties` keys land here verbatim as component props).
+interface CitationChipRawProps {
+  docId: number
+  page?: number
+  pageEnd?: number
+  chunkId?: number
+  raw?: string
+}
+
+// Builds the react-markdown `components` entry for `citation-chip`, closing
+// over this message's document lookup + open handler. `raw` is dropped — it's
+// only useful for debugging the mdast transform, not for rendering.
+function makeCitationComponent(documentsById: DocumentsById, onOpenCitation: OnOpenCitation) {
+  return function CitationChipFromMarkdown({ docId, page, pageEnd, chunkId }: CitationChipRawProps) {
+    const cite: Citation = { docId }
+    if (page !== undefined) cite.page = page
+    if (pageEnd !== undefined) cite.pageEnd = pageEnd
+    if (chunkId !== undefined) cite.chunkId = chunkId
+    return <CitationChip cite={cite} doc={documentsById.get(docId)} onOpen={onOpenCitation} />
+  }
+}
 
 // Message animation variants
 const messageVariants = {
@@ -218,19 +257,37 @@ const messageVariants = {
 // active row re-parses; prior messages (stable `m` reference, isStreaming=false)
 // skip re-render entirely instead of re-parsing on every token.
 const MessageBody = memo(function MessageBody({
-  m, isStreaming, onImageClick, onOpenArtifact,
-}: { m: ChatMessage; isStreaming: boolean; onImageClick: (url: string) => void; onOpenArtifact?: (id: number) => void }) {
+  m, isStreaming, onImageClick, onOpenArtifact, documentsById, onOpenCitation,
+}: {
+  m: ChatMessage
+  isStreaming: boolean
+  onImageClick: (url: string) => void
+  onOpenArtifact?: (id: number) => void
+  documentsById: DocumentsById
+  onOpenCitation: OnOpenCitation
+}) {
   const images = getMessageImages(m)
   const isGenerated = m.role === 'assistant'
   const files = m.role === 'user' ? getMessageFiles(m) : null
   const reasoning = isGenerated ? getMessageReasoning(m) : ''
   const answerText = getMessageText(m)
+  // Streaming safety: a cite marker can be mid-emission (a trailing partial
+  // '[cite:…' with no closing ']' yet). Only the actively-streaming message
+  // needs this — persisted/settled text is always well-formed.
+  const displayText = isStreaming ? hideIncompleteTrailingCite(answerText) : answerText
   // Live tool parts (generate_image / generate_artifact) render inline: an
   // in-progress card while the tool runs, the settled image/artifact after.
   const toolParts = isGenerated ? m.parts.filter(isToolCardPart) : []
   // Only needed for settled image dedup — skip the allocation on the common
   // no-tool path (this row re-renders per streamed token).
   const fileUrls = toolParts.length > 0 ? new Set(images.map(img => img.url)) : EMPTY_URL_SET
+  // Recreated only when the document set or open handler actually changes —
+  // not per streamed token (documentsById/onOpenCitation are stable refs from
+  // the parent in the common case).
+  const components = useMemo(
+    () => ({ ...MARKDOWN_COMPONENTS, 'citation-chip': makeCitationComponent(documentsById, onOpenCitation) }),
+    [documentsById, onOpenCitation],
+  )
   return (
     <div className={cn(
       "p-4 rounded-2xl border transition-all hover:border-border relative",
@@ -269,12 +326,16 @@ const MessageBody = memo(function MessageBody({
         isStreaming && "streaming-cursor"
       )}>
         <SmoothStreamingWrapper isStreaming={isStreaming}>
-          <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
-            {answerText}
+          <ReactMarkdown remarkPlugins={[remarkGfm, remarkCitations]} components={components}>
+            {displayText}
           </ReactMarkdown>
         </SmoothStreamingWrapper>
       </div>
       {m.role === 'assistant' && <SourcesList sources={getMessageSources(m)} />}
+      {/* Grounded-floor caption ("Answered from project documents" when a
+          grounded turn's text carries zero cite markers) needs the per-turn
+          `grounded` flag, which doesn't exist on the client until Task 9
+          threads it through the send path. Deferred there. */}
     </div>
   )
 })
@@ -289,6 +350,8 @@ export const MessagesList = memo(function MessagesList({
   onOpenArtifact,
   messagesLoading = false,
   status,
+  documentsById = EMPTY_DOCUMENTS_BY_ID,
+  onOpenCitation = NOOP_ON_OPEN_CITATION,
 }: MessagesListProps) {
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
   const onImageClick = useCallback((url: string) => setLightboxUrl(url), [])
@@ -409,7 +472,7 @@ export const MessagesList = memo(function MessagesList({
                 "flex flex-col gap-1 max-w-[80%] min-w-0",
                 m.role === 'user' ? "items-end" : "items-start"
               )}>
-                <MessageBody m={m} isStreaming={isStreamingMessage} onImageClick={onImageClick} onOpenArtifact={onOpenArtifact} />
+                <MessageBody m={m} isStreaming={isStreamingMessage} onImageClick={onImageClick} onOpenArtifact={onOpenArtifact} documentsById={documentsById} onOpenCitation={onOpenCitation} />
 
                 {/* Timestamp and Actions Row */}
                 <div className={cn(
