@@ -24,6 +24,10 @@ interface ProjectContextRailProps {
   project: { id: number; name: string; memory?: string | null; instructions?: string | null }
   onSaveContext: (id: number, fields: { memory?: string; instructions?: string }) => void
   onAddFiles: () => void
+  /** Source-scoping: EXCLUDED document ids for grounded retrieval. When provided,
+   *  each ready document row gets an include/exclude checkbox. */
+  excludedDocIds?: number[]
+  onExcludedChange?: (ids: number[]) => void
 }
 
 function useDebouncedSave(projectId: number, onSaveContext: ProjectContextRailProps['onSaveContext']) {
@@ -36,7 +40,7 @@ function useDebouncedSave(projectId: number, onSaveContext: ProjectContextRailPr
   return { save, cancel }
 }
 
-export function ProjectContextRail({ project, onSaveContext, onAddFiles }: ProjectContextRailProps) {
+export function ProjectContextRail({ project, onSaveContext, onAddFiles, excludedDocIds, onExcludedChange }: ProjectContextRailProps) {
   const [memory, setMemory] = useState(project.memory ?? '')
   const [instructions, setInstructions] = useState(project.instructions ?? '')
   const [documents, setDocuments] = useState<DocumentSummary[]>([])
@@ -122,6 +126,18 @@ export function ProjectContextRail({ project, onSaveContext, onAddFiles }: Proje
     } catch { toast.error('Failed to delete') }
   }
   const usedBytes = documents.reduce((sum, d) => sum + (d.fileSize ?? 0), 0)
+
+  // Source scoping (grounded retrieval): a document whose id is in the excluded
+  // list is unchecked (skipped by retrieval / manifest / read_document).
+  const scoping = onExcludedChange != null
+  const excluded = excludedDocIds ?? []
+  const readyDocs = documents.filter(d => d.status === 'ready')
+  const activeSources = readyDocs.filter(d => !excluded.includes(d.id)).length
+  const anyExcluded = readyDocs.some(d => excluded.includes(d.id))
+  const toggleDocScope = (docId: number) => {
+    if (!onExcludedChange) return
+    onExcludedChange(excluded.includes(docId) ? excluded.filter(id => id !== docId) : [...excluded, docId])
+  }
 
   // Drag the left edge to resize; width is clamped (min..50vw, capped 640) and persisted.
   const startResize = (e: React.PointerEvent) => {
@@ -260,6 +276,9 @@ export function ProjectContextRail({ project, onSaveContext, onAddFiles }: Proje
           accept=".pdf,.docx,.xlsx,.txt,.md,.csv,.py,.js,.ts,.tsx,.jsx,.json,.html,.css,.java,.c,.cpp,.go,.rs,.rb,.php,.sh,.yaml,.yml,.xml,.sql,.png,.jpg,.jpeg,.webp"
           onChange={e => { handleFiles(Array.from(e.target.files ?? [])); e.target.value = '' }}
         />
+        {scoping && anyExcluded && readyDocs.length > 0 && (
+          <p className="mb-2 text-xs text-muted-foreground">{activeSources} of {readyDocs.length} sources active</p>
+        )}
         <div className="mb-3"><CapacityBar usedBytes={usedBytes} capBytes={PROJECT_CAPACITY_BYTES} /></div>
         {docsLoading && documents.length === 0 ? (
           <FilesRailSkeleton />
@@ -272,7 +291,24 @@ export function ProjectContextRail({ project, onSaveContext, onAddFiles }: Proje
         ) : (
           <div className="grid grid-cols-2 gap-2.5">
             {documents.map(doc => (
-              <DocumentCard key={doc.id} doc={doc} onOpen={setPreviewDoc} onDelete={(d) => handleDelete(d.id)} onReplace={(d, f) => handleReplace(d.id, f)} />
+              <div key={doc.id} className="relative">
+                {scoping && doc.status === 'ready' && (
+                  <label
+                    className="absolute left-1.5 top-1.5 z-10 flex items-center rounded-md bg-card/90 p-0.5 shadow-sm"
+                    title={excluded.includes(doc.id) ? 'Excluded from grounded answers' : 'Included in grounded answers'}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <input
+                      type="checkbox"
+                      aria-label={`Include ${doc.filename} in grounded answers`}
+                      checked={!excluded.includes(doc.id)}
+                      onChange={() => toggleDocScope(doc.id)}
+                      className="h-3.5 w-3.5 rounded border-border accent-primary"
+                    />
+                  </label>
+                )}
+                <DocumentCard doc={doc} onOpen={setPreviewDoc} onDelete={(d) => handleDelete(d.id)} onReplace={(d, f) => handleReplace(d.id, f)} />
+              </div>
             ))}
           </div>
         )}

@@ -21,6 +21,17 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks() })
 
 import { ProjectContextRail } from '@/components/chat/ProjectContextRail'
+import type { DocumentSummary } from '@/types'
+
+const readyDoc = (id: number, filename: string): DocumentSummary => ({
+  id, filename, mimeType: 'application/pdf', fileSize: 100, chunkCount: 3,
+  status: 'ready', errorMessage: null, url: null, thumbnailUrl: null,
+  extractionMethod: 'text', pageCount: 4, failedPages: null, revision: 1, updatedAt: null,
+})
+
+function mockDocsFetch(docs: DocumentSummary[]) {
+  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ documents: docs }) })) as never)
+}
 
 describe('ProjectContextRail', () => {
   it('renders Memory, Instructions, and Files sections', async () => {
@@ -62,5 +73,58 @@ describe('ProjectContextRail', () => {
     fireEvent.click(await screen.findByTitle('Dismiss'))
     await waitFor(() => expect(mockDismiss).toHaveBeenCalledWith(9))
     await waitFor(() => expect(screen.queryByText('transient')).toBeNull())
+  })
+
+  describe('source scoping', () => {
+    it('shows no scoping checkboxes without an onExcludedChange handler', async () => {
+      mockDocsFetch([readyDoc(1, 'plan.pdf')])
+      render(<ProjectContextRail project={{ id: 1, name: 'Drover', memory: '', instructions: '' }} onSaveContext={vi.fn()} onAddFiles={vi.fn()} />)
+      await screen.findByText('plan.pdf')
+      expect(screen.queryByLabelText(/Include plan\.pdf/)).toBeNull()
+    })
+
+    it('unchecking a source adds its id to the excluded list', async () => {
+      mockDocsFetch([readyDoc(1, 'plan.pdf'), readyDoc(2, 'spec.pdf')])
+      const onExcludedChange = vi.fn()
+      render(
+        <ProjectContextRail
+          project={{ id: 1, name: 'Drover', memory: '', instructions: '' }}
+          onSaveContext={vi.fn()} onAddFiles={vi.fn()}
+          excludedDocIds={[]} onExcludedChange={onExcludedChange}
+        />,
+      )
+      const cb = await screen.findByLabelText('Include spec.pdf in grounded answers')
+      expect((cb as HTMLInputElement).checked).toBe(true)
+      fireEvent.click(cb)
+      expect(onExcludedChange).toHaveBeenCalledWith([2])
+    })
+
+    it('re-checking an excluded source removes its id', async () => {
+      mockDocsFetch([readyDoc(1, 'plan.pdf'), readyDoc(2, 'spec.pdf')])
+      const onExcludedChange = vi.fn()
+      render(
+        <ProjectContextRail
+          project={{ id: 1, name: 'Drover', memory: '', instructions: '' }}
+          onSaveContext={vi.fn()} onAddFiles={vi.fn()}
+          excludedDocIds={[2]} onExcludedChange={onExcludedChange}
+        />,
+      )
+      const cb = await screen.findByLabelText('Include spec.pdf in grounded answers')
+      expect((cb as HTMLInputElement).checked).toBe(false)
+      fireEvent.click(cb)
+      expect(onExcludedChange).toHaveBeenCalledWith([])
+    })
+
+    it('shows an "N of M sources active" header when any source is excluded', async () => {
+      mockDocsFetch([readyDoc(1, 'plan.pdf'), readyDoc(2, 'spec.pdf')])
+      render(
+        <ProjectContextRail
+          project={{ id: 1, name: 'Drover', memory: '', instructions: '' }}
+          onSaveContext={vi.fn()} onAddFiles={vi.fn()}
+          excludedDocIds={[2]} onExcludedChange={vi.fn()}
+        />,
+      )
+      expect(await screen.findByText('1 of 2 sources active')).toBeTruthy()
+    })
   })
 })

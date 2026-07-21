@@ -27,6 +27,9 @@ interface ProjectLandingPageProps {
   onRename: () => void
   /** Rename/move/archive/delete for the chat rows — same handlers the sidebar uses. */
   chatActions: ChatRowActions
+  /** Source-scoping for grounded retrieval — EXCLUDED document ids + setter. */
+  excludedDocIds?: number[]
+  onExcludedChange?: (ids: number[]) => void
 }
 
 function formatShortDate(date: Date | null): string {
@@ -48,6 +51,8 @@ export const ProjectLandingPage = memo(function ProjectLandingPage({
   onBack,
   onRename,
   chatActions,
+  excludedDocIds,
+  onExcludedChange,
 }: ProjectLandingPageProps) {
   const [pinnedIds, setPinnedIds] = useLocalStorage<number[]>(
     'pinned-project-ids',
@@ -210,7 +215,7 @@ export const ProjectLandingPage = memo(function ProjectLandingPage({
         </div>
 
         {/* RIGHT: Context rail — keyed by project so local edit state resets per project */}
-        <ProjectContextRail key={project.id} project={project} onSaveContext={onSaveContext} onAddFiles={onAddFiles} />
+        <ProjectContextRail key={project.id} project={project} onSaveContext={onSaveContext} onAddFiles={onAddFiles} excludedDocIds={excludedDocIds} onExcludedChange={onExcludedChange} />
       </div>
     </div>
   )

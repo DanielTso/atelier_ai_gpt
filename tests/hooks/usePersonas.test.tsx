@@ -54,6 +54,25 @@ describe('usePersonas', () => {
     expect(custom.id).toMatch(/^custom-/)
   })
 
+  it('grounds the document-centric built-ins by default', () => {
+    const { result } = renderHook(() => usePersonas())
+    const grounded = ['contract-abstract', 'contract-spec-analyst', 'plan-spec-reader']
+    for (const id of grounded) {
+      expect(result.current.getPersonaById(id).grounded).toBe(true)
+    }
+    // A general persona is NOT grounded by default.
+    expect(result.current.getPersonaById('general-assistant').grounded).toBeFalsy()
+    expect(result.current.getPersonaById('coding').grounded).toBeFalsy()
+  })
+
+  it('persists the grounded flag on a custom persona', () => {
+    const { result } = renderHook(() => usePersonas())
+    act(() => {
+      result.current.addPersona({ name: 'Scoped', icon: '🔒', prompt: 'Ground me', model: '', grounded: true })
+    })
+    expect(result.current.customPersonas[0].grounded).toBe(true)
+  })
+
   it('deletePersona removes a custom persona', () => {
     const { result } = renderHook(() => usePersonas())
     let id: string

@@ -1,10 +1,11 @@
 'use client'
 
 import { memo, useRef, useState, useEffect, useCallback } from 'react'
-import { Send, Square, Loader2, FileText, Brain, Paperclip, Upload, X } from 'lucide-react'
+import { Send, Square, Loader2, FileText, Brain, Paperclip, Upload, X, BookMarked } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import TextareaAutosize from 'react-textarea-autosize'
 import { toast } from 'sonner'
+import { cn } from '@/lib/utils'
 import { PersonaSelector } from '@/components/ui/PersonaSelector'
 import { EffortPill } from '@/components/ui/EffortPill'
 import { ModelSelect } from '@/components/ui/ModelSelect'
@@ -41,6 +42,11 @@ interface ChatInputAreaProps {
   onModelChange?: (model: string) => void
   selectedEffort?: Effort
   onEffortChange?: (effort?: Effort) => void
+  /** Grounded answers: restrict Claude to project documents + require citations.
+   *  The pill only renders in a project context (see showGroundedPill). */
+  grounded?: boolean
+  onGroundedToggle?: () => void
+  showGroundedPill?: boolean
   attachedFiles: AttachedFile[]
   onFilesChange: (files: AttachedFile[]) => void
   attachedImages: AttachedImage[]
@@ -65,6 +71,9 @@ export const ChatInputArea = memo(function ChatInputArea({
   onModelChange,
   selectedEffort,
   onEffortChange,
+  grounded = false,
+  onGroundedToggle,
+  showGroundedPill = false,
   attachedFiles,
   onFilesChange,
   attachedImages,
@@ -317,6 +326,25 @@ export const ChatInputArea = memo(function ChatInputArea({
           />
           {onEffortChange && selectedModel?.startsWith('claude') && !selectedModel.startsWith('claude-haiku') && (
             <EffortPill value={selectedEffort} onChange={onEffortChange} side="top" />
+          )}
+          {showGroundedPill && onGroundedToggle && (
+            <button
+              type="button"
+              onClick={onGroundedToggle}
+              aria-pressed={grounded}
+              title={grounded
+                ? 'Grounded: answers restricted to project documents with citations'
+                : 'Grounded answers off — click to restrict to project documents'}
+              className={cn(
+                'flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-colors',
+                grounded
+                  ? 'bg-primary/10 text-primary ring-1 ring-primary/30'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-accent',
+              )}
+            >
+              <BookMarked className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Grounded</span>
+            </button>
           )}
           <button
             onClick={onSystemPromptClick}

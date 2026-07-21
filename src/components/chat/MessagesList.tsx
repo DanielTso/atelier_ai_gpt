@@ -21,7 +21,7 @@ import type { ArtifactSummary } from "@/types"
 import { ArtifactCard } from "./ArtifactCard"
 import { CitationChip, type CitationDoc } from "./CitationChip"
 import remarkCitations from "@/lib/remarkCitations"
-import { hideIncompleteTrailingCite, type Citation } from "@/lib/citations"
+import { hideIncompleteTrailingCite, CITE_RE, type Citation } from "@/lib/citations"
 import { Lightbox } from "@/components/ui/Lightbox"
 import { MessageSkeleton } from "./LoadingSkeletons"
 import { staggerDelay } from "@/lib/motion"
@@ -51,6 +51,16 @@ interface MessagesListProps {
   /** Opens a document from a citation chip click. Defaults to a no-op until
    *  page.tsx wires the real handler. */
   onOpenCitation?: OnOpenCitation
+  /** Per-turn grounded flag (ephemeral — the composer's current grounded state).
+   *  Drives the "Answered from project documents" floor caption when a grounded
+   *  reply cites nothing. */
+  grounded?: boolean
+}
+
+// True when the text carries at least one well-formed cite marker. Uses CITE_RE
+// via a fresh (non-global) regex so its shared `lastIndex` is never touched.
+function hasCiteMarker(text: string): boolean {
+  return new RegExp(CITE_RE.source).test(text)
 }
 
 // Helper to extract text content from message parts, stripping file prefix for display
@@ -352,6 +362,7 @@ export const MessagesList = memo(function MessagesList({
   status,
   documentsById = EMPTY_DOCUMENTS_BY_ID,
   onOpenCitation = NOOP_ON_OPEN_CITATION,
+  grounded = false,
 }: MessagesListProps) {
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
   const onImageClick = useCallback((url: string) => setLightboxUrl(url), [])
@@ -449,6 +460,13 @@ export const MessagesList = memo(function MessagesList({
             // Show streaming cursor on last assistant message while loading
             const isStreamingMessage = isLoading && m.role === 'assistant' && index === lastAssistantIndex
 
+            // Grounded floor: the just-finished grounded reply, with document
+            // context available, that cited nothing — reassure the user it was
+            // still answered from the documents (not the web / general knowledge).
+            const showGroundedFloor =
+              grounded && !isLoading && m.role === 'assistant' && index === lastAssistantIndex &&
+              documentsById.size > 0 && !hasCiteMarker(getMessageText(m))
+
             return (
             <motion.div
               key={m.id}
@@ -473,6 +491,10 @@ export const MessagesList = memo(function MessagesList({
                 m.role === 'user' ? "items-end" : "items-start"
               )}>
                 <MessageBody m={m} isStreaming={isStreamingMessage} onImageClick={onImageClick} onOpenArtifact={onOpenArtifact} documentsById={documentsById} onOpenCitation={onOpenCitation} />
+
+                {showGroundedFloor && (
+                  <p className="px-1 text-xs text-muted-foreground/70">Answered from project documents</p>
+                )}
 
                 {/* Timestamp and Actions Row */}
                 <div className={cn(

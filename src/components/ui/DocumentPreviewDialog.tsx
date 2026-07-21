@@ -67,6 +67,14 @@ export const DocumentPreviewDialog = memo(function DocumentPreviewDialog({
     }
   }, [open, target?.chunkId])
 
+  // Reset the tab when the dialog closes so a later target-less open lands on
+  // Preview — otherwise a prior chunk-target open leaves 'text' selected and a
+  // fresh PDF open would skip its Preview tab.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (!open) setTab('preview')
+  }, [open])
+
   // Once the targeted chunk is on the page, scroll it into view and flash a
   // highlight. A missing/unmatched chunk id silently no-ops (tab still opens,
   // just at the top) — this never surfaces as an error.

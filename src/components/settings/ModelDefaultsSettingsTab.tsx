@@ -33,6 +33,7 @@ export const ModelDefaultsSettingsTab = memo(function ModelDefaultsSettingsTab({
   const [newName, setNewName] = useState('')
   const [newIcon, setNewIcon] = useState('')
   const [newPrompt, setNewPrompt] = useState('')
+  const [newGrounded, setNewGrounded] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -70,10 +71,12 @@ export const ModelDefaultsSettingsTab = memo(function ModelDefaultsSettingsTab({
       name: newName.trim(),
       icon: newIcon || '🤖',
       prompt: newPrompt.trim(),
+      grounded: newGrounded,
     })
     setNewName('')
     setNewIcon('')
     setNewPrompt('')
+    setNewGrounded(false)
     setShowNewPersona(false)
   }
 
@@ -194,6 +197,16 @@ export const ModelDefaultsSettingsTab = memo(function ModelDefaultsSettingsTab({
               rows={3}
               className="w-full px-2 py-1.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary/50 resize-none"
             />
+            <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={newGrounded}
+                onChange={(e) => setNewGrounded(e.target.checked)}
+                className="h-4 w-4 rounded border-border accent-primary"
+              />
+              <span>Grounded answers</span>
+              <span className="text-xs text-muted-foreground">— restrict to project documents &amp; require citations</span>
+            </label>
             <div className="flex gap-2 justify-end">
               <button
                 onClick={() => setShowNewPersona(false)}

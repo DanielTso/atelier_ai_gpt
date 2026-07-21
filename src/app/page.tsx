@@ -21,7 +21,8 @@ import { ImagesView } from "@/components/chat/ImagesView"
 import { ArtifactWorkspace } from "@/components/chat/ArtifactWorkspace"
 import { ChatHeader } from "@/components/chat/ChatHeader"
 import { ChatInputArea } from "@/components/chat/ChatInputArea"
-import { MessagesList, type ChatMessage } from "@/components/chat/MessagesList"
+import { MessagesList, type ChatMessage, type DocumentsById } from "@/components/chat/MessagesList"
+import { DocumentPreviewDialog } from "@/components/ui/DocumentPreviewDialog"
 import { CommandPalette } from "@/components/ui/CommandPalette"
 import { DeleteConfirmDialog } from "@/components/ui/DeleteConfirmDialog"
 import { RenameDialog } from "@/components/ui/RenameDialog"
@@ -34,12 +35,13 @@ import { useAppearanceSettings } from "@/hooks/useAppearanceSettings"
 import { useLocalStorage } from "@/hooks/useLocalStorage"
 import { useSmartDefaults } from "@/hooks/useSmartDefaults"
 import { usePersonas, type Effort } from "@/hooks/usePersonas"
+import { useGroundedCompose } from "@/hooks/useGroundedCompose"
 import { PersonaSuggestionBanner } from "@/components/chat/PersonaSuggestionBanner"
 import { ProjectLandingPage } from "@/components/chat/ProjectLandingPage"
 import type { AttachedFile, AttachedImage } from "@/lib/fileAttachments"
 import { buildFileMessage } from "@/lib/fileAttachments"
 import type { FileUIPart, UIMessage } from "ai"
-import type { Model, ArtifactSummary, ChatPreview } from "@/types"
+import type { Model, ArtifactSummary, ChatPreview, DocumentSummary } from "@/types"
 import { useChatTitle } from "@/hooks/useChatTitle"
 import { useFollowUps } from "@/hooks/useFollowUps"
 import { FollowUpChips } from "@/components/chat/FollowUpChips"
@@ -102,6 +104,12 @@ export default function Home() {
   const [artifacts, setArtifacts] = useState<ArtifactSummary[]>([])
   const [activeArtifactId, setActiveArtifactId] = useState<number | null>(null)
 
+  // Project documents for the active chat's project — feeds citation-chip
+  // resolution (documentsById) and the citation-preview dialog.
+  const [projectDocuments, setProjectDocuments] = useState<DocumentSummary[]>([])
+  const [citationDoc, setCitationDoc] = useState<DocumentSummary | null>(null)
+  const [citationTarget, setCitationTarget] = useState<{ page?: number; chunkId?: number } | undefined>(undefined)
+
   // Refs for values used in closures (must be after state declaration)
   const activeChatIdRef = useRef(activeChatId)
   activeChatIdRef.current = activeChatId
@@ -120,6 +128,32 @@ export default function Home() {
   const currentChatProjectName = currentChat?.projectId
     ? projects.find(p => p.id === currentChat.projectId)?.name ?? null
     : null
+  const currentChatProjectId = currentChat?.projectId ?? null
+
+  // Fetch the active chat's project documents so citation chips can resolve a
+  // docId → filename/pageCount and the citation-preview dialog has the full row.
+  useEffect(() => {
+    if (!currentChatProjectId) { setProjectDocuments([]); return }
+    let cancelled = false
+    fetch(`/api/documents?projectId=${currentChatProjectId}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (!cancelled && d?.documents) setProjectDocuments(d.documents) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [currentChatProjectId])
+
+  const documentsById = useMemo<DocumentsById>(() => {
+    const map: DocumentsById = new Map()
+    for (const d of projectDocuments) map.set(d.id, { filename: d.filename, pageCount: d.pageCount ?? null })
+    return map
+  }, [projectDocuments])
+
+  const handleOpenCitation = useCallback((docId: number, target: { page?: number; chunkId?: number }) => {
+    const doc = projectDocuments.find(d => d.id === docId)
+    if (!doc) return
+    setCitationTarget(target)
+    setCitationDoc(doc)
+  }, [projectDocuments])
 
   // Browser back/forward + deep links: mirror nav state into the URL. Deliberately
   // excluded from history: newChatCompose, dialogs, lightboxes, and the artifact
@@ -190,6 +224,24 @@ export default function Home() {
   selectedEffortRef.current = selectedEffort
   const handleEffortChange = useCallback((effort?: Effort) => setSelectedEffort(effort), [])
 
+  // Grounded answers (restrict Claude to project documents + require citations).
+  // Defaults to the active persona's `grounded` flag; a manual pill toggle survives
+  // async persona/default loads (see useGroundedCompose — mirrors composePersonaPickedRef).
+  const { grounded, toggle: toggleGrounded, resetPick: resetGroundedPick, applyPersonaDefault: applyGroundedDefault } =
+    useGroundedCompose(!!defaultPersona.grounded)
+  const groundedRef = useRef(grounded)
+  groundedRef.current = grounded
+
+  // Per-chat source scoping (grounded retrieval): EXCLUDED document ids. Keyed by
+  // the active chat; the compose surface (no chat) shows no scoping UI.
+  const [excludedDocIds, setExcludedDocIds] = useLocalStorage<number[]>(
+    'chat-doc-scope-' + activeChatId,
+    [],
+    v => Array.isArray(v) && v.every(x => typeof x === 'number'),
+  )
+  const excludedDocIdsRef = useRef(excludedDocIds)
+  excludedDocIdsRef.current = excludedDocIds
+
   // Create transport with body as function to always get current values
   const transport = useMemo(() => new DefaultChatTransport({
     api: '/api/chat',
@@ -197,6 +249,8 @@ export default function Home() {
       model: selectedModelRef.current,
       chatId: activeChatIdRef.current,
       effort: selectedEffortRef.current,
+      grounded: groundedRef.current,
+      excludedDocumentIds: excludedDocIdsRef.current,
     }),
   }), [])
 
@@ -633,6 +687,10 @@ export default function Home() {
     // Set the system prompt explicitly (default persona's, else null) so a previous
     // chat's prompt is never carried into — or persisted onto — the new project chat.
     composePersonaPickedRef.current = false
+    resetGroundedPick()
+    // Fresh compose: default the grounded pill to the house default; a project's
+    // default persona (loaded below) may raise it — both respect a manual toggle.
+    applyGroundedDefault(!!defaultPersona.grounded)
     let promptToApply: string | null = null
     try {
       const defaults = await getProjectDefaults(projectId)
@@ -641,6 +699,7 @@ export default function Home() {
         if (persona?.prompt) {
           promptToApply = persona.prompt
           setSelectedEffort(persona.effort)
+          applyGroundedDefault(!!persona.grounded)
         }
       }
       if (defaults.defaultModel) setSelectedModel(defaults.defaultModel)
@@ -650,7 +709,7 @@ export default function Home() {
     // A persona the user picked while the defaults round-trip was in flight WINS —
     // without this guard the late resolve silently reverted the pick (live bug).
     if (!composePersonaPickedRef.current) setCurrentSystemPrompt(promptToApply)
-  }, [getPersonaById])
+  }, [getPersonaById, resetGroundedPick, applyGroundedDefault, defaultPersona.grounded])
 
   const handleCreateChat = useCallback(async () => {
     if (!activeProjectId) {
@@ -674,7 +733,10 @@ export default function Home() {
     setActiveProjectId(null)
     setNewChatCompose(false)
     setInput('')
-  }, [])
+    // Fresh compose — clear the grounded pick guard and reset to the house default.
+    resetGroundedPick()
+    applyGroundedDefault(!!defaultPersona.grounded)
+  }, [resetGroundedPick, applyGroundedDefault, defaultPersona.grounded])
 
   const handleSendMessage = async () => {
     if ((!input.trim() && attachedFiles.length === 0 && attachedImages.length === 0) || isLoading) return
@@ -781,6 +843,7 @@ export default function Home() {
             systemPrompt = persona.prompt
             setSelectedEffort(persona.effort)
             selectedEffortRef.current = persona.effort
+            applyGroundedDefault(!!persona.grounded)
           }
         }
         if (defaults.defaultModel) {
@@ -831,7 +894,7 @@ export default function Home() {
     } else {
       await sendMessage({ text: userMessage })
     }
-  }, [input, attachedFiles, attachedImages, isLoading, getPersonaById, sendMessage, currentSystemPrompt])
+  }, [input, attachedFiles, attachedImages, isLoading, getPersonaById, sendMessage, currentSystemPrompt, applyGroundedDefault])
 
   const handleProjectLandingKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -1039,6 +1102,9 @@ export default function Home() {
   }, [models])
 
   const handleSaveSystemPrompt = useCallback(async (prompt: string | null) => {
+    // Persona selection resets the grounded pill to the new persona's default,
+    // unless the user manually toggled it this compose (applyGroundedDefault guards).
+    applyGroundedDefault(!!getPersonaByPrompt(prompt).grounded)
     // No chat yet (compose/empty state — the default now that chats are created lazily on
     // first send): update the composer state locally so the persona chip reflects the
     // choice immediately. The prompt is persisted to the chat when it's created in
@@ -1066,7 +1132,7 @@ export default function Home() {
       console.error(e)
       setError("Failed to update system instruction.")
     }
-  }, [activeChatId])
+  }, [activeChatId, applyGroundedDefault, getPersonaByPrompt])
 
   const handleOpenProjectSettings = useCallback((projectId: number) => {
     const project = projects.find(p => p.id === projectId)
@@ -1235,6 +1301,9 @@ export default function Home() {
                 onOpenArtifact={setActiveArtifactId}
                 messagesLoading={messagesLoading}
                 status={status}
+                documentsById={documentsById}
+                onOpenCitation={handleOpenCitation}
+                grounded={grounded}
               />
             </div>
 
@@ -1277,6 +1346,9 @@ export default function Home() {
               onModelChange={handleModelChange}
               selectedEffort={selectedEffort}
               onEffortChange={handleEffortChange}
+              grounded={grounded}
+              onGroundedToggle={toggleGrounded}
+              showGroundedPill={currentChat?.projectId != null}
               attachedFiles={attachedFiles}
               onFilesChange={setAttachedFiles}
               attachedImages={attachedImages}
@@ -1328,6 +1400,9 @@ export default function Home() {
                 onModelChange={handleModelChange}
                 selectedEffort={selectedEffort}
                 onEffortChange={handleEffortChange}
+                grounded={grounded}
+                onGroundedToggle={toggleGrounded}
+                showGroundedPill={activeProjectId != null}
                 attachedFiles={attachedFiles}
                 onFilesChange={setAttachedFiles}
                 attachedImages={attachedImages}
@@ -1341,6 +1416,8 @@ export default function Home() {
             onBack={() => { setActiveView('projects'); setActiveChatId(null); setActiveProjectId(null) }}
             onRename={() => handleRequestRenameProject(activeProjectId)}
             chatActions={sidebarActions}
+            excludedDocIds={excludedDocIds}
+            onExcludedChange={setExcludedDocIds}
           />
         ) : (
           <div className="relative isolate flex-1 flex flex-col items-center justify-center w-full max-w-(--thread-max-width) mx-auto px-4">
@@ -1365,6 +1442,9 @@ export default function Home() {
                 onModelChange={handleModelChange}
                 selectedEffort={selectedEffort}
                 onEffortChange={handleEffortChange}
+                grounded={grounded}
+                onGroundedToggle={toggleGrounded}
+                showGroundedPill={activeProjectId != null}
                 attachedFiles={attachedFiles}
                 onFilesChange={setAttachedFiles}
                 attachedImages={attachedImages}
@@ -1475,6 +1555,14 @@ export default function Home() {
           models={models}
         />
       )}
+
+      {/* Citation preview — opened from a citation chip in an assistant reply. */}
+      <DocumentPreviewDialog
+        open={citationDoc !== null}
+        onOpenChange={(o) => { if (!o) setCitationDoc(null) }}
+        document={citationDoc}
+        target={citationTarget}
+      />
 
       {/* Project Documents Dialog */}
       {dialogs.projectDocuments.target && (

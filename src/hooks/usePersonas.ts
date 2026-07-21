@@ -14,6 +14,9 @@ export interface Persona {
   model: string
   /** Reasoning effort for Claude models. Omitted for Haiku (effort is unsupported there). */
   effort?: Effort
+  /** Grounded answers: default the composer's grounded pill ON for this persona
+   *  (restrict answers to project documents + require citations). */
+  grounded?: boolean
   isDefault?: boolean
   description?: string
 }
@@ -313,10 +316,10 @@ const PERSONAS: Persona[] = [
   { id: 'brief', name: 'Brief', icon: '⚡', prompt: BRIEF_PROMPT, model: 'claude-haiku-4-5', description: 'Fast, ultra-concise answers' },
   { id: 'teacher', name: 'Teacher', icon: '📚', prompt: TEACHER_PROMPT, model: 'claude-sonnet-5', effort: 'medium', description: 'Patient, clear explanations' },
   { id: 'construction-pro', name: 'Construction Pro', icon: '🏗️', prompt: CONSTRUCTION_PRO_PROMPT, model: 'claude-opus-4-8', effort: 'high', description: 'Superintendent’s aide: RFIs, submittals, schedules' },
-  { id: 'plan-spec-reader', name: 'Plan & Spec Reader', icon: '📐', prompt: PLAN_SPEC_READER_PROMPT, model: 'claude-sonnet-5', effort: 'medium', description: 'Structured extraction from drawings & specs' },
+  { id: 'plan-spec-reader', name: 'Plan & Spec Reader', icon: '📐', prompt: PLAN_SPEC_READER_PROMPT, model: 'claude-sonnet-5', effort: 'medium', grounded: true, description: 'Structured extraction from drawings & specs' },
   { id: 'claims-delay-analyst', name: 'Claims & Delay Analyst', icon: '⚖️', prompt: CLAIMS_DELAY_PROMPT, model: 'claude-fable-5', effort: 'max', description: 'Delay/time-impact analysis, causation & entitlement' },
-  { id: 'contract-spec-analyst', name: 'Contract & Spec Analyst', icon: '📜', prompt: CONTRACT_SPEC_PROMPT, model: 'claude-fable-5', effort: 'max', description: 'Interprets contract obligations, conflicts & deadlines' },
-  { id: 'contract-abstract', name: 'Contract Abstract', icon: '🗂️', prompt: CONTRACT_ABSTRACT_PROMPT, model: 'claude-fable-5', effort: 'max', description: 'Locked-schema contract abstract to xlsx' },
+  { id: 'contract-spec-analyst', name: 'Contract & Spec Analyst', icon: '📜', prompt: CONTRACT_SPEC_PROMPT, model: 'claude-fable-5', effort: 'max', grounded: true, description: 'Interprets contract obligations, conflicts & deadlines' },
+  { id: 'contract-abstract', name: 'Contract Abstract', icon: '🗂️', prompt: CONTRACT_ABSTRACT_PROMPT, model: 'claude-fable-5', effort: 'max', grounded: true, description: 'Locked-schema contract abstract to xlsx' },
   { id: 'constructability-reviewer', name: 'Constructability Reviewer', icon: '🧩', prompt: CONSTRUCTABILITY_PROMPT, model: 'claude-fable-5', effort: 'high', description: 'Clash/sequencing/VE review before the field' },
   { id: 'deep-reasoner', name: 'Deep Reasoner', icon: '🧠', prompt: DEEP_REASONER_PROMPT, model: 'claude-fable-5', effort: 'high', description: 'Flagship reasoning for hard, high-stakes problems' },
 ]
