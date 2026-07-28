@@ -1,4 +1,4 @@
-import { streamText, convertToModelMessages, stepCountIs, type UIMessage } from 'ai';
+import { streamText, convertToModelMessages, stepCountIs, APICallError, type UIMessage } from 'ai';
 import { getChatWithContext, getProjectContext, getProjectDocuments } from '@/app/actions';
 import { buildProjectPreamble } from '@/lib/projectPreamble';
 import { retrieveContext } from '@/lib/retrieval';
@@ -221,23 +221,32 @@ export async function POST(req: Request) {
       },
     });
 
-    return result.toUIMessageStreamResponse({ sendSources: true, sendReasoning: true });
+    return result.toUIMessageStreamResponse({
+      sendSources: true,
+      sendReasoning: true,
+      // streamText() is synchronous — a provider error (e.g. Fable's 30-day
+      // retention requirement, or a per-model thinking/effort combination the
+      // registry doesn't model) is never thrown into the surrounding try/catch;
+      // it's routed here instead. The default onError returns the generic
+      // string below to avoid leaking server details, which is exactly what
+      // masked these provider 400s before this fix. Only a genuine provider
+      // API error with a 400 status gets its (truncated) message surfaced —
+      // everything else stays generic. This is a residual gap, accepted by
+      // design: capability derivation (C4) can't cover every org-level rule.
+      onError: (error) => {
+        if (APICallError.isInstance(error) && error.statusCode === 400) {
+          return String(error.message).slice(0, 300);
+        }
+        return 'An error occurred.';
+      },
+    });
 
   } catch (error) {
-    // Preserve specific API-key / provider errors for user feedback
+    // Preserve specific API-key / provider errors for user feedback. These are
+    // synchronous throws from createProvider() (missing key, unknown model),
+    // raised before streamText() is ever called — still reachable.
     if (error instanceof Error && (error.message.includes('API Key') || error.message.includes('Unknown model provider'))) {
       return new Response(JSON.stringify({ error: error.message }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
-    // Surface a raw provider 400 (truncated) instead of falling through to the
-    // generic message below — capability derivation (C4) can't cover org-level
-    // rules (e.g. Fable's 30-day retention requirement, or a per-model thinking/
-    // effort combination the registry doesn't model), so an unhandled rule would
-    // otherwise be opaque. This is a residual gap, accepted by design.
-    if (error instanceof Error && (error.message.includes('invalid_request_error') || error.message.includes('Invalid request'))) {
-      return new Response(JSON.stringify({ error: error.message.slice(0, 300) }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' }
       });

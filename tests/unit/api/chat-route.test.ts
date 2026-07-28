@@ -9,19 +9,37 @@ vi.mock('@/db', () => ({
   },
 }))
 
-// Mock AI SDK
+// Mock AI SDK. toUIMessageStreamResponse is its own top-level mock so tests
+// can inspect the options (notably `onError`) the route passes to it.
+const mockToUIMessageStreamResponse = vi.fn(() => new Response('streamed', { status: 200 }))
 const mockStreamText = vi.fn().mockReturnValue({
-  toUIMessageStreamResponse: () => new Response('streamed', { status: 200 }),
+  toUIMessageStreamResponse: (...args: unknown[]) => mockToUIMessageStreamResponse(...args),
 })
 const mockConvertToModelMessages = vi.fn().mockResolvedValue([
   { role: 'user', content: 'Hello' },
 ])
+
+// Minimal APICallError stand-in mirroring the real @ai-sdk/provider shape
+// closely enough for `APICallError.isInstance(error) && error.statusCode === 400`
+// to behave like the real thing (verified against node_modules/ai: the real
+// class exposes a static `isInstance`).
+class MockAPICallError extends Error {
+  statusCode?: number
+  constructor(opts: { message: string; statusCode?: number }) {
+    super(opts.message)
+    this.statusCode = opts.statusCode
+  }
+  static isInstance(error: unknown): error is MockAPICallError {
+    return error instanceof MockAPICallError
+  }
+}
 
 vi.mock('ai', () => ({
   streamText: (...args: unknown[]) => mockStreamText(...args),
   convertToModelMessages: (...args: unknown[]) => mockConvertToModelMessages(...args),
   stepCountIs: (n: number) => ({ type: 'step-count', count: n }),
   tool: (config: unknown) => config,
+  APICallError: MockAPICallError,
 }))
 
 const mockRetrieveContext = vi.fn()
@@ -79,6 +97,7 @@ describe('POST /api/chat', () => {
       convertToModelMessages: (...args: unknown[]) => mockConvertToModelMessages(...args),
       stepCountIs: (n: number) => ({ type: 'step-count', count: n }),
       tool: (config: unknown) => config,
+      APICallError: MockAPICallError,
     }))
     vi.doMock('@ai-sdk/google', () => ({
       createGoogleGenerativeAI: () => Object.assign(
@@ -445,6 +464,28 @@ describe('POST /api/chat', () => {
     } finally {
       logSpy.mockRestore()
     }
+  })
+
+  it('passes an onError to toUIMessageStreamResponse that surfaces a provider 400 message instead of the generic string', async () => {
+    // streamText() is synchronous — a provider error never reaches the route's
+    // try/catch. It's routed through toUIMessageStreamResponse's onError
+    // instead, which the mocked toUIMessageStreamResponse lets us capture.
+    const response = await postChat({
+      messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] }],
+      model: 'claude-opus-4-8',
+    })
+    expect(response.status).toBe(200)
+    const options = mockToUIMessageStreamResponse.mock.calls[0][0] as { onError: (error: unknown) => string }
+    expect(typeof options.onError).toBe('function')
+
+    const providerError = new MockAPICallError({ message: 'Fable requires 30-day data retention to be enabled for this organization.', statusCode: 400 })
+    expect(options.onError(providerError)).toBe('Fable requires 30-day data retention to be enabled for this organization.')
+
+    // Non-provider / non-400 errors still fall back to the generic string —
+    // never leak arbitrary server error details to the client.
+    expect(options.onError(new Error('some internal error'))).toBe('An error occurred.')
+    const provider500 = new MockAPICallError({ message: 'upstream 500', statusCode: 500 })
+    expect(options.onError(provider500)).toBe('An error occurred.')
   })
 
   it('returns 500 on error', async () => {

@@ -34,12 +34,16 @@ export const chatRequestSchema = z.object({
 export const summarizeRequestSchema = z.object({
   chatId: z.number(),
   cutoffMessageId: z.number(),
+  // Accepted for wire compatibility (useSummarization.ts still sends it) but
+  // intentionally ignored server-side — the route hardcodes gemini-3.5-flash.
   model: modelIdSchema.optional(),
 })
 
 export const generateTitleRequestSchema = z.object({
   chatId: z.number(),
   messages: z.array(uiMessageSchema).min(1),
+  // Accepted for wire compatibility (useChatTitle.ts still sends it) but
+  // intentionally ignored server-side — the route hardcodes gemini-3.5-flash.
   model: modelIdSchema.optional(),
 })
 
@@ -60,6 +64,8 @@ export const embedRequestSchema = z.object({
 export const classifyRequestSchema = z.object({
   chatId: z.number(),
   messages: z.array(uiMessageSchema).min(1),
+  // Accepted for wire compatibility (tolerates a caller-supplied model) but
+  // intentionally ignored server-side — the route hardcodes gemini-3.5-flash.
   model: modelIdSchema.optional(),
 })
 

@@ -33,6 +33,21 @@ function mockRegistry(supportsEffort: boolean) {
   }))
 }
 
+// For asserting per-LEVEL gating (not just per-model): a model can report
+// supportsEffort:true while still excluding a specific level, e.g. a legacy
+// pin (claude-sonnet-4-6) that predates `xhigh`.
+function mockRegistryLevels(effortLevels: string[]) {
+  const getModelCapabilities = vi.fn().mockResolvedValue({
+    supportsEffort: effortLevels.length > 0,
+    effortLevels,
+    supportsThinking: true,
+    supportsImageInput: false,
+    supportsStructuredOutputs: true,
+  })
+  vi.doMock('@/lib/models/registry', () => ({ getModelCapabilities }))
+  return getModelCapabilities
+}
+
 describe('createProvider', () => {
   beforeEach(() => {
     vi.resetModules()
@@ -117,6 +132,36 @@ describe('createProvider', () => {
     const result = await createProvider('claude-opus-4-8')
     expect(result.providerOptions?.anthropic?.thinking).toEqual({ type: 'adaptive' })
     expect(result.providerOptions?.anthropic?.effort).toBeUndefined()
+  })
+
+  it('gates per LEVEL, not just per model: a legacy pin whose effortLevels excludes xhigh omits effort for xhigh but still applies high', async () => {
+    mockProviders()
+    // Mirrors buildLegacyPin (registry.ts) — claude-sonnet-4-6 predates xhigh.
+    mockRegistryLevels(['low', 'medium', 'high', 'max'])
+    vi.doMock('@/lib/settings', () => ({
+      getAnthropicApiKey: () => Promise.resolve('anthropic-key'),
+      getGeminiApiKey: () => Promise.resolve(null),
+    }))
+    const { createProvider } = await import('@/lib/providers')
+
+    const xhighResult = await createProvider('claude-sonnet-4-6', 'xhigh')
+    expect(xhighResult.providerOptions?.anthropic?.effort).toBeUndefined()
+    expect(xhighResult.providerOptions?.anthropic?.thinking).toEqual({ type: 'adaptive' })
+
+    const highResult = await createProvider('claude-sonnet-4-6', 'high')
+    expect(highResult.providerOptions?.anthropic?.effort).toBe('high')
+  })
+
+  it('short-circuits before calling getModelCapabilities when no effort is requested', async () => {
+    mockProviders()
+    const getModelCapabilities = mockRegistryLevels(['low', 'medium', 'high', 'xhigh', 'max'])
+    vi.doMock('@/lib/settings', () => ({
+      getAnthropicApiKey: () => Promise.resolve('anthropic-key'),
+      getGeminiApiKey: () => Promise.resolve(null),
+    }))
+    const { createProvider } = await import('@/lib/providers')
+    await createProvider('claude-opus-4-8')
+    expect(getModelCapabilities).not.toHaveBeenCalled()
   })
 
   it('throws when claude selected but no Anthropic key', async () => {
