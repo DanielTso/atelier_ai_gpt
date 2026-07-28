@@ -46,6 +46,20 @@ vi.mock('@ai-sdk/anthropic', () => ({
 
 import { createProject, createChat, updateChatSystemPrompt, updateChatSummary } from '@/app/actions'
 
+// Ids the fake registry treats as "known" — mirrors the model set the picker
+// used to hardcode. Anything else falls back, matching production
+// resolveRequestedModel() behavior, without hitting the network via the real
+// registry (which would call fetchAllAnthropicModels over a fake key).
+const KNOWN_MODEL_IDS = new Set([
+  'claude-opus-4-8',
+  'claude-fable-5',
+  'claude-sonnet-5',
+  'claude-sonnet-4-6',
+  'claude-haiku-4-5',
+  'gemini-3.1-flash-image',
+  'gemini-3.5-flash',
+])
+
 describe('POST /api/chat', () => {
   beforeEach(async () => {
     await createTestDb()
@@ -85,6 +99,21 @@ describe('POST /api/chat', () => {
     vi.doMock('@/lib/retrieval', () => ({
       retrieveContext: (...args: unknown[]) => mockRetrieveContext(...args),
     }))
+    vi.doMock('@/lib/models/registry', () => ({
+      resolveRequestedModel: async (requested?: string) => {
+        if (!requested) return { modelId: 'claude-opus-4-8', usedFallback: false }
+        if (KNOWN_MODEL_IDS.has(requested)) return { modelId: requested, usedFallback: false }
+        console.warn(`[models] unknown model id "${requested}" requested, falling back to "claude-opus-4-8"`)
+        return { modelId: 'claude-opus-4-8', usedFallback: true }
+      },
+      getModelCapabilities: async () => ({
+        supportsEffort: true,
+        effortLevels: ['low', 'medium', 'high', 'xhigh', 'max'],
+        supportsThinking: true,
+        supportsImageInput: false,
+        supportsStructuredOutputs: true,
+      }),
+    }))
 
     const { POST } = await import('@/app/api/chat/route')
     return POST(
@@ -114,10 +143,27 @@ describe('POST /api/chat', () => {
     expect(mockAnthropicFn).toHaveBeenCalledWith('claude-opus-4-8')
   })
 
-  it('rejects a non-allow-listed model with 400 (cost-amplification guard)', async () => {
+  it('falls back to the default model and returns 200 for a stale/unknown model id (not a 400)', async () => {
+    // Locked bug fix: a stale projects.default_model (or any tampered/retired id)
+    // must degrade to the current default instead of 400ing the chat permanently.
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const response = await postChat({
+        messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] }],
+        model: 'llama3',
+      })
+      expect(response.status).toBe(200)
+      expect(mockAnthropicFn).toHaveBeenCalledWith('claude-opus-4-8')
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('unknown model id "llama3"'))
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+
+  it('still rejects a malformed model id at the shape-guard level (400)', async () => {
     const response = await postChat({
       messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] }],
-      model: 'llama3',
+      model: 'not a valid id!',
     })
     expect(response.status).toBe(400)
   })

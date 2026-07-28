@@ -1,21 +1,15 @@
 import { z } from 'zod'
 
-// Allow-list of model IDs the app will route to. Prevents an unauthenticated /
-// crafted request from selecting an arbitrary (e.g. far more expensive) model.
-// User-selectable models (see /api/models) + the internal housekeeping model.
-export const MODEL_IDS = [
-  'claude-opus-4-8',
-  'claude-fable-5',
-  'claude-sonnet-5',
-  // Retired from the picker (superseded by Sonnet 5) but kept here so chats
-  // already pinned to it keep routing instead of being rejected by this enum.
-  'claude-sonnet-4-6',
-  'claude-haiku-4-5',
-  'gemini-3.1-flash-image',
-  'gemini-3.5-flash',
-] as const
-
-const modelEnum = z.enum(MODEL_IDS)
+// Shape guard ONLY. This is not an allow-list — it just rejects garbage before
+// it reaches a provider call (empty string, absurd length, or characters no
+// model id ever has). The real allow-list is the live model registry
+// (`registry.byId`, consulted via `resolveRequestedModel()` in
+// src/lib/models/registry.ts), which knows exactly which ids Anthropic/Gemini
+// currently serve plus legacy pins, and degrades an unknown/stale id to the
+// current default instead of rejecting the request. A hardcoded enum here
+// would 400 the moment a persisted id (e.g. a project's `default_model`) falls
+// out of date — that was the bug this replaces.
+const modelIdSchema = z.string().min(1).max(64).regex(/^[a-z0-9][a-z0-9.-]*$/i, 'invalid model id')
 
 // Loose-but-real shape for AI SDK UI messages: require a string role, allow the
 // usual optional content/parts, and passthrough the rest (id, etc.). Replaces the
@@ -28,9 +22,9 @@ export const uiMessageSchema = z.object({
 
 export const chatRequestSchema = z.object({
   messages: z.array(uiMessageSchema).min(1),
-  model: modelEnum.optional(),
+  model: modelIdSchema.optional(),
   chatId: z.number().nullable().optional(),
-  effort: z.enum(['low', 'medium', 'high', 'max']).optional(),
+  effort: z.enum(['low', 'medium', 'high', 'xhigh', 'max']).optional(),
   // Grounded & Cited Answers: grounded restricts answers to project documents;
   // excludedDocumentIds scopes retrieval/manifest/read_document per chat.
   grounded: z.boolean().optional(),
@@ -40,13 +34,13 @@ export const chatRequestSchema = z.object({
 export const summarizeRequestSchema = z.object({
   chatId: z.number(),
   cutoffMessageId: z.number(),
-  model: modelEnum.optional(),
+  model: modelIdSchema.optional(),
 })
 
 export const generateTitleRequestSchema = z.object({
   chatId: z.number(),
   messages: z.array(uiMessageSchema).min(1),
-  model: modelEnum.optional(),
+  model: modelIdSchema.optional(),
 })
 
 export const suggestFollowupsRequestSchema = z.object({
@@ -66,7 +60,7 @@ export const embedRequestSchema = z.object({
 export const classifyRequestSchema = z.object({
   chatId: z.number(),
   messages: z.array(uiMessageSchema).min(1),
-  model: modelEnum.optional(),
+  model: modelIdSchema.optional(),
 })
 
 export const memorySuggestRequestSchema = z.object({

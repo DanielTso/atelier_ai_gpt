@@ -3,6 +3,7 @@ import { getChatWithContext, getProjectContext, getProjectDocuments } from '@/ap
 import { buildProjectPreamble } from '@/lib/projectPreamble';
 import { retrieveContext } from '@/lib/retrieval';
 import { createProvider } from '@/lib/providers';
+import { resolveRequestedModel } from '@/lib/models/registry';
 import { apiError } from '@/lib/errors';
 import { chatRequestSchema } from '@/lib/validation';
 import { createGenerateArtifactTool } from '@/lib/artifacts/tool';
@@ -93,7 +94,10 @@ export async function POST(req: Request) {
       return apiError(body.error, 'Invalid request body', 400);
     }
     const { messages, model, chatId, effort, grounded, excludedDocumentIds } = body.data;
-    const modelName = model || 'claude-opus-4-8';
+    // Registry-backed resolution: an unknown/stale/tampered id (e.g. a project's
+    // default_model that no longer exists) falls back to the current default
+    // instead of reaching a provider call that would throw — see registry.ts.
+    const { modelId: modelName } = await resolveRequestedModel(model);
 
     // Create provider (routes by model-name prefix; returns the model, tools, and provider options)
     const { model: selectedModel, tools: providerTools, providerOptions } = await createProvider(modelName, effort);
@@ -223,6 +227,17 @@ export async function POST(req: Request) {
     // Preserve specific API-key / provider errors for user feedback
     if (error instanceof Error && (error.message.includes('API Key') || error.message.includes('Unknown model provider'))) {
       return new Response(JSON.stringify({ error: error.message }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    // Surface a raw provider 400 (truncated) instead of falling through to the
+    // generic message below — capability derivation (C4) can't cover org-level
+    // rules (e.g. Fable's 30-day retention requirement, or a per-model thinking/
+    // effort combination the registry doesn't model), so an unhandled rule would
+    // otherwise be opaque. This is a residual gap, accepted by design.
+    if (error instanceof Error && (error.message.includes('invalid_request_error') || error.message.includes('Invalid request'))) {
+      return new Response(JSON.stringify({ error: error.message.slice(0, 300) }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' }
       });
