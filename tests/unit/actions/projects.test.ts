@@ -60,3 +60,40 @@ describe('project actions', () => {
     expect(updated.name).toBe('New Name')
   })
 })
+
+describe('updateProjectDefaults - model validation', () => {
+  beforeEach(async () => {
+    vi.resetModules()
+    await createTestDb()
+  })
+
+  // Stub the registry so the test never hits the network — resolveRequestedModel's
+  // real implementation calls out to Anthropic when there's no cached registry.
+  function mockRegistry(knownIds: string[]) {
+    vi.doMock('@/lib/models/registry', () => ({
+      resolveRequestedModel: async (requested?: string) => {
+        if (!requested) return { modelId: 'claude-opus-4-8', usedFallback: false }
+        if (knownIds.includes(requested)) return { modelId: requested, usedFallback: false }
+        return { modelId: 'claude-opus-4-8', usedFallback: true }
+      },
+    }))
+  }
+
+  it('persists null when defaultModel is not recognized by the registry', async () => {
+    mockRegistry(['claude-opus-4-8', 'claude-sonnet-5'])
+    const { createProject, updateProjectDefaults, getProjectDefaults } = await import('@/app/actions')
+    const [project] = await createProject('Bogus Default')
+    await updateProjectDefaults(project.id, { defaultModel: 'claude-bogus-9' })
+    const defaults = await getProjectDefaults(project.id)
+    expect(defaults.defaultModel).toBeNull()
+  })
+
+  it('persists a valid defaultModel unchanged', async () => {
+    mockRegistry(['claude-opus-4-8', 'claude-sonnet-5'])
+    const { createProject, updateProjectDefaults, getProjectDefaults } = await import('@/app/actions')
+    const [project] = await createProject('Valid Default')
+    await updateProjectDefaults(project.id, { defaultModel: 'claude-sonnet-5' })
+    const defaults = await getProjectDefaults(project.id)
+    expect(defaults.defaultModel).toBe('claude-sonnet-5')
+  })
+})

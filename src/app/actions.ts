@@ -390,8 +390,19 @@ export async function updateProjectDefaults(
   projectId: number,
   defaults: { defaultPersonaId?: string | null; defaultModel?: string | null }
 ) {
+  let defaultModel = defaults.defaultModel
+  if (defaultModel) {
+    // Resolve against the registry before writing — a stale/unrecognized id
+    // must never land in the row (that's the root cause of the live bug: an
+    // unvalidated default reaching /api/chat). null ("no project default")
+    // is the correct semantic here, not a silent substitution of whatever
+    // resolveRequestedModel falls back to.
+    const { resolveRequestedModel } = await import('@/lib/models/registry')
+    const { usedFallback } = await resolveRequestedModel(defaultModel)
+    if (usedFallback) defaultModel = null
+  }
   return await db.update(projects)
-    .set(defaults)
+    .set({ ...defaults, defaultModel })
     .where(eq(projects.id, projectId))
     .returning()
 }

@@ -724,14 +724,24 @@ export default function Home() {
           applyGroundedDefault(!!persona.grounded)
         }
       }
-      if (defaults.defaultModel) setSelectedModel(defaults.defaultModel)
+      if (defaults.defaultModel) {
+        // Mirrors the membership check fetchModels already applies to the
+        // persisted 'default-model' setting — a stale/retired project default
+        // must not silently apply (defense in depth; updateProjectDefaults
+        // also refuses to persist an unrecognized id at the source).
+        if (models.some(m => m.model === defaults.defaultModel)) {
+          setSelectedModel(defaults.defaultModel)
+        } else {
+          console.warn(`[models] project default model "${defaults.defaultModel}" is not available, keeping current selection`)
+        }
+      }
     } catch {
       // Defaults are optional.
     }
     // A persona the user picked while the defaults round-trip was in flight WINS —
     // without this guard the late resolve silently reverted the pick (live bug).
     if (!composePersonaPickedRef.current) setCurrentSystemPrompt(promptToApply)
-  }, [getPersonaById, resetGroundedPick, applyGroundedDefault, defaultPersona.grounded])
+  }, [getPersonaById, resetGroundedPick, applyGroundedDefault, defaultPersona.grounded, models])
 
   const handleCreateChat = useCallback(async () => {
     if (!activeProjectId) {
@@ -869,8 +879,16 @@ export default function Home() {
           }
         }
         if (defaults.defaultModel) {
-          setSelectedModel(defaults.defaultModel)
-          selectedModelRef.current = defaults.defaultModel
+          // Mirrors the membership check fetchModels already applies to the
+          // persisted 'default-model' setting — a stale/retired project default
+          // must not silently apply (defense in depth; updateProjectDefaults
+          // also refuses to persist an unrecognized id at the source).
+          if (models.some(m => m.model === defaults.defaultModel)) {
+            setSelectedModel(defaults.defaultModel)
+            selectedModelRef.current = defaults.defaultModel
+          } else {
+            console.warn(`[models] project default model "${defaults.defaultModel}" is not available, keeping current selection`)
+          }
         }
       } catch {
         // Defaults are optional.
@@ -916,7 +934,7 @@ export default function Home() {
     } else {
       await sendMessage({ text: userMessage })
     }
-  }, [input, attachedFiles, attachedImages, isLoading, getPersonaById, sendMessage, currentSystemPrompt, applyGroundedDefault])
+  }, [input, attachedFiles, attachedImages, isLoading, getPersonaById, sendMessage, currentSystemPrompt, applyGroundedDefault, models])
 
   const handleProjectLandingKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
