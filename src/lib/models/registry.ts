@@ -1,5 +1,5 @@
 import { getAnthropicApiKey, getGeminiApiKey } from '@/lib/settings'
-import { curateCatalog, parseFamily } from './curate'
+import { curateCatalog, parseFamily, DATED_SNAPSHOT_RE } from './curate'
 import { loadPricingOverrides, resolvePricing, type PricingOverrides } from './pricing'
 import { fetchAllAnthropicModels, type RawAnthropicModel } from './fetch'
 import { STATIC_SEED, LEGACY_PINS, GEMINI_MODELS } from './seed'
@@ -112,6 +112,31 @@ function repriceModel(model: CatalogModel, overrides: PricingOverrides): Catalog
 }
 
 /**
+ * Register the bare-alias form of any dated snapshot id (e.g.
+ * `claude-haiku-4-5-20251001` -> `claude-haiku-4-5`) into `byId`, pointing at
+ * the SAME CatalogModel object as the dated id. Anthropic's live catalog can
+ * ship a family with ONLY a dated id and no bare alias (verified live: Haiku
+ * 4.5, Sonnet 4.5, Opus 4.5, Opus 4.1 all currently lack one) — but the app
+ * routes by the alias everywhere (STATIC_SEED, personas, the persisted
+ * `default-model` setting, `projects.default_model` rows). Without this, the
+ * alias MISSES `byId` and `resolveRequestedModel()` silently falls back to
+ * the curated default (Opus) — e.g. every Haiku request becomes an Opus
+ * request, ~5x the input/output cost, with only a console.warn.
+ *
+ * Never added to `curated` (the picker keeps exactly one row per family) and
+ * never overwrites a real catalog entry: only fills the alias key when it's
+ * not already taken, so if Anthropic later ships a bare id alongside the
+ * dated one, the real entry wins.
+ */
+function registerDatedAliases(byId: Map<string, CatalogModel>, models: CatalogModel[]): void {
+  for (const model of models) {
+    if (!DATED_SNAPSHOT_RE.test(model.id)) continue
+    const alias = model.id.replace(DATED_SNAPSHOT_RE, '')
+    if (!byId.has(alias)) byId.set(alias, model)
+  }
+}
+
+/**
  * Construct a minimal stand-in CatalogModel for a LEGACY_PINS id that the
  * live/seed catalog no longer returns. LEGACY_PINS is a `string[]`, not
  * CatalogModel[] — this is the "otherwise" branch: resolve from the full
@@ -186,6 +211,10 @@ async function buildRegistry(): Promise<ModelRegistry> {
     // collapsing into family 'other') stay routable even though curateCatalog
     // only surfaces the newest-per-family subset in the picker.
     for (const model of claudeModels) byId.set(model.id, model)
+    // Alias pass runs AFTER all real ids are set, so a real bare entry (if
+    // Anthropic ever ships one) is already in byId and the guard inside
+    // registerDatedAliases() leaves it untouched regardless of array order.
+    registerDatedAliases(byId, claudeModels)
     curatedClaude = curateCatalog(claudeModels)
 
     // Legacy pins stay routable even though they're not offered in the

@@ -73,6 +73,26 @@ const DATED_OPUS_SNAPSHOT_RAW = {
   },
 }
 
+// The live-verified case that motivates this whole test block: Anthropic's
+// live catalog currently serves Haiku 4.5 ONLY as a dated id, with NO bare
+// `claude-haiku-4-5` alias — but the app routes by the bare alias everywhere
+// (STATIC_SEED, personas, the persisted `default-model` setting,
+// `projects.default_model` rows). If the alias misses `byId`, a Haiku request
+// silently falls back to the curated default (Opus): ~5x the cost.
+const DATED_HAIKU_ONLY_RAW = {
+  id: 'claude-haiku-4-5-20251001',
+  display_name: 'Claude Haiku 4.5',
+  created_at: '2026-05-01T00:00:00Z',
+  max_input_tokens: 200000,
+  max_tokens: 32000,
+  capabilities: {
+    effort: {},
+    thinking: { types: { adaptive: { supported: true } } },
+    image_input: { supported: true },
+    structured_outputs: { supported: true },
+  },
+}
+
 // Defensive-input fixtures for mapCapabilities() — missing, null, a scalar,
 // and a null `effort` subtree all must degrade to false/[] rather than throw.
 const NO_CAPS_RAW = {
@@ -340,6 +360,65 @@ describe('models/registry', () => {
       expect(registry.curated.some(m => m.id === 'claude-opus-4-1-20250805')).toBe(false)
       // the undated, newer opus entry is the one that surfaces in the picker
       expect(registry.curated.some(m => m.id === 'claude-opus-4-8')).toBe(true)
+    })
+  })
+
+  describe('dated-id alias routing (prevents silent haiku->opus cost jump)', () => {
+    it('resolves the bare alias to a haiku model (not the opus fallback) when the live catalog only has the dated id', async () => {
+      getAnthropicApiKey.mockResolvedValue('sk-test')
+      const fetchMock = fetch as ReturnType<typeof vi.fn>
+      // Live catalog carries ONLY the dated id, mirroring the verified real
+      // API response for Haiku 4.5 (no bare `claude-haiku-4-5` alias exists).
+      fetchMock.mockResolvedValue(mockLivePage([OPUS_RAW, DATED_HAIKU_ONLY_RAW]))
+
+      // REGRESSION GUARD: without alias registration in byId, this MISSES
+      // and silently falls back to the curated default (opus) — a Haiku
+      // request becomes an Opus request, ~5x the input/output cost.
+      const result = await resolveRequestedModel('claude-haiku-4-5')
+      expect(result.usedFallback).toBe(false)
+      expect(['claude-haiku-4-5', 'claude-haiku-4-5-20251001']).toContain(result.modelId)
+    })
+
+    it('byId contains both the dated id and its bare alias, pointing at the same model', async () => {
+      getAnthropicApiKey.mockResolvedValue('sk-test')
+      const fetchMock = fetch as ReturnType<typeof vi.fn>
+      fetchMock.mockResolvedValue(mockLivePage([OPUS_RAW, DATED_HAIKU_ONLY_RAW]))
+
+      const registry = await getModelRegistry()
+      const dated = registry.byId.get('claude-haiku-4-5-20251001')
+      const alias = registry.byId.get('claude-haiku-4-5')
+      expect(dated).toBeDefined()
+      expect(alias).toBeDefined()
+      expect(alias).toBe(dated) // same object, not a copy
+    })
+
+    it('curated still contains exactly one haiku entry (no alias duplication in the picker)', async () => {
+      getAnthropicApiKey.mockResolvedValue('sk-test')
+      const fetchMock = fetch as ReturnType<typeof vi.fn>
+      fetchMock.mockResolvedValue(mockLivePage([OPUS_RAW, DATED_HAIKU_ONLY_RAW]))
+
+      const registry = await getModelRegistry()
+      const haikuEntries = registry.curated.filter(m => m.family === 'haiku')
+      expect(haikuEntries).toHaveLength(1)
+      expect(haikuEntries[0]?.id).toBe('claude-haiku-4-5-20251001')
+    })
+
+    it('never lets the alias clobber a real bare entry when both exist in the live catalog', async () => {
+      getAnthropicApiKey.mockResolvedValue('sk-test')
+      const fetchMock = fetch as ReturnType<typeof vi.fn>
+      // Both the real bare alias AND the dated id are present (a future state
+      // where Anthropic ships the alias alongside the existing dated entry).
+      fetchMock.mockResolvedValue(mockLivePage([OPUS_RAW, HAIKU_RAW, DATED_HAIKU_ONLY_RAW]))
+
+      const registry = await getModelRegistry()
+      const bare = registry.byId.get('claude-haiku-4-5')
+      const dated = registry.byId.get('claude-haiku-4-5-20251001')
+      // Must be the REAL bare model's own normalized object (id === the bare
+      // key it was registered under), and a DIFFERENT object than the dated
+      // entry — not the alias pass overwriting it with the dated model.
+      expect(bare?.id).toBe('claude-haiku-4-5')
+      expect(dated?.id).toBe('claude-haiku-4-5-20251001')
+      expect(bare).not.toBe(dated)
     })
   })
 
