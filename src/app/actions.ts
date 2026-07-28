@@ -311,6 +311,10 @@ export async function getSettings(keys: string[]) {
 export async function setSetting(key: string, value: string) {
   const { clearSettingsCache } = await import('@/lib/settings')
   clearSettingsCache()
+  // An API-key (or pricing-override) change alters what the model registry
+  // can see — invalidate it too so the next request re-fetches/re-prices.
+  const { clearModelRegistryCache } = await import('@/lib/models/registry')
+  clearModelRegistryCache()
   return await db.insert(settings)
     .values({ key, value, updatedAt: new Date() })
     .onConflictDoUpdate({ target: settings.key, set: { value, updatedAt: new Date() } })
@@ -320,6 +324,8 @@ export async function setSetting(key: string, value: string) {
 export async function setSettings(entries: { key: string; value: string }[]) {
   const { clearSettingsCache } = await import('@/lib/settings')
   clearSettingsCache()
+  const { clearModelRegistryCache } = await import('@/lib/models/registry')
+  clearModelRegistryCache()
   return await db.transaction(async (tx) => {
     const results = []
     for (const entry of entries) {
