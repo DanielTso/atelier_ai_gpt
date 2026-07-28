@@ -10,7 +10,10 @@ export interface ProviderResult {
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-export type Effort = 'low' | 'medium' | 'high' | 'max';
+// Single source of truth is `@/types`; re-exported so existing
+// `import { type Effort } from '@/lib/providers'` call sites keep working.
+export type { Effort } from '@/types';
+import type { Effort } from '@/types';
 
 export async function createProvider(modelName: string, effort?: Effort): Promise<ProviderResult> {
   // Claude (Anthropic) — the primary chat brain. Web search enabled. Adaptive

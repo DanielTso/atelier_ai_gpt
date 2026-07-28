@@ -3,7 +3,10 @@
 import { useCallback, useMemo } from 'react'
 import { useLocalStorage } from './useLocalStorage'
 
-export type Effort = 'low' | 'medium' | 'high' | 'max'
+// Single source of truth is `@/types`; re-exported so the many existing
+// `import { type Effort } from '@/hooks/usePersonas'` call sites keep working.
+export type { Effort } from '@/types'
+import type { Effort } from '@/types'
 
 export interface Persona {
   id: string

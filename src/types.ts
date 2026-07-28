@@ -1,7 +1,41 @@
+/**
+ * Reasoning-effort ladder. Single source of truth — `providers.ts` (server) and
+ * `usePersonas.ts` (client) both re-export this; they each used to declare their
+ * own copy. `xhigh` sits between `high` and `max` and is supported by Opus 5,
+ * Sonnet 5, and Fable 5 (Anthropic's recommended default for coding/agentic
+ * work); which levels a given model actually accepts comes from the registry's
+ * per-model capabilities, never from this union.
+ */
+export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+
+/** Per-model capability flags, derived from Anthropic's live `capabilities` tree. */
+export interface ModelCapabilities {
+  supportsEffort: boolean
+  effortLevels: Effort[]
+  supportsThinking: boolean
+  supportsImageInput: boolean
+  supportsStructuredOutputs: boolean
+}
+
+/**
+ * Token pricing in USD per million tokens. `estimated` is true when the rate was
+ * inferred from the model's family rather than known exactly — the UI marks those.
+ * Models that aren't token-priced at all (image generation) carry the 0/0 sentinel.
+ */
+export interface ModelPricing {
+  inputPerMTok: number
+  outputPerMTok: number
+  estimated: boolean
+}
+
 export interface Model {
   name: string
   model: string
   digest: string
+  provider: 'anthropic' | 'google'
+  family: string
+  capabilities: ModelCapabilities
+  pricing: ModelPricing
 }
 
 export type DocumentStatus = 'uploading' | 'processing' | 'ready' | 'error'
