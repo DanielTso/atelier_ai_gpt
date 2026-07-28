@@ -1,6 +1,7 @@
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { getGeminiApiKey, getAnthropicApiKey } from '@/lib/settings';
+import { getModelCapabilities } from '@/lib/models/registry';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export interface ProviderResult {
@@ -17,8 +18,11 @@ import type { Effort } from '@/types';
 
 export async function createProvider(modelName: string, effort?: Effort): Promise<ProviderResult> {
   // Claude (Anthropic) — the primary chat brain. Web search enabled. Adaptive
-  // thinking is on for all Claude models; `effort` (low|medium|high|max) is
-  // applied via providerOptions — EXCEPT on Haiku, which 400s on the effort param.
+  // thinking is on for all Claude models; `effort` (low|medium|high|xhigh|max)
+  // is applied via providerOptions only when the model's registry capabilities
+  // report `supportsEffort` — derived from the live/cached catalog rather than
+  // a name-prefix guess, so it stays correct as new models ship (e.g. Haiku 4.5
+  // 400s on the effort param; the registry already knows this).
   if (modelName.startsWith('claude')) {
     const apiKey = await getAnthropicApiKey();
     if (!apiKey) {
@@ -32,7 +36,8 @@ export async function createProvider(modelName: string, effort?: Effort): Promis
     };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const anthropicOptions: Record<string, any> = { thinking: { type: 'adaptive' } };
-    if (effort && !modelName.startsWith('claude-haiku')) {
+    const caps = await getModelCapabilities(modelName);
+    if (effort && caps.supportsEffort) {
       anthropicOptions.effort = effort;
     }
     return { model, tools, providerOptions: { anthropic: anthropicOptions } };
