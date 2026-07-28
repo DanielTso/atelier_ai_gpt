@@ -11,7 +11,7 @@ vi.mock('@/db', () => ({
 
 // Mock AI SDK. toUIMessageStreamResponse is its own top-level mock so tests
 // can inspect the options (notably `onError`) the route passes to it.
-const mockToUIMessageStreamResponse = vi.fn(() => new Response('streamed', { status: 200 }))
+const mockToUIMessageStreamResponse = vi.fn<(...args: unknown[]) => Response>(() => new Response('streamed', { status: 200 }))
 const mockStreamText = vi.fn().mockReturnValue({
   toUIMessageStreamResponse: (...args: unknown[]) => mockToUIMessageStreamResponse(...args),
 })

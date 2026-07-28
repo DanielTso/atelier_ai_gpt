@@ -1,36 +1,26 @@
 import { NextResponse } from 'next/server';
-import { getGeminiApiKey, getAnthropicApiKey } from '@/lib/settings';
+import { getModelRegistry } from '@/lib/models/registry';
 import { apiError } from '@/lib/errors';
 
 export async function GET() {
   try {
-    const [anthropicApiKey, geminiApiKey] = await Promise.all([
-      getAnthropicApiKey(),
-      getGeminiApiKey(),
-    ]);
+    // The registry is the single source of truth for what's offered — it
+    // already handles key gating (no Anthropic key => no Claude entries;
+    // Gemini entries only when its key is set) and ordering (Claude before
+    // Gemini). This route is a thin wire-shape adapter, nothing more.
+    const registry = await getModelRegistry();
 
-    const models: { name: string; model: string; digest: string }[] = [];
-
-    // Claude — primary chat models. Opus first → becomes the default for new
-    // chats via the client's `data.models[0]` fallback. Fable 5 is the flagship
-    // option (most capable, ~2× Opus token cost); Sonnet 5 supersedes Sonnet 4.6
-    // (4.6 is dropped from the picker but stays allow-listed for existing chats).
-    if (anthropicApiKey) {
-      models.push(
-        { name: 'Claude Opus 4.8', model: 'claude-opus-4-8', digest: 'claude-opus-4-8' },
-        { name: 'Claude Fable 5', model: 'claude-fable-5', digest: 'claude-fable-5' },
-        { name: 'Claude Sonnet 5', model: 'claude-sonnet-5', digest: 'claude-sonnet-5' },
-        { name: 'Claude Haiku 4.5', model: 'claude-haiku-4-5', digest: 'claude-haiku-4-5' },
-      );
-    }
-
-    // Gemini — image generation only (Nano Banana 2). Embeddings + utility tasks
-    // use Gemini internally but are not user-selectable models.
-    if (geminiApiKey) {
-      models.push(
-        { name: 'Nano Banana 2', model: 'gemini-3.1-flash-image', digest: 'gemini-3.1-flash-image' },
-      );
-    }
+    const models = registry.curated.map((m) => ({
+      // name/model/digest kept for back-compat with existing clients; digest
+      // stays the model id (there's no separate content-hash concept here).
+      name: m.name,
+      model: m.id,
+      digest: m.id,
+      provider: m.provider,
+      family: m.family,
+      capabilities: m.capabilities,
+      pricing: m.pricing,
+    }));
 
     return NextResponse.json({ models }, {
       headers: { 'Cache-Control': 'public, max-age=300' },
