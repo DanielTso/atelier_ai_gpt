@@ -55,6 +55,67 @@ const HAIKU_RAW = {
   },
 }
 
+// A dated legacy snapshot in a RECOGNIZED family (curateCatalog prefers the
+// non-dated, newer OPUS_RAW within family 'opus') — proves a live-path model
+// can stay routable via `byId` while being excluded from `curated` (the
+// picker only ever surfaces one entry per family).
+const DATED_OPUS_SNAPSHOT_RAW = {
+  id: 'claude-opus-4-1-20250805',
+  display_name: 'Claude Opus 4.1 (dated snapshot)',
+  created_at: '2025-08-05T00:00:00Z',
+  max_input_tokens: 200000,
+  max_tokens: 32000,
+  capabilities: {
+    effort: { low: { supported: true }, medium: { supported: true }, high: { supported: true } },
+    thinking: { types: { adaptive: { supported: true } } },
+    image_input: { supported: true },
+    structured_outputs: { supported: true },
+  },
+}
+
+// Defensive-input fixtures for mapCapabilities() — missing, null, a scalar,
+// and a null `effort` subtree all must degrade to false/[] rather than throw.
+const NO_CAPS_RAW = {
+  id: 'claude-no-caps',
+  display_name: 'Claude No Caps',
+  created_at: '2026-01-01T00:00:00Z',
+  max_input_tokens: 100000,
+  max_tokens: 8000,
+  // `capabilities` intentionally omitted
+}
+
+const NULL_CAPS_RAW = {
+  id: 'claude-null-caps',
+  display_name: 'Claude Null Caps',
+  created_at: '2026-01-01T00:00:00Z',
+  max_input_tokens: 100000,
+  max_tokens: 8000,
+  capabilities: null,
+}
+
+const SCALAR_CAPS_RAW = {
+  id: 'claude-scalar-caps',
+  display_name: 'Claude Scalar Caps',
+  created_at: '2026-01-01T00:00:00Z',
+  max_input_tokens: 100000,
+  max_tokens: 8000,
+  capabilities: 'not-an-object',
+}
+
+const NULL_EFFORT_RAW = {
+  id: 'claude-null-effort',
+  display_name: 'Claude Null Effort',
+  created_at: '2026-01-01T00:00:00Z',
+  max_input_tokens: 100000,
+  max_tokens: 8000,
+  capabilities: {
+    effort: null,
+    thinking: { types: { adaptive: { supported: true } } },
+    image_input: { supported: true },
+    structured_outputs: { supported: true },
+  },
+}
+
 function mockLivePage(data: unknown[]) {
   return { ok: true, status: 200, json: async () => ({ data, has_more: false }) }
 }
@@ -186,6 +247,15 @@ describe('models/registry', () => {
   })
 
   describe('resolveRequestedModel', () => {
+    it('returns the current default with usedFallback:false when no id is requested (omission is the normal default path, not a correction)', async () => {
+      getAnthropicApiKey.mockResolvedValue('sk-test')
+      const fetchMock = fetch as ReturnType<typeof vi.fn>
+      fetchMock.mockResolvedValue(mockLivePage([OPUS_RAW, HAIKU_RAW]))
+
+      const result = await resolveRequestedModel(undefined)
+      expect(result).toEqual({ modelId: 'claude-opus-4-8', usedFallback: false })
+    })
+
     it('passes through a known id unchanged', async () => {
       getAnthropicApiKey.mockResolvedValue('sk-test')
       const fetchMock = fetch as ReturnType<typeof vi.fn>
@@ -218,6 +288,76 @@ describe('models/registry', () => {
       const result = await resolveRequestedModel('claude-sonnet-4-6')
       expect(result).toEqual({ modelId: 'claude-sonnet-4-6', usedFallback: false })
     })
+
+    it('passes through the Gemini model id unchanged', async () => {
+      getAnthropicApiKey.mockResolvedValue('sk-test')
+      getGeminiApiKey.mockResolvedValue('gk-test')
+      const fetchMock = fetch as ReturnType<typeof vi.fn>
+      fetchMock.mockResolvedValue(mockLivePage([OPUS_RAW]))
+
+      const result = await resolveRequestedModel('gemini-3.1-flash-image')
+      expect(result).toEqual({ modelId: 'gemini-3.1-flash-image', usedFallback: false })
+    })
+  })
+
+  describe('getModelRegistry — DB failure degradation (M2: never throws)', () => {
+    it('resolves (does not throw) when the Anthropic key read rejects, degrading to a no-key registry', async () => {
+      getAnthropicApiKey.mockRejectedValue(new Error('db unavailable'))
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const registry = await getModelRegistry()
+      expect(registry.curated).toEqual([])
+      expect([...registry.byId.values()].some(m => m.provider === 'anthropic')).toBe(false)
+
+      // resolveRequestedModel still returns a usable fallback, never a throw.
+      const result = await resolveRequestedModel('claude-opus-4-8')
+      expect(result).toEqual({ modelId: 'claude-opus-4-8', usedFallback: true })
+      warn.mockRestore()
+    })
+
+    it('resolves (does not throw) when the Gemini key read rejects, degrading to zero Gemini entries', async () => {
+      getAnthropicApiKey.mockResolvedValue('sk-test')
+      getGeminiApiKey.mockRejectedValue(new Error('db unavailable'))
+      const fetchMock = fetch as ReturnType<typeof vi.fn>
+      fetchMock.mockResolvedValue(mockLivePage([OPUS_RAW]))
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const registry = await getModelRegistry()
+      expect(registry.curated.map(m => m.id)).toEqual(['claude-opus-4-8'])
+      warn.mockRestore()
+    })
+  })
+
+  describe('curated vs byId on the live path (byId is the superset)', () => {
+    it('keeps a dated legacy snapshot routable via byId while curateCatalog excludes it from curated (the picker)', async () => {
+      getAnthropicApiKey.mockResolvedValue('sk-test')
+      const fetchMock = fetch as ReturnType<typeof vi.fn>
+      fetchMock.mockResolvedValue(mockLivePage([OPUS_RAW, DATED_OPUS_SNAPSHOT_RAW, HAIKU_RAW]))
+
+      const registry = await getModelRegistry()
+
+      expect(registry.byId.has('claude-opus-4-1-20250805')).toBe(true)
+      expect(registry.curated.some(m => m.id === 'claude-opus-4-1-20250805')).toBe(false)
+      // the undated, newer opus entry is the one that surfaces in the picker
+      expect(registry.curated.some(m => m.id === 'claude-opus-4-8')).toBe(true)
+    })
+  })
+
+  describe('mapCapabilities defensive inputs', () => {
+    it('never throws on missing/null/scalar capabilities or a null effort subtree, and yields supportsEffort:false / effortLevels:[]', async () => {
+      getAnthropicApiKey.mockResolvedValue('sk-test')
+      const fetchMock = fetch as ReturnType<typeof vi.fn>
+      fetchMock.mockResolvedValue(mockLivePage([NO_CAPS_RAW, NULL_CAPS_RAW, SCALAR_CAPS_RAW, NULL_EFFORT_RAW]))
+
+      const registry = await getModelRegistry()
+
+      for (const id of ['claude-no-caps', 'claude-null-caps', 'claude-scalar-caps', 'claude-null-effort']) {
+        const model = registry.byId.get(id)
+        expect(model).toBeDefined()
+        expect(model?.capabilities.supportsEffort).toBe(false)
+        expect(model?.capabilities.effortLevels).toEqual([])
+      }
+    })
   })
 
   describe('resolveTier', () => {
@@ -238,13 +378,52 @@ describe('models/registry', () => {
       expect(await resolveTier('haiku')).toBe('claude-haiku-4-5')
     })
 
-    it('falls back to curated[0] (or the literal default) and warns when the family is absent from the registry', async () => {
+    it('falls back to the literal default id (or the one Anthropic model present) and warns when curated is empty entirely', async () => {
       getAnthropicApiKey.mockResolvedValue(null) // -> curated is empty entirely
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
       expect(await resolveTier('opus')).toBe('claude-opus-4-8')
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('opus'))
       warn.mockRestore()
+    })
+
+    it('falls back to the one model actually IN the registry (not the hardcoded default) when the requested family is absent but curated is non-empty', async () => {
+      // Rebuilds the weak "empty curated" case above, which can't distinguish
+      // the hardcoded fallback from a correct family match. A registry
+      // containing ONLY haiku exercises the real "family absent, curated
+      // non-empty" branch: resolveTier('opus') has no 'opus' family to find,
+      // so it must fall through to the one Anthropic model that IS present
+      // (claude-haiku-4-5), not silently succeed by coincidentally matching
+      // the literal 'claude-opus-4-8' default.
+      getAnthropicApiKey.mockResolvedValue('sk-test')
+      const fetchMock = fetch as ReturnType<typeof vi.fn>
+      fetchMock.mockResolvedValue(mockLivePage([HAIKU_RAW])) // only haiku, no opus
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      expect(await resolveTier('opus')).toBe('claude-haiku-4-5')
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('opus'))
+      warn.mockRestore()
+    })
+  })
+
+  describe('tier/default fallback never returns the image model (M3)', () => {
+    it('resolveTier falls back to the literal Anthropic default, not Gemini, when only a Gemini key is configured', async () => {
+      getAnthropicApiKey.mockResolvedValue(null)
+      getGeminiApiKey.mockResolvedValue('gk-test') // -> curated === [nanoBanana] alone
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const result = await resolveTier('opus')
+      expect(result).toBe('claude-opus-4-8')
+      expect(result).not.toBe('gemini-3.1-flash-image')
+      warn.mockRestore()
+    })
+
+    it('resolveRequestedModel(undefined) falls back to the literal Anthropic default, not Gemini, when only a Gemini key is configured', async () => {
+      getAnthropicApiKey.mockResolvedValue(null)
+      getGeminiApiKey.mockResolvedValue('gk-test') // -> curated === [nanoBanana] alone
+
+      const result = await resolveRequestedModel(undefined)
+      expect(result).toEqual({ modelId: 'claude-opus-4-8', usedFallback: false })
     })
   })
 
@@ -278,7 +457,7 @@ describe('models/registry', () => {
     })
   })
 
-  describe('repricing (seed / legacy / Gemini all go through resolvePricing, never a hardcoded field)', () => {
+  describe('repricing (Anthropic seed/legacy go through resolvePricing; non-Anthropic is carved out)', () => {
     it('prices seeded Sonnet 5 at the EXACT_PRICING rate, not the (stale) seed rate', async () => {
       getAnthropicApiKey.mockResolvedValue('sk-test')
       const fetchMock = fetch as ReturnType<typeof vi.fn>
@@ -305,17 +484,22 @@ describe('models/registry', () => {
       expect(legacySonnet?.pricing).toEqual({ inputPerMTok: 3, outputPerMTok: 15, estimated: true })
     })
 
-    it('re-prices the Gemini seed entry through resolvePricing rather than trusting its hardcoded 0/0 field', async () => {
+    it('leaves the Gemini seed entry\'s 0/0 "not token-priced" sentinel untouched (token-priced carve-out)', async () => {
       getAnthropicApiKey.mockResolvedValue(null)
       getGeminiApiKey.mockResolvedValue('gk-test')
-      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
       const registry = await getModelRegistry()
       const nanoBanana = registry.byId.get('gemini-3.1-flash-image')
-      // 'nano-banana' isn't a recognized pricing family, so resolvePricing
-      // falls through to the conservative Opus-tier estimate rather than the
-      // seed's own 0/0 sentinel — proof the field was actually re-resolved.
-      expect(nanoBanana?.pricing).toEqual({ inputPerMTok: 5, outputPerMTok: 25, estimated: true })
+      // Nano Banana is priced per-image, not per-token (design non-goal) —
+      // repriceModel() must skip non-Anthropic models entirely rather than
+      // running them through resolvePricing(), which would (a) replace the
+      // seed's deliberate 0/0 sentinel with a fabricated Opus-tier estimate,
+      // rendered as "$5 / $25 est." in a picker for an image model, and
+      // (b) fire the unknown-family warn on every registry build.
+      expect(nanoBanana?.pricing).toEqual({ inputPerMTok: 0, outputPerMTok: 0, estimated: true })
+      expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('unknown family'))
+      warn.mockRestore()
     })
   })
 })

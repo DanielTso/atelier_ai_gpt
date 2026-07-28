@@ -311,32 +311,40 @@ export async function getSettings(keys: string[]) {
 export async function setSetting(key: string, value: string) {
   const { clearSettingsCache } = await import('@/lib/settings')
   clearSettingsCache()
-  // An API-key (or pricing-override) change alters what the model registry
-  // can see — invalidate it too so the next request re-fetches/re-prices.
-  const { clearModelRegistryCache } = await import('@/lib/models/registry')
-  clearModelRegistryCache()
-  return await db.insert(settings)
+  const result = await db.insert(settings)
     .values({ key, value, updatedAt: new Date() })
     .onConflictDoUpdate({ target: settings.key, set: { value, updatedAt: new Date() } })
     .returning()
+  // An API-key (or pricing-override) change alters what the model registry
+  // can see — invalidate it too so the next request re-fetches/re-prices.
+  // Cleared AFTER the write commits (not before, alongside clearSettingsCache
+  // above): clearing first leaves a window where a read landing between the
+  // clear and the commit re-populates the cache with pre-write state, which
+  // then stands for the full 5-minute live TTL.
+  const { clearModelRegistryCache } = await import('@/lib/models/registry')
+  clearModelRegistryCache()
+  return result
 }
 
 export async function setSettings(entries: { key: string; value: string }[]) {
   const { clearSettingsCache } = await import('@/lib/settings')
   clearSettingsCache()
-  const { clearModelRegistryCache } = await import('@/lib/models/registry')
-  clearModelRegistryCache()
-  return await db.transaction(async (tx) => {
-    const results = []
+  const results = await db.transaction(async (tx) => {
+    const rows = []
     for (const entry of entries) {
       const result = await tx.insert(settings)
         .values({ key: entry.key, value: entry.value, updatedAt: new Date() })
         .onConflictDoUpdate({ target: settings.key, set: { value: entry.value, updatedAt: new Date() } })
         .returning()
-      results.push(result)
+      rows.push(result)
     }
-    return results
+    return rows
   })
+  // See setSetting() above — clear the registry cache AFTER the write
+  // commits so a read racing the clear can't re-cache pre-write state.
+  const { clearModelRegistryCache } = await import('@/lib/models/registry')
+  clearModelRegistryCache()
+  return results
 }
 
 // ── Embedding Actions ──

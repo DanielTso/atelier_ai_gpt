@@ -73,7 +73,7 @@ Resolution order, highest first: **DB override → exact-id table → family tie
 resolveRequestedModel(requested?: string): Promise<{ modelId: string; usedFallback: boolean }>
 ```
 
-Unknown / retired / tampered → falls back to the current default **with a server log, never a 400**. This is the route-level fix for defect #1; `updateProjectDefaults` additionally refuses to persist an unrecognized id (root-cause fix), and `page.tsx` gains the membership check `fetchModels` already applies to the settings default (defense in depth).
+Unknown / retired / tampered → falls back to the current default **with a server log, never a 400**. This is the route-level fix for defect #1; `updateProjectDefaults` additionally refuses to persist an unrecognized id (root-cause fix), and `page.tsx` gains the membership check `fetchModels` already applies to the settings default (defense in depth). `resolveRequestedModel(undefined)` — no model requested at all — returns `usedFallback: false`: omitting a model is the normal default path, not a correction, so it must not be conflated with the tampered/unknown-id case above.
 
 ### C4 — Capability-derived behavior
 

@@ -43,6 +43,12 @@ export function clearModelRegistryCache(): void {
  * `false`/`[]` instead of throwing — an API response should never be able to
  * break the registry build. `supportsEffort` is derived (not a raw field):
  * true iff at least one effort level reports `supported`.
+ *
+ * `EFFORT_LEVELS` is filtered against, so any level the API reports that our
+ * `Effort` union doesn't know about is silently dropped rather than passed
+ * through — safe today (we never send a param we don't recognize), but a
+ * future new effort level needs a one-line addition to the `Effort` union
+ * (types.ts) and `EFFORT_LEVELS` here or it will never surface.
  */
 function mapCapabilities(rawCapabilities: unknown): ModelCapabilities {
   const caps = rawCapabilities as {
@@ -83,22 +89,25 @@ function normalizeAnthropicModel(raw: RawAnthropicModel, overrides: PricingOverr
  * GEMINI_MODELS) through resolvePricing(). Carry-over fact from the Task 1
  * review: seed.ts hardcodes a `pricing` field per model that DUPLICATES
  * pricing.ts and has already drifted (Sonnet 5's seed entry says 3/15 while
- * EXACT_PRICING now has the introductory 2/10 rate). Every model this
- * registry serves — live, seed, legacy pin, and Gemini alike — is re-priced
+ * EXACT_PRICING now has the introductory 2/10 rate). Every ANTHROPIC model
+ * this registry serves — live, seed, and legacy pin alike — is re-priced
  * HERE so pricing.ts stays the single source of truth; a model's own
  * hardcoded `pricing` field is never trusted downstream of this function.
  *
- * Note for Gemini specifically: GEMINI_MODELS' family is `'nano-banana'`,
- * which resolvePricing() doesn't recognize (Nano Banana is priced per-image,
- * not per-token — an explicit design non-goal for this feature). Re-pricing
- * it therefore resolves to the conservative Opus-tier estimate (with a
- * console.warn naming the unknown family) rather than the seed's deliberate
- * `0/0` sentinel. That's an accepted, visible consequence of "pricing.ts is
- * the only source of truth" — per-token cost display is not yet wired to any
- * UI for the image model, and a future pass can special-case per-image cost
- * without touching this repricing rule.
+ * Token-priced carve-out (see the guard below): non-Anthropic models skip
+ * repricing entirely and keep their own hardcoded `pricing` field.
  */
 function repriceModel(model: CatalogModel, overrides: PricingOverrides): CatalogModel {
+  // Gemini (e.g. Nano Banana 2, family 'nano-banana') is priced per-image,
+  // not per-token — an explicit design non-goal for this feature (seed.ts).
+  // resolvePricing() only recognizes Anthropic tiers, so running a
+  // non-Anthropic model through it would replace the seed's deliberate `0/0`
+  // "not token-priced" sentinel with a fabricated Opus-tier estimate AND fire
+  // pricing.ts's unknown-family warn on every registry build (~every 5 min
+  // per warm instance) — noise that's supposed to mean "a real new Anthropic
+  // family shipped and needs pricing," not "Gemini exists." Leave
+  // non-Anthropic models untouched.
+  if (model.provider !== 'anthropic') return model
   return { ...model, pricing: resolvePricing(model.id, model.family, overrides) }
 }
 
@@ -134,9 +143,22 @@ function buildLegacyPin(id: string, overrides: PricingOverrides): CatalogModel {
 }
 
 async function buildRegistry(): Promise<ModelRegistry> {
+  // getAnthropicApiKey()/getGeminiApiKey() are getServerSetting() -> db.select()
+  // and can reject (DB outage, pool exhaustion) — unlike loadPricingOverrides(),
+  // which already catches internally. A rejection here must not propagate past
+  // buildRegistry(): the "never throws" contract on resolveRequestedModel() /
+  // getModelCapabilities() depends on it. Degrade to "no key" so the registry
+  // still builds (seed/empty), cached under the shorter SEED_TTL_MS so a
+  // transient DB blip self-heals in 60s instead of throwing on every request.
   const [anthropicApiKey, geminiApiKey, overrides] = await Promise.all([
-    getAnthropicApiKey(),
-    getGeminiApiKey(),
+    getAnthropicApiKey().catch((error) => {
+      console.warn('[models] getAnthropicApiKey failed, degrading to no-key state', error)
+      return null
+    }),
+    getGeminiApiKey().catch((error) => {
+      console.warn('[models] getGeminiApiKey failed, degrading to no-key state', error)
+      return null
+    }),
     loadPricingOverrides(),
   ])
 
@@ -206,10 +228,16 @@ export async function getModelRegistry(): Promise<ModelRegistry> {
  *   through unchanged.
  * - Unknown / retired / tampered id: falls back to the default with a
  *   console.warn and `usedFallback: true`.
+ *
+ * The default is the first ANTHROPIC entry in `curated`, not literally
+ * `curated[0]` — with a Gemini key but no Anthropic key, `curated` is
+ * `[nanoBanana]` alone, and `curated[0]` would silently route a text
+ * request to an image model (responseModalities TEXT+IMAGE). Falls back to
+ * the literal id only when curated has no Anthropic entry at all.
  */
 export async function resolveRequestedModel(requested?: string): Promise<{ modelId: string; usedFallback: boolean }> {
   const registry = await getModelRegistry()
-  const fallback = registry.curated[0]?.id ?? 'claude-opus-4-8'
+  const fallback = registry.curated.find(m => m.provider === 'anthropic')?.id ?? 'claude-opus-4-8'
 
   if (!requested) {
     return { modelId: fallback, usedFallback: false }
@@ -227,9 +255,12 @@ export async function resolveRequestedModel(requested?: string): Promise<{ model
  * the newest 'fable'-family model; every other tier maps to its same-named
  * family. curateCatalog() has already reduced `curated` to the single newest
  * (non-dated-snapshot-preferred) entry per family, so a `.find` here IS the
- * "newest of that family" lookup. A family absent from the registry entirely
- * (e.g. no Anthropic key, so `curated` is empty) falls back to `curated[0]`
- * (or the literal default id) with a warn — never throws.
+ * "newest of that family" lookup. A family absent from the registry (e.g.
+ * no Anthropic key, so `curated` holds only Gemini, or a live catalog that
+ * happens to lack that family) falls back to the first ANTHROPIC entry in
+ * `curated` (never `curated[0]` literally — that could be the Gemini image
+ * model with a Gemini-only key) or the literal default id — with a warn,
+ * never a throw.
  */
 export async function resolveTier(tier: ModelTier): Promise<string> {
   const registry = await getModelRegistry()
@@ -237,7 +268,7 @@ export async function resolveTier(tier: ModelTier): Promise<string> {
   const match = registry.curated.find(m => m.family === family)
   if (match) return match.id
 
-  const fallback = registry.curated[0]?.id ?? 'claude-opus-4-8'
+  const fallback = registry.curated.find(m => m.provider === 'anthropic')?.id ?? 'claude-opus-4-8'
   console.warn(`[models] tier "${tier}" (family "${family}") has no match in the curated registry, falling back to "${fallback}"`)
   return fallback
 }
