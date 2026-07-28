@@ -31,12 +31,27 @@ const MAX_PAGES = 10
  * rerank.ts) wraps provider-SDK calls that already carry their own timeouts;
  * a raw fetch to a third-party REST endpoint needs its own guard so a slow/
  * hanging Anthropic API can never block a request indefinitely.
+ *
+ * The timer must stay alive until the response BODY is read, not just the
+ * headers — `fetch()` resolves as soon as headers arrive, so clearing the
+ * timer right after `await fetch()` (and before `res.json()`) leaves a
+ * stalled body with no timeout guard at all. `handleResponse` (status check +
+ * conditional `res.json()`) runs inside the same timed/aborted scope, so a
+ * hung body read is still caught. A raised `AbortError` is translated into a
+ * message naming the actual timeout, rather than surfacing the bare
+ * `AbortError` to callers.
  */
-async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = FETCH_TIMEOUT_MS): Promise<Response> {
+async function fetchWithTimeout<T>(url: string, init: RequestInit, handleResponse: (res: Response) => Promise<T>, timeoutMs = FETCH_TIMEOUT_MS): Promise<T> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
-    return await fetch(url, { ...init, signal: controller.signal })
+    const res = await fetch(url, { ...init, signal: controller.signal })
+    return await handleResponse(res)
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`Anthropic models fetch timed out after ${timeoutMs}ms`)
+    }
+    throw error
   } finally {
     clearTimeout(timer)
   }
@@ -58,18 +73,24 @@ export async function fetchAllAnthropicModels(apiKey: string): Promise<RawAnthro
     url.searchParams.set('limit', String(PAGE_LIMIT))
     if (afterId) url.searchParams.set('after_id', afterId)
 
-    const res = await fetchWithTimeout(url.toString(), {
+    const body = await fetchWithTimeout(url.toString(), {
       headers: { 'x-api-key': apiKey, 'anthropic-version': ANTHROPIC_VERSION },
+    }, async (res) => {
+      if (!res.ok) {
+        throw new Error(`Anthropic models API returned ${res.status}`)
+      }
+      return (await res.json()) as AnthropicModelsPage
     })
-
-    if (!res.ok) {
-      throw new Error(`Anthropic models API returned ${res.status}`)
-    }
-
-    const body = (await res.json()) as AnthropicModelsPage
     all.push(...(body.data ?? []))
 
-    if (!body.has_more || !body.last_id) return all
+    if (!body.has_more) return all
+    if (!body.last_id) {
+      // has_more is true but the API gave us no cursor to continue from —
+      // the list we return is silently truncated. Warn so this degradation
+      // is legible instead of a mysteriously short catalog.
+      console.warn('[models/fetch] Anthropic models API reported has_more=true with no last_id; returning truncated list')
+      return all
+    }
     afterId = body.last_id
   }
 

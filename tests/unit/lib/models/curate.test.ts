@@ -85,4 +85,38 @@ describe('curateCatalog', () => {
     const curated = curateCatalog(models)
     expect(curated.map(m => m.family)).toEqual(['opus', 'fable', 'sonnet', 'haiku'])
   })
+
+  it('returns [] for empty input', () => {
+    expect(curateCatalog([])).toEqual([])
+  })
+
+  it('keeps input order when two same-family candidates have an identical createdAt (stable-sort tie-break)', () => {
+    const models = [
+      model({ id: 'claude-opus-4-8', family: 'opus', createdAt: '2026-05-01T00:00:00Z' }),
+      model({ id: 'claude-opus-4-8-alt', family: 'opus', createdAt: '2026-05-01T00:00:00Z' }),
+    ]
+    const curated = curateCatalog(models)
+    expect(curated).toHaveLength(1)
+    expect(curated[0].id).toBe('claude-opus-4-8')
+  })
+
+  it('sorts a null createdAt last within its own family pool', () => {
+    const models = [
+      model({ id: 'claude-opus-4-8', family: 'opus', createdAt: null }),
+      model({ id: 'claude-opus-4-8-newer', family: 'opus', createdAt: '2026-05-01T00:00:00Z' }),
+    ]
+    const curated = curateCatalog(models)
+    expect(curated).toHaveLength(1)
+    expect(curated[0].id).toBe('claude-opus-4-8-newer')
+  })
+
+  it('orders two unrecognized families newest-first relative to each other, both sorted after known families', () => {
+    const models = [
+      model({ id: 'claude-nova-3', family: 'nova', createdAt: '2026-01-01T00:00:00Z' }),
+      model({ id: 'claude-comet-1', family: 'comet', createdAt: '2026-06-01T00:00:00Z' }),
+      model({ id: 'claude-opus-4-8', family: 'opus', createdAt: '2026-01-01T00:00:00Z' }),
+    ]
+    const curated = curateCatalog(models)
+    expect(curated.map(m => m.id)).toEqual(['claude-opus-4-8', 'claude-comet-1', 'claude-nova-3'])
+  })
 })
