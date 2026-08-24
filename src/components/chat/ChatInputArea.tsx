@@ -21,6 +21,31 @@ interface EmbedStatus {
   embeddingCount: number
 }
 
+// Effort ladder order — used only to clamp a persisted effort value down to a
+// level the currently selected model actually supports (see clampEffort).
+const EFFORT_ORDER: Effort[] = ['low', 'medium', 'high', 'xhigh', 'max']
+
+/**
+ * A chat can carry an effort value picked under a DIFFERENT model (e.g. `xhigh`
+ * chosen while on Fable 5, then the user switches to a model whose capabilities
+ * don't include it) — EffortPill must never DISPLAY a selected value that can't
+ * actually be sent. This only clamps the display: the server independently
+ * strips an unsupported effort before it reaches the provider (providers.ts),
+ * so this is cosmetic, not a correctness fix.
+ * - No value chosen yet: leave it alone (nothing to clamp).
+ * - Value still supported: pass through unchanged.
+ * - Otherwise: the highest supported level at or below the requested one, or
+ *   the model's own top level if nothing qualifies (requested value is below
+ *   everything the model supports).
+ */
+function clampEffort(value: Effort | undefined, levels: Effort[]): Effort | undefined {
+  if (!value || levels.length === 0 || levels.includes(value)) return value
+  const valueRank = EFFORT_ORDER.indexOf(value)
+  const atOrBelow = levels.filter(l => EFFORT_ORDER.indexOf(l) <= valueRank)
+  const pool = atOrBelow.length > 0 ? atOrBelow : levels
+  return pool.reduce((best, l) => (EFFORT_ORDER.indexOf(l) > EFFORT_ORDER.indexOf(best) ? l : best))
+}
+
 interface ChatInputAreaProps {
   input: string
   onInputChange: (value: string) => void
@@ -288,6 +313,12 @@ export const ChatInputArea = memo(function ChatInputArea({
   const hasFiles = attachedFiles.length > 0
   const hasImages = attachedImages.length > 0
 
+  // Look up the selected model's capabilities in the already-fetched `models`
+  // list (no per-request network call) to gate the effort pill. A model not
+  // (yet) found in the list — models still loading, or a stale selection —
+  // renders no pill rather than guessing.
+  const selectedModelCaps = models?.find(m => m.model === selectedModel)?.capabilities
+
   return (
     <div
       className="p-4 border-t border-border/40 relative"
@@ -326,8 +357,13 @@ export const ChatInputArea = memo(function ChatInputArea({
             disabled={false}
             side="top"
           />
-          {onEffortChange && selectedModel?.startsWith('claude') && !selectedModel.startsWith('claude-haiku') && (
-            <EffortPill value={selectedEffort} onChange={onEffortChange} side="top" />
+          {onEffortChange && selectedModelCaps?.supportsEffort && (
+            <EffortPill
+              value={clampEffort(selectedEffort, selectedModelCaps.effortLevels)}
+              levels={selectedModelCaps.effortLevels}
+              onChange={onEffortChange}
+              side="top"
+            />
           )}
           {(showGroundedPill || grounded) && onGroundedToggle && (
             <button

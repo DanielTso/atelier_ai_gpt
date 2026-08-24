@@ -6,17 +6,19 @@ import { ChevronDown, Check, Gauge } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { effortLabel, type Effort } from '@/hooks/usePersonas'
 
-const LEVELS: Effort[] = ['low', 'medium', 'high', 'max']
-
 interface EffortPillProps {
   value?: Effort
+  /** The effort levels the currently selected model actually supports (from its
+   *  registry capabilities) — required so a model that can't do e.g. `xhigh`
+   *  never has it offered here. */
+  levels: Effort[]
   onChange: (effort: Effort) => void
   side?: 'top' | 'bottom'
 }
 
 /** Reasoning-effort selector for Claude models. Defaults to the active persona's
  *  effort; overriding it here sets the effort without changing the persona. */
-export const EffortPill = memo(function EffortPill({ value, onChange, side = 'top' }: EffortPillProps) {
+export const EffortPill = memo(function EffortPill({ value, levels, onChange, side = 'top' }: EffortPillProps) {
   const [open, setOpen] = useState(false)
   return (
     <DropdownMenu.Root open={open} onOpenChange={setOpen}>
@@ -40,7 +42,7 @@ export const EffortPill = memo(function EffortPill({ value, onChange, side = 'to
           <DropdownMenu.Label className="px-2 py-1.5 text-xs text-muted-foreground font-medium">
             Reasoning effort
           </DropdownMenu.Label>
-          {LEVELS.map((level) => (
+          {levels.map((level) => (
             <DropdownMenu.Item
               key={level}
               className={cn(

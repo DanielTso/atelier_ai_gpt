@@ -3,7 +3,7 @@
 import * as Select from "@radix-ui/react-select"
 import { ChevronDown, Check, Sparkles, Image as ImageIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
-import type { Model } from "@/types"
+import type { Model, ModelPricing } from "@/types"
 
 interface ModelSelectProps {
   models: Model[]
@@ -11,10 +11,42 @@ interface ModelSelectProps {
   onChange: (value: string) => void
 }
 
+/** `5` -> "5", `2.5` -> "2.50" — every current rate is a whole number, but this
+ *  keeps a future fractional rate readable instead of a long float. */
+function formatRate(n: number): string {
+  return Number.isInteger(n) ? String(n) : n.toFixed(2)
+}
+
+/**
+ * Render a model's per-MTok price for the picker row. The `{0, 0, estimated:
+ * true}` pricing shape is a deliberate sentinel for "not token-priced" (Nano
+ * Banana 2 is priced per image, not per token) — it must never print as
+ * "$0.00" / "~$0 est.", which would read as free. Every other `estimated`
+ * price gets a leading `~` on the numbers plus a separate "est." chip
+ * (matching the vision/hybrid chip idiom in DocumentCard.tsx).
+ */
+function ModelPrice({ pricing }: { pricing: ModelPricing }) {
+  if (pricing.inputPerMTok === 0 && pricing.outputPerMTok === 0) {
+    return <span className="text-[10px] text-muted-foreground shrink-0">per image</span>
+  }
+  return (
+    <span className="flex items-center gap-1 shrink-0">
+      <span className="text-[10px] text-muted-foreground">
+        {pricing.estimated ? '~' : ''}${formatRate(pricing.inputPerMTok)} / ${formatRate(pricing.outputPerMTok)}
+      </span>
+      {pricing.estimated && (
+        <span className="text-[10px] px-1 py-0.5 bg-primary/15 text-primary rounded">est.</span>
+      )}
+    </span>
+  )
+}
+
 export function ModelSelect({ models, value, onChange }: ModelSelectProps) {
   const selectedModel = models.find(m => m.model === value)
-  const claudeModels = models.filter(m => m.model.startsWith('claude'))
-  const imageModels = models.filter(m => m.model.includes('image'))
+  // Group by the registry-provided `provider` field, not a name substring —
+  // robust to a new Claude family name (Fable, a future family, etc.).
+  const claudeModels = models.filter(m => m.provider === 'anthropic')
+  const imageModels = models.filter(m => m.provider === 'google')
 
   return (
     <div className="flex items-center gap-1.5">
@@ -59,9 +91,7 @@ export function ModelSelect({ models, value, onChange }: ModelSelectProps) {
                     Claude
                   </Select.Label>
                   {claudeModels.map(m => (
-                    <ModelItem key={m.model} value={m.model}>
-                      {m.name}
-                    </ModelItem>
+                    <ModelItem key={m.model} model={m} />
                   ))}
                 </Select.Group>
               )}
@@ -73,9 +103,7 @@ export function ModelSelect({ models, value, onChange }: ModelSelectProps) {
                     Image
                   </Select.Label>
                   {imageModels.map(m => (
-                    <ModelItem key={m.model} value={m.model}>
-                      {m.name}
-                    </ModelItem>
+                    <ModelItem key={m.model} model={m} />
                   ))}
                 </Select.Group>
               )}
@@ -87,18 +115,12 @@ export function ModelSelect({ models, value, onChange }: ModelSelectProps) {
   )
 }
 
-function ModelItem({
-  children,
-  value,
-}: {
-  children: React.ReactNode
-  value: string
-}) {
+function ModelItem({ model }: { model: Model }) {
   return (
     <Select.Item
-      value={value}
+      value={model.model}
       className={cn(
-        "relative flex items-center justify-between px-3 py-2 pl-8 rounded-lg text-sm cursor-pointer",
+        "relative flex items-center justify-between gap-2 px-3 py-2 pl-8 rounded-lg text-sm cursor-pointer",
         "text-foreground outline-none",
         "hover:bg-accent focus:bg-accent",
         "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
@@ -109,7 +131,8 @@ function ModelItem({
       <Select.ItemIndicator className="absolute left-2 flex items-center justify-center">
         <Check className="h-4 w-4 text-primary" />
       </Select.ItemIndicator>
-      <Select.ItemText>{children}</Select.ItemText>
+      <Select.ItemText className="truncate">{model.name}</Select.ItemText>
+      <ModelPrice pricing={model.pricing} />
     </Select.Item>
   )
 }
