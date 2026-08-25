@@ -494,12 +494,6 @@ export async function getMonthlyUsageByModel(monthsBack = 3): Promise<MonthlyUsa
   // would disagree and a several-hour sliver could render as a whole extra
   // month row. Supabase's default session timezone is UTC (so this is inert
   // in production today), but the query shouldn't depend on that holding.
-  // AT TIME ZONE 'UTC' before to_char: to_char(timestamptz, ...) otherwise
-  // converts through the POSTGRES SESSION's TimeZone setting first, while
-  // `since` above is computed in UTC — under a non-UTC session those two
-  // would disagree and a several-hour sliver could render as a whole extra
-  // month row. Supabase's default session timezone is UTC (so this is inert
-  // in production today), but the query shouldn't depend on that holding.
   const monthExpr = sql<string>`to_char(${usageEvents.createdAt} AT TIME ZONE 'UTC', 'YYYY-MM')`
   return await db
     .select({

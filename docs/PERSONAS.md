@@ -4,6 +4,8 @@ A **persona** is a saved combination of three things: a **system prompt** (how t
 
 Personas live in the composer's persona picker (the chip next to the model selector). The roster below ships built-in; you can add your own (see [Custom personas](#custom-personas)).
 
+**Models auto-update.** 13 of the 14 built-in personas below don't pin an exact model — they pin a **tier** (flagship / opus / sonnet / haiku) that always resolves to Anthropic's newest release in that family. The model names in the tables are today's resolution of those tiers; when Anthropic ships a new Sonnet, every sonnet-tier persona picks it up automatically, with no update needed here or in the app. The one exception is **Contract Abstract**, which stays pinned to an exact model on purpose — see its row below.
+
 ## The roster
 
 ### Everyday
@@ -31,7 +33,7 @@ Personas live in the composer's persona picker (the chip next to the model selec
 | 📐 **Plan & Spec Reader** | Sonnet 5 / medium | Structured extraction from drawings and specs — "what does note 7 on SW-101 say", sheet lookups, spec-section pulls. Cheap enough for follow-up volleys. |
 | ⚖️ **Claims & Delay Analyst** | **Fable 5 / max** | Delay and time-impact analysis, causation chains, entitlement arguments. The heavyweight — use when the answer may end up in a claim. |
 | 📜 **Contract & Spec Analyst** | **Fable 5 / max** | Interpreting contract obligations, finding conflicts between documents, deadline/notice provisions. |
-| 🗂️ **Contract Abstract** | **Fable 5 / max** | One job only: produce a locked 22-field contract abstract as an XLSX (`Field \| Value \| Source Ref`). Extraction-only — every field is cited from your documents or marked `Not found in provided documents`. See [the Contract Abstract workflow](#the-contract-abstract-workflow). |
+| 🗂️ **Contract Abstract** | **Fable 5 / max** *(pinned — does not auto-update)* | One job only: produce a locked 22-field contract abstract as an XLSX (`Field \| Value \| Source Ref`). Extraction-only — every field is cited from your documents or marked `Not found in provided documents`. See [the Contract Abstract workflow](#the-contract-abstract-workflow). |
 | 🧩 **Constructability Reviewer** | Fable 5 / high | Pre-construction review: clashes, sequencing problems, VE opportunities before the field finds them. |
 | 🧠 **Deep Reasoner** | Fable 5 / high | The flagship generalist for hard, high-stakes problems that aren't construction-specific. |
 
@@ -58,7 +60,7 @@ Model tiers differ roughly 10× in cost per step: **Fable 5** (~2× Opus, deepes
 3. Ask for the abstract. The persona extracts the locked 22-field schema — parties, dates, sums, retainage, notice periods, LDs, and so on — each with a source reference, and produces a downloadable XLSX plus a chat risk summary.
 4. Fields the documents genuinely don't contain come back as `Not found in provided documents` — that's by design; it never guesses.
 
-The field list is fixed in code (`CONTRACT_ABSTRACT_FIELDS` in `src/hooks/usePersonas.ts`) so every abstract is comparable. To change the schema, edit it there — only there.
+The field list is fixed in code (`CONTRACT_ABSTRACT_FIELDS` in `src/hooks/usePersonas.ts`) so every abstract is comparable. To change the schema, edit it there — only there. The persona's model is likewise fixed to an exact id (`claude-fable-5`, not the `flagship` tier the other Fable-tier personas use) for the same reason — a tier that silently follows Anthropic's newest release could shift output quality or formatting mid-project, which a locked comparison schema can't tolerate.
 
 ## Custom personas
 
@@ -72,4 +74,6 @@ Any persona can use project documents: retrieval feeds relevant chunks automatic
 
 ## Under the hood (for maintainers)
 
-Roster + prompts: `src/hooks/usePersonas.ts`. Effort flows persona → composer pill → chat request → `createProvider(model, effort)` (`src/lib/providers.ts`, adaptive thinking; effort omitted for Haiku). Per-project defaults: `ProjectDefaultsDialog` → `getProjectDefaults`. Usage stats per persona/project: `personaUsage` table. Precedence guard (user pick wins over late-loading defaults): `composePersonaPickedRef` in `page.tsx`.
+Roster + prompts: `src/hooks/usePersonas.ts`. Effort flows persona → composer pill → chat request → `createProvider(model, effort)` (`src/lib/providers.ts`, adaptive thinking; effort only attached when the resolved model's registry capabilities support that level — see `CLAUDE.md`'s Model Registry & Cost Visibility section — and always omitted for Haiku). Per-project defaults: `ProjectDefaultsDialog` → `getProjectDefaults`. Usage stats per persona/project: `personaUsage` table. Precedence guard (user pick wins over late-loading defaults): `composePersonaPickedRef` in `page.tsx`.
+
+**Model tiers** (Dynamic Model Registry, spec `docs/specs/2026-07-21-dynamic-model-registry-design.md`): `Persona.model` is either a `ModelTier` (`'flagship' | 'opus' | 'sonnet' | 'haiku'`, `src/lib/models/types.ts`) or an exact model id (Contract Abstract, or a custom persona created before tiering existed). `resolvePersonaModel(persona, models)` / `resolvePersonaModelLabel(persona, models)` in `usePersonas.ts` resolve a tier against the live `models` list fetched from `GET /api/models` — `'flagship'` maps to the newest `fable`-family model (`tierFamily()`), every other tier to its same-named family — always the newest entry Anthropic currently serves for that family, which curation prefers as a non-dated (bare-alias) id but is **not guaranteed to be one**: the live catalog can ship a family with only a dated snapshot id and no bare alias at all (true today for Haiku 4.5, Sonnet 4.5, Opus 4.5, and Opus 4.1), in which case the tier resolves to that dated id. If a tier's family is briefly absent from a real catalog entirely, resolution falls back to the first Anthropic model in the list — but it always logs a console warning when it does, so a family silently disappearing (and possibly resolving to a far more expensive fallback) is visible rather than silent. This resolution is deliberately **client-side**: the equivalent server-only `resolveTier()` (`src/lib/models/registry.ts`) reads API keys via `@/lib/settings` and can't be imported into `usePersonas.ts`, a `'use client'` hook.
