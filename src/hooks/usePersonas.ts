@@ -6,15 +6,26 @@ import { useLocalStorage } from './useLocalStorage'
 // Single source of truth is `@/types`; re-exported so the many existing
 // `import { type Effort } from '@/hooks/usePersonas'` call sites keep working.
 export type { Effort } from '@/types'
-import type { Effort } from '@/types'
+import type { Effort, Model } from '@/types'
+// `ModelTier`/`isModelTier`/`tierFamily` are pure (no runtime I/O) — safe to
+// import into this 'use client' hook. `resolveTier()` from
+// src/lib/models/registry.ts is SERVER-ONLY (reads API keys via
+// @/lib/settings) and must never be imported here; this hook resolves tiers
+// client-side against the live `models` list instead (see resolvePersonaModel
+// below), sharing the tier->family mapping with resolveTier() via tierFamily()
+// so the semantics can't drift between the two copies.
+import { isModelTier, tierFamily, type ModelTier } from '@/lib/models/types'
 
 export interface Persona {
   id: string
   name: string
   icon: string
   prompt: string
-  /** Every persona sets a model. */
-  model: string
+  /** Every persona sets a model — either a tier that follows Anthropic's
+   *  newest release in that family (see resolvePersonaModel), or an exact
+   *  model id for a persona that must stay pinned (Contract Abstract) or a
+   *  custom persona created before/without tiering. */
+  model: ModelTier | string
   /** Reasoning effort for Claude models. Omitted for Haiku (effort is unsupported there). */
   effort?: Effort
   /** Grounded answers: default the composer's grounded pill ON for this persona
@@ -22,6 +33,83 @@ export interface Persona {
   grounded?: boolean
   isDefault?: boolean
   description?: string
+}
+
+/**
+ * Find the Model row a tier resolves to in the given `models` list — the
+ * shared core behind both resolvePersonaModel() (the id) and
+ * resolvePersonaModelLabel() (the display name), so a family-absent fallback
+ * is computed (and warned about) in exactly one place. Mirrors the family
+ * mapping in the server-only `resolveTier()` (src/lib/models/registry.ts) via
+ * the shared `tierFamily()` helper — 'flagship' maps to the newest
+ * 'fable'-family model; every other tier maps to its same-named family.
+ *
+ * Falls back to the first Anthropic model in `models` when the family is
+ * absent (e.g. a live catalog that happens to lack it) and — like
+ * resolveTier() — logs a console.warn when that happens WHILE `models` is
+ * actually populated: a family silently disappearing from a real catalog
+ * must resolve to *some* usable model, but a silent fallback is how a cheap
+ * tier (e.g. Brief -> haiku) quietly turns into an expensive one (e.g. Opus,
+ * since `FAMILY_DISPLAY_ORDER` puts it first) with no visible signal.
+ *
+ * Deliberately does NOT warn when `models` is empty outright — that's the
+ * ordinary, self-healing "GET /api/models hasn't returned yet" window on
+ * first paint (and every SSR/static-generation pass, which never runs the
+ * fetch at all), not a catalog anomaly; resolveTier() has no equivalent
+ * "empty" state to compare against, since it's only ever called against an
+ * already-built registry. Warning there would spam the console on every
+ * ordinary page load and every `next build`, for a state that's expected and
+ * temporary rather than wrong.
+ *
+ * Returns undefined only when `models` has no Anthropic entry at all
+ * (nothing loaded yet, or a Gemini-only catalog).
+ */
+function resolveTierRow(tier: ModelTier, models: Model[]): Model | undefined {
+  const family = tierFamily(tier)
+  const match = models.find(m => m.family === family)
+  if (match) return match
+  const fallback = models.find(m => m.provider === 'anthropic')
+  if (models.length > 0) {
+    console.warn(`[personas] tier "${tier}" (family "${family}") has no match in the models list, falling back to "${fallback?.model ?? tier}"`)
+  }
+  return fallback
+}
+
+/**
+ * Resolve a persona's `model` field to a concrete model id, against the live
+ * `models` list from GET /api/models (fetched once in page.tsx and threaded
+ * down to every persona-consuming component). An exact-id persona.model
+ * (Contract Abstract, or a custom persona carrying an id from before
+ * tiering) passes through unchanged — see resolveTierRow() for the tier
+ * matching/fallback/warn logic this wraps. Only when `models` hasn't loaded
+ * at all (or has no Anthropic entry) does this return the raw tier —
+ * modelShortLabel() still renders that as a friendly label, never the
+ * internal keyword.
+ */
+export function resolvePersonaModel(persona: Persona, models: Model[]): string {
+  if (!isModelTier(persona.model)) return persona.model
+  return resolveTierRow(persona.model, models)?.model ?? persona.model
+}
+
+/**
+ * Human-readable label for a persona's resolved model. Prefers the matched
+ * Model row's own `name` (e.g. "Claude Haiku 4.5") over modelShortLabel()'s
+ * static id map — a curated id can be DATED-ONLY with no bare alias (the
+ * live Anthropic catalog currently has no bare `claude-haiku-4-5`; that
+ * family's only entry is `claude-haiku-4-5-20251001`), and modelShortLabel()
+ * would render that raw dated id straight into the UI ("haiku-4-5-20251001")
+ * since it only recognizes the bare alias. The row's `name` (Anthropic's
+ * `display_name`) is never dated, regardless of which id shape backs it.
+ * Falls back to modelShortLabel() only when no row is available: `models`
+ * hasn't loaded yet, or an exact legacy id (e.g. `claude-sonnet-4-6`) isn't
+ * itself present in the curated (one-entry-per-family) list.
+ */
+export function resolvePersonaModelLabel(persona: Persona, models: Model[]): string {
+  const row = isModelTier(persona.model)
+    ? resolveTierRow(persona.model, models)
+    : models.find(m => m.model === persona.model)
+  if (row) return row.name
+  return modelShortLabel(persona.model) ?? persona.model
 }
 
 /** Short, human-friendly labels for the curated models (used on persona chips). */
@@ -34,8 +122,20 @@ const MODEL_SHORT_LABELS: Record<string, string> = {
   'gemini-3.1-flash-image': 'Nano Banana 2',
 }
 
+/** Human label for a tier that reaches here unresolved (e.g. rendered before
+ *  GET /api/models has returned) — the UI must never show the raw internal
+ *  tier keyword. Callers should resolve via resolvePersonaModel() first;
+ *  this is the last-resort backstop when that isn't possible yet. */
+const TIER_FALLBACK_LABELS: Record<ModelTier, string> = {
+  flagship: 'Flagship',
+  opus: 'Opus',
+  sonnet: 'Sonnet',
+  haiku: 'Haiku',
+}
+
 export function modelShortLabel(modelId?: string): string | null {
   if (!modelId) return null
+  if (isModelTier(modelId)) return TIER_FALLBACK_LABELS[modelId]
   return MODEL_SHORT_LABELS[modelId] ?? modelId.replace(/^(claude|gemini)-/, '')
 }
 
@@ -309,22 +409,26 @@ When asked to abstract a contract:
 For any other question, answer in chat with citations — no file.
 </output>`
 
-// Unified persona roster — each carries a prompt, model, and (except Haiku) effort.
+// Unified persona roster — each carries a prompt, model (a tier that follows
+// Anthropic's newest release in that family, or — for Contract Abstract only
+// — an exact pinned id), and (except Haiku) effort.
 const PERSONAS: Persona[] = [
-  { id: 'general-assistant', name: 'General Assistant', icon: '💬', prompt: GENERAL_PROMPT, model: 'claude-sonnet-5', effort: 'medium', isDefault: true, description: 'Versatile everyday assistant' },
-  { id: 'coding', name: 'Coding', icon: '👨‍💻', prompt: CODING_PROMPT, model: 'claude-opus-4-8', effort: 'high', description: 'Production-ready code, fast' },
-  { id: 'code-review', name: 'Code Review', icon: '🔎', prompt: CODE_REVIEW_PROMPT, model: 'claude-opus-4-8', effort: 'high', description: 'Rigorous review for bugs, security & style' },
-  { id: 'deep-analysis', name: 'Deep Analysis', icon: '🧠', prompt: DEEP_ANALYSIS_PROMPT, model: 'claude-opus-4-8', effort: 'max', description: 'Step-by-step reasoning at max effort' },
-  { id: 'creative-writing', name: 'Creative Writing', icon: '🎭', prompt: CREATIVE_PROMPT, model: 'claude-sonnet-5', effort: 'medium', description: 'Creative writing and storytelling' },
-  { id: 'brief', name: 'Brief', icon: '⚡', prompt: BRIEF_PROMPT, model: 'claude-haiku-4-5', description: 'Fast, ultra-concise answers' },
-  { id: 'teacher', name: 'Teacher', icon: '📚', prompt: TEACHER_PROMPT, model: 'claude-sonnet-5', effort: 'medium', description: 'Patient, clear explanations' },
-  { id: 'construction-pro', name: 'Construction Pro', icon: '🏗️', prompt: CONSTRUCTION_PRO_PROMPT, model: 'claude-opus-4-8', effort: 'high', description: 'Superintendent’s aide: RFIs, submittals, schedules' },
-  { id: 'plan-spec-reader', name: 'Plan & Spec Reader', icon: '📐', prompt: PLAN_SPEC_READER_PROMPT, model: 'claude-sonnet-5', effort: 'medium', grounded: true, description: 'Structured extraction from drawings & specs' },
-  { id: 'claims-delay-analyst', name: 'Claims & Delay Analyst', icon: '⚖️', prompt: CLAIMS_DELAY_PROMPT, model: 'claude-fable-5', effort: 'max', description: 'Delay/time-impact analysis, causation & entitlement' },
-  { id: 'contract-spec-analyst', name: 'Contract & Spec Analyst', icon: '📜', prompt: CONTRACT_SPEC_PROMPT, model: 'claude-fable-5', effort: 'max', grounded: true, description: 'Interprets contract obligations, conflicts & deadlines' },
+  { id: 'general-assistant', name: 'General Assistant', icon: '💬', prompt: GENERAL_PROMPT, model: 'sonnet', effort: 'medium', isDefault: true, description: 'Versatile everyday assistant' },
+  { id: 'coding', name: 'Coding', icon: '👨‍💻', prompt: CODING_PROMPT, model: 'opus', effort: 'high', description: 'Production-ready code, fast' },
+  { id: 'code-review', name: 'Code Review', icon: '🔎', prompt: CODE_REVIEW_PROMPT, model: 'opus', effort: 'high', description: 'Rigorous review for bugs, security & style' },
+  { id: 'deep-analysis', name: 'Deep Analysis', icon: '🧠', prompt: DEEP_ANALYSIS_PROMPT, model: 'opus', effort: 'max', description: 'Step-by-step reasoning at max effort' },
+  { id: 'creative-writing', name: 'Creative Writing', icon: '🎭', prompt: CREATIVE_PROMPT, model: 'sonnet', effort: 'medium', description: 'Creative writing and storytelling' },
+  { id: 'brief', name: 'Brief', icon: '⚡', prompt: BRIEF_PROMPT, model: 'haiku', description: 'Fast, ultra-concise answers' },
+  { id: 'teacher', name: 'Teacher', icon: '📚', prompt: TEACHER_PROMPT, model: 'sonnet', effort: 'medium', description: 'Patient, clear explanations' },
+  { id: 'construction-pro', name: 'Construction Pro', icon: '🏗️', prompt: CONSTRUCTION_PRO_PROMPT, model: 'opus', effort: 'high', description: 'Superintendent’s aide: RFIs, submittals, schedules' },
+  { id: 'plan-spec-reader', name: 'Plan & Spec Reader', icon: '📐', prompt: PLAN_SPEC_READER_PROMPT, model: 'sonnet', effort: 'medium', grounded: true, description: 'Structured extraction from drawings & specs' },
+  { id: 'claims-delay-analyst', name: 'Claims & Delay Analyst', icon: '⚖️', prompt: CLAIMS_DELAY_PROMPT, model: 'flagship', effort: 'max', description: 'Delay/time-impact analysis, causation & entitlement' },
+  { id: 'contract-spec-analyst', name: 'Contract & Spec Analyst', icon: '📜', prompt: CONTRACT_SPEC_PROMPT, model: 'flagship', effort: 'max', grounded: true, description: 'Interprets contract obligations, conflicts & deadlines' },
+  // Pinned to the exact model — never tiered. The 22-field abstract schema is
+  // locked output; a tier auto-following a new Fable release must not shift it.
   { id: 'contract-abstract', name: 'Contract Abstract', icon: '🗂️', prompt: CONTRACT_ABSTRACT_PROMPT, model: 'claude-fable-5', effort: 'max', grounded: true, description: 'Locked-schema contract abstract to xlsx' },
-  { id: 'constructability-reviewer', name: 'Constructability Reviewer', icon: '🧩', prompt: CONSTRUCTABILITY_PROMPT, model: 'claude-fable-5', effort: 'high', description: 'Clash/sequencing/VE review before the field' },
-  { id: 'deep-reasoner', name: 'Deep Reasoner', icon: '🧠', prompt: DEEP_REASONER_PROMPT, model: 'claude-fable-5', effort: 'high', description: 'Flagship reasoning for hard, high-stakes problems' },
+  { id: 'constructability-reviewer', name: 'Constructability Reviewer', icon: '🧩', prompt: CONSTRUCTABILITY_PROMPT, model: 'flagship', effort: 'high', description: 'Clash/sequencing/VE review before the field' },
+  { id: 'deep-reasoner', name: 'Deep Reasoner', icon: '🧠', prompt: DEEP_REASONER_PROMPT, model: 'flagship', effort: 'high', description: 'Flagship reasoning for hard, high-stakes problems' },
 ]
 
 const DEFAULT_PERSONA = PERSONAS.find(p => p.isDefault) ?? PERSONAS[0]

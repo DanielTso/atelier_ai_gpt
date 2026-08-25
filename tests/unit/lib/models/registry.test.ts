@@ -318,6 +318,35 @@ describe('models/registry', () => {
       const result = await resolveRequestedModel('gemini-3.1-flash-image')
       expect(result).toEqual({ modelId: 'gemini-3.1-flash-image', usedFallback: false })
     })
+
+    // Defensive backstop (Task 9: persona tiers): personas are tiered
+    // client-side (usePersonas.ts's resolvePersonaModel resolves against the
+    // live models list before a request is ever sent), so a raw tier string
+    // should never actually reach this server route — but if one does (a
+    // stale client build, a non-browser caller), it must resolve via
+    // resolveTier() rather than being treated as an unknown id and silently
+    // falling back to the curated default.
+    it('resolves a tier string that reaches the server directly, instead of treating it as an unknown id', async () => {
+      getAnthropicApiKey.mockResolvedValue('sk-test')
+      const fetchMock = fetch as ReturnType<typeof vi.fn>
+      fetchMock.mockResolvedValue(mockLivePage([OPUS_RAW, HAIKU_RAW]))
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const result = await resolveRequestedModel('haiku')
+      expect(result).toEqual({ modelId: 'claude-haiku-4-5', usedFallback: false })
+      // No "unknown model id" warning — this is a recognized tier, not garbage.
+      expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('unknown model id'))
+      warn.mockRestore()
+    })
+
+    it("resolves the 'flagship' tier to the newest fable-family model", async () => {
+      getAnthropicApiKey.mockResolvedValue('sk-test')
+      const fetchMock = fetch as ReturnType<typeof vi.fn>
+      fetchMock.mockResolvedValue({ ok: false, status: 500, json: async () => ({}) }) // -> STATIC_SEED
+
+      const result = await resolveRequestedModel('flagship')
+      expect(result).toEqual({ modelId: 'claude-fable-5', usedFallback: false })
+    })
   })
 
   describe('getModelRegistry — DB failure degradation (M2: never throws)', () => {

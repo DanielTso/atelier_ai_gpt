@@ -3,7 +3,7 @@ import { curateCatalog, parseFamily, DATED_SNAPSHOT_RE } from './curate'
 import { loadPricingOverrides, resolvePricing, type PricingOverrides } from './pricing'
 import { fetchAllAnthropicModels, type RawAnthropicModel } from './fetch'
 import { STATIC_SEED, LEGACY_PINS, GEMINI_MODELS } from './seed'
-import type { CatalogModel, ModelCapabilities, ModelTier, Effort } from './types'
+import { isModelTier, tierFamily, type CatalogModel, type ModelCapabilities, type ModelTier, type Effort } from './types'
 
 export interface ModelRegistry {
   curated: CatalogModel[]
@@ -271,6 +271,15 @@ export async function resolveRequestedModel(requested?: string): Promise<{ model
   if (!requested) {
     return { modelId: fallback, usedFallback: false }
   }
+  // Defensive backstop: personas are tiered client-side (usePersonas.ts's
+  // resolvePersonaModel), so a real tier string should never reach here — but
+  // if one does (a stale client build, a non-browser caller), resolve it via
+  // resolveTier() instead of silently falling back to the curated default.
+  // The client stays the primary resolver; this only prevents a tier from
+  // masquerading as an "unknown model id" warning + wrong-model fallback.
+  if (isModelTier(requested)) {
+    return { modelId: await resolveTier(requested), usedFallback: false }
+  }
   if (registry.byId.has(requested)) {
     return { modelId: requested, usedFallback: false }
   }
@@ -293,7 +302,7 @@ export async function resolveRequestedModel(requested?: string): Promise<{ model
  */
 export async function resolveTier(tier: ModelTier): Promise<string> {
   const registry = await getModelRegistry()
-  const family = tier === 'flagship' ? 'fable' : tier
+  const family = tierFamily(tier)
   const match = registry.curated.find(m => m.family === family)
   if (match) return match.id
 

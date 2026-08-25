@@ -4,7 +4,8 @@ import { memo, useState } from 'react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { ChevronDown, Check, Settings2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { usePersonas, modelShortLabel, effortLabel, type Persona, type Effort } from '@/hooks/usePersonas'
+import { usePersonas, effortLabel, resolvePersonaModel, resolvePersonaModelLabel, type Persona, type Effort } from '@/hooks/usePersonas'
+import type { Model } from '@/types'
 
 interface PersonaSelectorProps {
   currentPrompt: string | null
@@ -14,6 +15,9 @@ interface PersonaSelectorProps {
   onEffortChange?: (effort?: Effort) => void
   disabled?: boolean
   side?: 'top' | 'bottom'
+  /** Live model list (GET /api/models) — resolves a persona's tier to a
+   *  concrete model id before it reaches onModelChange or the chip label. */
+  models?: Model[]
 }
 
 export const PersonaSelector = memo(function PersonaSelector({
@@ -24,6 +28,7 @@ export const PersonaSelector = memo(function PersonaSelector({
   onEffortChange,
   disabled = false,
   side = 'bottom',
+  models = [],
 }: PersonaSelectorProps) {
   const [open, setOpen] = useState(false)
   const { personas, getPersonaByPrompt } = usePersonas()
@@ -33,8 +38,10 @@ export const PersonaSelector = memo(function PersonaSelector({
 
   const handleSelect = (persona: Persona) => {
     onSelect(persona.prompt || null)
-    // Selecting a persona sets its model and effort together.
-    if (persona.model && onModelChange) onModelChange(persona.model)
+    // Selecting a persona sets its model and effort together. Resolve a tier
+    // to a concrete id here — a raw tier string must never reach onModelChange
+    // (which feeds selectedModel, and eventually the /api/chat request body).
+    if (persona.model && onModelChange) onModelChange(resolvePersonaModel(persona, models))
     if (onEffortChange) onEffortChange(persona.effort)
     setOpen(false)
   }
@@ -85,7 +92,7 @@ export const PersonaSelector = memo(function PersonaSelector({
                 <div className="flex items-center gap-1.5">
                   <span className="truncate">{persona.name}</span>
                   <span className="shrink-0 text-[10px] px-1 py-0.5 bg-primary/15 text-primary rounded">
-                    {modelShortLabel(persona.model)}{persona.effort ? ` · ${effortLabel(persona.effort)}` : ''}
+                    {resolvePersonaModelLabel(persona, models)}{persona.effort ? ` · ${effortLabel(persona.effort)}` : ''}
                   </span>
                 </div>
                 {persona.description && (

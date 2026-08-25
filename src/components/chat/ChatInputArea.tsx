@@ -356,6 +356,7 @@ export const ChatInputArea = memo(function ChatInputArea({
             onEffortChange={onEffortChange}
             disabled={false}
             side="top"
+            models={models}
           />
           {onEffortChange && selectedModelCaps?.supportsEffort && (
             <EffortPill

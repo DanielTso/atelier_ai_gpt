@@ -34,7 +34,7 @@ import { CreateProjectDialog } from "@/components/ui/CreateProjectDialog"
 import { useAppearanceSettings } from "@/hooks/useAppearanceSettings"
 import { useLocalStorage } from "@/hooks/useLocalStorage"
 import { useSmartDefaults } from "@/hooks/useSmartDefaults"
-import { usePersonas, type Effort } from "@/hooks/usePersonas"
+import { usePersonas, resolvePersonaModel, type Effort } from "@/hooks/usePersonas"
 import { useGroundedCompose } from "@/hooks/useGroundedCompose"
 import { useDocScope, scopeProjectIdFor } from "@/hooks/useDocScope"
 import { PersonaSuggestionBanner } from "@/components/chat/PersonaSuggestionBanner"
@@ -391,10 +391,12 @@ export default function Home() {
          // Use configured default model if it exists in the available models
          const defaultModel = await getSetting('default-model')
          const modelExists = defaultModel && data.models.some((m: { model: string }) => m.model === defaultModel)
-         // Fallback seeds from the default persona's model (Sonnet 4.6) if available,
-         // else the first listed model — keeps model + default persona consistent.
-         const personaModelAvailable = data.models.some((m: { model: string }) => m.model === defaultPersona.model)
-         const fallbackModel = personaModelAvailable ? defaultPersona.model : data.models[0].model
+         // Fallback seeds from the default persona's model (a tier — resolve it
+         // against the just-fetched list) if available, else the first listed
+         // model — keeps model + default persona consistent.
+         const resolvedPersonaModel = resolvePersonaModel(defaultPersona, data.models)
+         const personaModelAvailable = data.models.some((m: { model: string }) => m.model === resolvedPersonaModel)
+         const fallbackModel = personaModelAvailable ? resolvedPersonaModel : data.models[0].model
          setSelectedModel(modelExists ? defaultModel : fallbackModel)
       } else {
          setError("No models found. Please check your API keys in Settings.")
@@ -1192,12 +1194,14 @@ export default function Home() {
     if (!suggestedPersona) return
     await handleSaveSystemPrompt(suggestedPersona.prompt || null)
     if (suggestedPersona.model) {
-      setSelectedModel(suggestedPersona.model)
+      // Resolve a tier to a concrete id before it reaches selectedModel (and,
+      // from there, the /api/chat request body).
+      setSelectedModel(resolvePersonaModel(suggestedPersona, models))
     }
     setSelectedEffort(suggestedPersona.effort)
     dismissSuggestion()
     toast.success(`Switched to ${suggestedPersona.name}`)
-  }, [suggestedPersona, handleSaveSystemPrompt, dismissSuggestion])
+  }, [suggestedPersona, handleSaveSystemPrompt, dismissSuggestion, models])
 
   const handleSaveProjectContext = useCallback(async (id: number, fields: { memory?: string; instructions?: string }) => {
     await updateProjectContext(id, fields)
