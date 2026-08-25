@@ -3,15 +3,16 @@
 import { memo, useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { DIALOG_OVERLAY_ANIM, DIALOG_CONTENT_ANIM } from '@/lib/motion'
-import { X, Palette, SlidersHorizontal, KeyRound } from 'lucide-react'
+import { X, Palette, SlidersHorizontal, KeyRound, Receipt } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { AppearanceSettingsTab } from '@/components/settings/AppearanceSettingsTab'
 import { ModelDefaultsSettingsTab } from '@/components/settings/ModelDefaultsSettingsTab'
 import { ApiKeysSettingsTab } from '@/components/settings/ApiKeysSettingsTab'
+import { UsageSettingsTab } from '@/components/settings/UsageSettingsTab'
 import type { FontSize, MessageDensity } from '@/hooks/useAppearanceSettings'
 import type { Model } from '@/types'
 
-type SettingsTab = 'appearance' | 'defaults' | 'keys'
+type SettingsTab = 'appearance' | 'defaults' | 'keys' | 'usage'
 
 interface SettingsDialogProps {
   open: boolean
@@ -30,6 +31,7 @@ const tabs: { id: SettingsTab; label: string; icon: typeof Palette }[] = [
   { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'defaults', label: 'Model Defaults', icon: SlidersHorizontal },
   { id: 'keys', label: 'API Keys', icon: KeyRound },
+  { id: 'usage', label: 'Usage', icon: Receipt },
 ]
 
 export const SettingsDialog = memo(function SettingsDialog({
@@ -110,6 +112,9 @@ export const SettingsDialog = memo(function SettingsDialog({
               )}
               {activeTab === 'keys' && (
                 <ApiKeysSettingsTab onSettingsChanged={onSettingsChanged} />
+              )}
+              {activeTab === 'usage' && (
+                <UsageSettingsTab models={models} />
               )}
             </div>
           </div>

@@ -1,9 +1,9 @@
 'use client'
 
-import { memo } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { MoreHorizontal, FolderInput, Pencil, Archive, Trash2, MessageCircle, ArchiveRestore } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn, formatUsd } from '@/lib/utils'
 import type { Project } from '@/components/chat/sidebar/types'
 
 interface ChatContextMenuProps {
@@ -29,8 +29,49 @@ export const ChatContextMenu = memo(function ChatContextMenu({
   onRestore,
   onDelete,
 }: ChatContextMenuProps) {
+  // Cost is fetched lazily (only when the menu opens), not on every sidebar
+  // render — a sidebar can list many chats, and the figure is a nice-to-know,
+  // not something worth a query per chat item on every page load.
+  //
+  // The `@/app/actions` import is dynamic too, but NOT for a production
+  // bundle-size reason — importing a 'use server' module from a client
+  // component compiles to a small RPC-stub reference either way, so a static
+  // import wouldn't have pulled the real server module (DB connection,
+  // artifact renderers, etc.) into the client bundle. The real reason is the
+  // TEST environment: vitest has no such transform, so it resolves the
+  // literal module, and @/db throws at import time when DATABASE_URL is
+  // unset. A static import here broke three unrelated jsdom suites
+  // (Sidebar/ProjectLandingPage/RecentsSection) that render chat items
+  // without mocking @/db — none of them ever open this menu, so the dynamic
+  // import means they never touch the module at all. Note UsageSettingsTab.tsx
+  // has the identical hazard via a STATIC `@/app/actions` import and is only
+  // latent because no test currently renders SettingsDialog; a shared @/db
+  // mock in the test setup would remove this class of coupling for both
+  // instead of requiring every future call site to remember the workaround.
+  const [cost, setCost] = useState<{ costUsd: number; estimated: boolean } | null>(null)
+  const unmountedRef = useRef(false)
+  useEffect(() => {
+    return () => { unmountedRef.current = true }
+  }, [])
+
+  const handleOpenChange = (open: boolean) => {
+    if (!open) return
+    import('@/app/actions')
+      .then(({ getChatCost }) => getChatCost(chatId))
+      .then(result => { if (!unmountedRef.current) setCost(result) })
+      .catch(err => {
+        console.error('[ChatContextMenu] failed to load chat cost', err)
+        if (!unmountedRef.current) setCost(null)
+      })
+  }
+
+  // Hidden when zero or unknown (fetch hasn't resolved, or errored).
+  const costLabel = cost && cost.costUsd > 0
+    ? `Cost: ${formatUsd(cost.costUsd)}${cost.estimated ? ' (est.)' : ''}`
+    : null
+
   return (
-    <DropdownMenu.Root>
+    <DropdownMenu.Root onOpenChange={handleOpenChange}>
       <DropdownMenu.Trigger asChild>
         <button
           onClick={(e) => e.stopPropagation()}
@@ -48,6 +89,14 @@ export const ChatContextMenu = memo(function ChatContextMenu({
           align="end"
           onClick={(e) => e.stopPropagation()}
         >
+          {costLabel && (
+            <>
+              <DropdownMenu.Label className="px-2 py-1.5 text-xs text-muted-foreground font-medium">
+                {costLabel}
+              </DropdownMenu.Label>
+              <DropdownMenu.Separator className="h-px bg-border my-1" />
+            </>
+          )}
           {isArchived ? (
             // Archived chat menu
             <>

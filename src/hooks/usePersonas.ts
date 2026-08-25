@@ -105,11 +105,24 @@ export function resolvePersonaModel(persona: Persona, models: Model[]): string {
  * itself present in the curated (one-entry-per-family) list.
  */
 export function resolvePersonaModelLabel(persona: Persona, models: Model[]): string {
-  const row = isModelTier(persona.model)
-    ? resolveTierRow(persona.model, models)
-    : models.find(m => m.model === persona.model)
+  if (isModelTier(persona.model)) {
+    const row = resolveTierRow(persona.model, models)
+    return row ? row.name : (modelShortLabel(persona.model) ?? persona.model)
+  }
+  return resolveModelLabel(persona.model, models)
+}
+
+/**
+ * Human-readable label for a raw (non-persona) model id — the same
+ * "prefer the live row's real display name over the static id map" rule as
+ * resolvePersonaModelLabel() above, factored out for callers that only have a
+ * model id (e.g. a usage-rollup row), not a Persona. See that function's doc
+ * comment for why this matters: a curated id can be dated-only.
+ */
+export function resolveModelLabel(modelId: string, models: Model[]): string {
+  const row = models.find(m => m.model === modelId)
   if (row) return row.name
-  return modelShortLabel(persona.model) ?? persona.model
+  return modelShortLabel(modelId) ?? modelId
 }
 
 /** Short, human-friendly labels for the curated models (used on persona chips). */
@@ -120,6 +133,14 @@ const MODEL_SHORT_LABELS: Record<string, string> = {
   'claude-sonnet-4-6': 'Sonnet 4.6', // legacy label for chats still pinned to it
   'claude-haiku-4-5': 'Haiku 4.5',
   'gemini-3.1-flash-image': 'Nano Banana 2',
+  // Internal-only housekeeping model (summarize/title/classify/memory-suggest)
+  // — never user-selectable, and absent from GET /api/models (Gemini text
+  // models aren't served there), so resolveModelLabel's row lookup always
+  // misses and falls through to this map. Without an entry here it falls
+  // through further to the raw-id strip, rendering the confusing "3.5-flash"
+  // — and this is the one row guaranteed to appear for every user (title
+  // generation fires on every chat).
+  'gemini-3.5-flash': 'Gemini Flash (housekeeping)',
 }
 
 /** Human label for a tier that reaches here unresolved (e.g. rendered before

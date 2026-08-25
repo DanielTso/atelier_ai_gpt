@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { usePersonas, resolvePersonaModel, resolvePersonaModelLabel, modelShortLabel, PERSONAS_FOR_TEST } from '@/hooks/usePersonas'
+import { usePersonas, resolvePersonaModel, resolvePersonaModelLabel, resolveModelLabel, modelShortLabel, PERSONAS_FOR_TEST } from '@/hooks/usePersonas'
 import { isModelTier } from '@/lib/models/types'
 import type { Model } from '@/types'
 
@@ -167,6 +167,31 @@ describe('usePersonas', () => {
     // curated (one-entry-per-family) picker list, so no row exists to prefer.
     const legacyPersona = { id: 'x', name: 'x', icon: 'x', prompt: '', model: 'claude-sonnet-4-6' }
     expect(resolvePersonaModelLabel(legacyPersona, MODELS)).toBe('Sonnet 4.6')
+  })
+
+  // resolveModelLabel is the raw-id counterpart used by usage-rollup rows
+  // (Task 11), which don't carry a Persona — same "prefer the live row's real
+  // display name" rule, factored out of resolvePersonaModelLabel's non-tier
+  // branch rather than duplicated.
+  it('resolveModelLabel prefers the live row name over a raw dated id', () => {
+    expect(resolveModelLabel('claude-haiku-4-5-20251001', MODELS_HAIKU_DATED_ONLY)).toBe('Claude Haiku 4.5')
+  })
+
+  it('resolveModelLabel falls back to modelShortLabel, then the raw id, when no row matches', () => {
+    expect(resolveModelLabel('claude-sonnet-4-6', MODELS)).toBe('Sonnet 4.6')
+    expect(resolveModelLabel('claude-totally-unknown-id', MODELS)).toBe('totally-unknown-id')
+  })
+
+  // Review regression: GET /api/models never serves Gemini text models, so
+  // gemini-3.5-flash (the internal housekeeping model behind
+  // summarize/generate-title/classify/memory-suggest) always misses the row
+  // lookup. Before MODEL_SHORT_LABELS carried an entry for it, this fell all
+  // the way through to the raw-id-strip fallback and rendered "3.5-flash" —
+  // and this is the one usage-rollup row guaranteed to appear for every user,
+  // since title generation fires on every chat.
+  it('resolveModelLabel renders the internal housekeeping model as a real label, not a raw id fragment', () => {
+    expect(resolveModelLabel('gemini-3.5-flash', MODELS)).toBe('Gemini Flash (housekeeping)')
+    expect(resolveModelLabel('gemini-3.5-flash', [])).toBe('Gemini Flash (housekeeping)')
   })
 
   it("getPersonaById maps 'default' and unknown ids to General Assistant", () => {

@@ -123,6 +123,21 @@ export interface ChatPreview {
   createdAt: Date | null
 }
 
+/** One (month, model) spend rollup row, as returned by getMonthlyUsageByModel.
+ *  costUsd is read verbatim from usage_events' frozen cost_usd column. */
+export interface MonthlyUsageRow {
+  /** 'YYYY-MM', always UTC-bucketed (the query forces `AT TIME ZONE 'UTC'`
+   *  before bucketing — independent of the Postgres session's TimeZone). */
+  month: string
+  model: string
+  costUsd: number
+  /** Full input token volume — fresh + cacheRead + cacheCreation summed. The
+   *  underlying usage_events.input_tokens column alone is FRESH tokens only. */
+  inputTokens: number
+  outputTokens: number
+  estimated: boolean
+}
+
 /** The chat actions ChatContextMenu surfaces on an active (non-archived) chat row.
  * Shared by the sidebar (SidebarActions extends this) and the project landing
  * page's chat list, so both call sites stay assignable to one narrow shape. */

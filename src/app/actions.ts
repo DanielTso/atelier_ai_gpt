@@ -1,14 +1,15 @@
 'use server'
 
 import { db } from '@/db'
-import { projects, chats, messages, settings, messageEmbeddings, personaUsage, chatTopics, documents, documentChunks, documentRevisions, messageAttachments, artifacts, artifactVersions, memorySuggestions, generatedImages } from '@/db/schema'
-import { eq, desc, isNull, isNotNull, and, lte, gt, asc, count, inArray, sql } from 'drizzle-orm'
+import { projects, chats, messages, settings, messageEmbeddings, personaUsage, chatTopics, documents, documentChunks, documentRevisions, messageAttachments, artifacts, artifactVersions, memorySuggestions, generatedImages, usageEvents } from '@/db/schema'
+import { eq, desc, isNull, isNotNull, and, lte, gt, gte, asc, count, inArray, sql } from 'drizzle-orm'
 import { isStorageConfigured, uploadBuffer, createSignedDownloadUrls, removeObjects, signedArtifactUrl, signedArtifactUrls } from '@/lib/storage'
 import { blankArtifactTemplate } from '@/lib/artifacts/templates'
 import { artifactLanguage } from '@/lib/artifacts/code'
 import { renderArtifact } from '@/lib/artifacts/render'
 import { artifactStoragePath } from '@/lib/artifacts/path'
 import type { ArtifactType, SheetSpec } from '@/lib/artifacts/types'
+import type { MonthlyUsageRow } from '@/types'
 
 function sanitizeAttachmentName(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/^\.+$/, '_')
@@ -459,6 +460,91 @@ export async function getProjectPersonaStats(projectId: number) {
   return await db.select().from(personaUsage)
     .where(eq(personaUsage.projectId, projectId))
     .orderBy(desc(personaUsage.messageCount))
+}
+
+// ── Usage / Spend Actions (Task 11) ──
+// Read-only rollups over usage_events (Task 10). costUsd is read verbatim from
+// the FROZEN cost_usd column — never recomputed from current prices.
+// MonthlyUsageRow lives in @/types (shared with the consuming tab component).
+
+/**
+ * Monthly spend grouped by model, most recent month first, for the trailing
+ * `monthsBack` months (including the current one). No project_id filter —
+ * generate-title/classify rows carry a null project_id (those routes never
+ * load the chat), so a project-scoped filter would silently drop them; this
+ * rollup is global and doesn't have that problem.
+ *
+ * `estimated` is a plain bool_or across the (month, model) group — safe here
+ * because the group is already scoped to one model, so it can't be polluted
+ * by an unrelated model's rows the way a cross-model total could (see
+ * getChatCost below). For the always-unpriced gemini-3.5-flash, every row in
+ * its group is cost 0 / estimated true, so the group correctly reports that
+ * tuple — callers render it as "unpriced" (see isUnpricedUsage in @/lib/utils),
+ * not "$0.00".
+ */
+export async function getMonthlyUsageByModel(monthsBack = 3): Promise<MonthlyUsageRow[]> {
+  const since = new Date()
+  since.setUTCDate(1)
+  since.setUTCHours(0, 0, 0, 0)
+  since.setUTCMonth(since.getUTCMonth() - (monthsBack - 1))
+
+  // AT TIME ZONE 'UTC' before to_char: to_char(timestamptz, ...) otherwise
+  // converts through the POSTGRES SESSION's TimeZone setting first, while
+  // `since` above is computed in UTC — under a non-UTC session those two
+  // would disagree and a several-hour sliver could render as a whole extra
+  // month row. Supabase's default session timezone is UTC (so this is inert
+  // in production today), but the query shouldn't depend on that holding.
+  // AT TIME ZONE 'UTC' before to_char: to_char(timestamptz, ...) otherwise
+  // converts through the POSTGRES SESSION's TimeZone setting first, while
+  // `since` above is computed in UTC — under a non-UTC session those two
+  // would disagree and a several-hour sliver could render as a whole extra
+  // month row. Supabase's default session timezone is UTC (so this is inert
+  // in production today), but the query shouldn't depend on that holding.
+  const monthExpr = sql<string>`to_char(${usageEvents.createdAt} AT TIME ZONE 'UTC', 'YYYY-MM')`
+  return await db
+    .select({
+      month: monthExpr,
+      model: usageEvents.model,
+      // ::float8, not ::int — sum() over an integer column returns bigint,
+      // and a bigint past 2^31-1 tokens in one (month, model) group would
+      // raise "integer out of range" under an ::int cast (improbable but
+      // reachable with heavy cache-read volume). float8 has no such ceiling
+      // at realistic token magnitudes (well under 2^53, so no precision loss
+      // either) — matches costUsd's own cast just below.
+      costUsd: sql<number>`sum(${usageEvents.costUsd})::float8`,
+      inputTokens: sql<number>`sum(${usageEvents.inputTokens} + ${usageEvents.cacheReadTokens} + ${usageEvents.cacheCreationTokens})::float8`,
+      outputTokens: sql<number>`sum(${usageEvents.outputTokens})::float8`,
+      estimated: sql<boolean>`bool_or(${usageEvents.costEstimated})`,
+    })
+    .from(usageEvents)
+    .where(gte(usageEvents.createdAt, since))
+    .groupBy(monthExpr, usageEvents.model)
+    .orderBy(desc(monthExpr), usageEvents.model)
+}
+
+/**
+ * Total spend for one chat, summed across every purpose tied to it (the chat
+ * turns themselves, plus summarize/generate-title/classify/memory-suggest rows
+ * that carry the same chat_id — all real activity this chat caused).
+ *
+ * `estimated` deliberately excludes cost_usd=0 rows from the bool_or: without
+ * that filter, a chat that ever triggered generate-title or classify (nearly
+ * every chat) would always report estimated=true, because those housekeeping
+ * rows are the always-unpriced gemini-3.5-flash sentinel (cost 0, estimated
+ * true) — noise that has nothing to do with whether the chat's actual PRICED
+ * spend is exact. Filtering to cost-contributing rows keeps the flag meaning
+ * "the dollar figure you're looking at is an estimate", not "some unrelated
+ * free housekeeping call happened in this chat".
+ */
+export async function getChatCost(chatId: number): Promise<{ costUsd: number; estimated: boolean }> {
+  const rows = await db
+    .select({
+      costUsd: sql<number>`coalesce(sum(${usageEvents.costUsd}), 0)::float8`,
+      estimated: sql<boolean>`coalesce(bool_or(${usageEvents.costEstimated}) filter (where ${usageEvents.costUsd} > 0), false)`,
+    })
+    .from(usageEvents)
+    .where(eq(usageEvents.chatId, chatId))
+  return rows[0] ?? { costUsd: 0, estimated: false }
 }
 
 // ── Chat Topics Actions ──
