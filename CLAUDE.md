@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-**Start a new session by reading the latest `docs/SESSION_HANDOFF_<date>.md`** (currently `docs/SESSION_HANDOFF_2026-07-21.md`) — it is the authoritative current-state bootstrap (where the build is, what shipped, live infra, open items). This CLAUDE.md is the source of truth for *how the code works*; the handoff tracks *where the project is*.
+**Start a new session by reading the latest `docs/SESSION_HANDOFF_<date>.md`** (currently `docs/SESSION_HANDOFF_2026-08-24.md`) — it is the authoritative current-state bootstrap (where the build is, what shipped, live infra, open items). This CLAUDE.md is the source of truth for *how the code works*; the handoff tracks *where the project is*.
 
 ## Build & Development Commands
 
