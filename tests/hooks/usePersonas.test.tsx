@@ -182,6 +182,32 @@ describe('usePersonas', () => {
     expect(resolveModelLabel('claude-totally-unknown-id', MODELS)).toBe('totally-unknown-id')
   })
 
+  // Final-review finding: a usage_events row freezes the RESOLVED model id at
+  // write time, e.g. today's dated-only Haiku (`claude-haiku-4-5-20251001`).
+  // Once the live catalog moves on — Haiku 5 ships, or Anthropic adds the
+  // bare alias, which curation prefers — that historical row's id is no
+  // longer in the live `models` list at all (unlike the dated-only tests
+  // above, where the fixture still carries the exact dated id). The row
+  // lookup misses, and without suffix-stripping the bare-alias-keyed
+  // MODEL_SHORT_LABELS map would miss too, leaking "haiku-4-5-20251001" into
+  // the Usage tab. modelShortLabel strips a trailing `-YYYYMMDD` before the
+  // map lookup so a historical dated id still resolves to its family label.
+  it('modelShortLabel strips a trailing dated-snapshot suffix so a historical usage row still resolves a friendly label', () => {
+    expect(modelShortLabel('claude-haiku-4-5-20251001')).toBe('Haiku 4.5')
+    // Unrecognized family, but still dated — falls through to the stripped,
+    // prefix-trimmed id rather than leaking the raw date suffix.
+    expect(modelShortLabel('claude-totally-unknown-id-20251001')).toBe('totally-unknown-id')
+    // Not an 8-digit dated suffix — must not be mistaken for one.
+    expect(modelShortLabel('claude-opus-4-8')).toBe('Opus 4.8')
+  })
+
+  it('resolveModelLabel resolves a historical dated-only row to the family label once the live models list has moved past that exact id', () => {
+    // MODELS carries the bare `claude-haiku-4-5` alias, not the dated id —
+    // simulating the live catalog having moved on since this usage row was
+    // written. The exact-id row lookup misses; the fix is the fallthrough.
+    expect(resolveModelLabel('claude-haiku-4-5-20251001', MODELS)).toBe('Haiku 4.5')
+  })
+
   // Review regression: GET /api/models never serves Gemini text models, so
   // gemini-3.5-flash (the internal housekeeping model behind
   // summarize/generate-title/classify/memory-suggest) always misses the row

@@ -483,10 +483,17 @@ export async function getProjectPersonaStats(projectId: number) {
  * not "$0.00".
  */
 export async function getMonthlyUsageByModel(monthsBack = 3): Promise<MonthlyUsageRow[]> {
+  // Defensive clamp: this is a server action, directly callable with any
+  // number. An absurd or non-finite value (Infinity, NaN, a huge integer)
+  // would push `since` to an invalid Date and throw; 1..24 comfortably
+  // covers the UI's real use (3 months today) with headroom for a future
+  // range picker. NaN/non-finite falls back to the 3-month default rather
+  // than clamping (Math.max/min propagate NaN, not clamp it).
+  const clampedMonthsBack = Number.isFinite(monthsBack) ? Math.min(24, Math.max(1, Math.trunc(monthsBack))) : 3
   const since = new Date()
   since.setUTCDate(1)
   since.setUTCHours(0, 0, 0, 0)
-  since.setUTCMonth(since.getUTCMonth() - (monthsBack - 1))
+  since.setUTCMonth(since.getUTCMonth() - (clampedMonthsBack - 1))
 
   // AT TIME ZONE 'UTC' before to_char: to_char(timestamptz, ...) otherwise
   // converts through the POSTGRES SESSION's TimeZone setting first, while

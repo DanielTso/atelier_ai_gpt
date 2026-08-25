@@ -157,7 +157,15 @@ const TIER_FALLBACK_LABELS: Record<ModelTier, string> = {
 export function modelShortLabel(modelId?: string): string | null {
   if (!modelId) return null
   if (isModelTier(modelId)) return TIER_FALLBACK_LABELS[modelId]
-  return MODEL_SHORT_LABELS[modelId] ?? modelId.replace(/^(claude|gemini)-/, '')
+  // Strip a trailing dated-snapshot suffix (e.g. `-20251001`) before the map
+  // lookup. Curation prefers a bare alias, but a family can ship dated-only
+  // (Haiku 4.5 today), and a `usage_events` row freezes whichever id was
+  // resolved at write time — so a historical row can carry a dated id long
+  // after the live catalog (and MODEL_SHORT_LABELS, keyed on bare aliases)
+  // moves on. Without this, resolveModelLabel's row lookup misses, this map
+  // lookup misses too, and the raw dated id leaks into the Usage tab.
+  const bareId = modelId.replace(/-\d{8}$/, '')
+  return MODEL_SHORT_LABELS[bareId] ?? bareId.replace(/^(claude|gemini)-/, '')
 }
 
 /** Title-case effort for chips ("Medium"). */

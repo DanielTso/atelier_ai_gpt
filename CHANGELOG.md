@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [4.54.0] - Unreleased — Dynamic Model Registry + Cost Visibility
 
-Spec: `docs/specs/2026-07-21-dynamic-model-registry-design.md`. Subagent-driven build, 12 tasks + per-task reviews. The model list used to be hardcoded in the picker route, `MODEL_IDS` validation, 14 personas, the chat-route default, `providers.ts`'s per-model effort special-case, and the effort pill — every Anthropic release meant editing six files by hand. Now a new release just appears, priced, with the right personas following it: verified live against the real Anthropic API, Opus 5 appeared in the picker with zero code change. **Migrations `0017` (Grounded & Cited Answers) and `0018` (this feature) must both be applied to Supabase BEFORE deploy.**
+Spec: `docs/specs/2026-07-21-dynamic-model-registry-design.md`. Subagent-driven build, 12 tasks + per-task reviews. The model list used to be hardcoded in the picker route, `MODEL_IDS` validation, 14 personas, the chat-route default, `providers.ts`'s per-model effort special-case, and the effort pill — every Anthropic release meant editing six files by hand. Now a new release just appears, priced, with the right personas following it: verified live against the real Anthropic API, Opus 5 appeared in the picker with zero code change. **Migration `0017` (Grounded & Cited Answers) is already applied to Supabase; migration `0018` (this feature) must be applied BEFORE deploy.**
 
 ### Added
 
@@ -23,12 +23,12 @@ Spec: `docs/specs/2026-07-21-dynamic-model-registry-design.md`. Subagent-driven 
 
 ### Known deferred
 
-- Migration `0018` is authored but **not applied** to Supabase — the Usage tab currently throws `relation "usage_events" does not exist` on every open in production until it's migrated. Apply `0017` and `0018` together before the next deploy.
+- Migration `0018` is authored but **not applied** to Supabase — the Usage tab currently throws `relation "usage_events" does not exist` on every open in production until it's migrated. Apply `0018` before the next deploy (`0017`, above, is already applied).
 - A shared `@/db` test mock (so components that statically import `@/app/actions` don't need a per-call-site dynamic-import workaround) is a follow-up, not built here — `ChatContextMenu` uses a dynamic import for this reason; `UsageSettingsTab.tsx`'s static import is the same hazard, currently latent only because no test renders `SettingsDialog`.
 
 ## [4.53.0] - Unreleased — Grounded & Cited Answers
 
-Spec: `docs/specs/2026-07-17-grounded-cited-answers-design.md` (incl. the §C6 scoping amendment of 2026-07-21). Subagent-driven build, 10 tasks + per-task reviews; the closest thing Atelier had to NotebookLM's citation UX, built for construction-grade defensibility. **Migration `0017` must be applied to Supabase BEFORE deploy.**
+Spec: `docs/specs/2026-07-17-grounded-cited-answers-design.md` (incl. the §C6 scoping amendment of 2026-07-21). Subagent-driven build, 10 tasks + per-task reviews; the closest thing Atelier had to NotebookLM's citation UX, built for construction-grade defensibility. **Migration `0017` has been applied to Supabase.**
 
 ### Added
 

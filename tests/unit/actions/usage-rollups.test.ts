@@ -190,6 +190,38 @@ describe('getMonthlyUsageByModel', () => {
       await testDb.execute(sql.raw(`SET TIME ZONE 'UTC'`))
     }
   })
+
+  // Final-review finding: this is a server action, directly callable with any
+  // number — an absurd or malformed monthsBack must not push `since` to an
+  // Invalid Date and throw. Clamped to 1..24; NaN/non-finite falls back to
+  // the 3-month default.
+  it('clamps an absurd monthsBack instead of throwing on an Invalid Date', async () => {
+    const { getMonthlyUsageByModel } = await import('@/app/actions')
+    await testDb.insert(usageEvents).values(usageRow({ createdAt: monthsAgo(0), costUsd: 0.01 }))
+
+    await expect(getMonthlyUsageByModel(999_999)).resolves.toBeInstanceOf(Array)
+    await expect(getMonthlyUsageByModel(-5)).resolves.toBeInstanceOf(Array)
+    await expect(getMonthlyUsageByModel(0)).resolves.toBeInstanceOf(Array)
+    await expect(getMonthlyUsageByModel(Number.NaN)).resolves.toBeInstanceOf(Array)
+    await expect(getMonthlyUsageByModel(Number.POSITIVE_INFINITY)).resolves.toBeInstanceOf(Array)
+  })
+
+  it('clamped monthsBack still returns a correctly-windowed result, not just "did not throw"', async () => {
+    const { getMonthlyUsageByModel } = await import('@/app/actions')
+    await testDb.insert(usageEvents).values([
+      usageRow({ createdAt: monthsAgo(0), costUsd: 0.01 }),
+      usageRow({ createdAt: monthsAgo(23), costUsd: 0.02 }),
+      usageRow({ createdAt: monthsAgo(30), costUsd: 0.03 }),
+    ])
+
+    // Clamped to 24: covers monthsAgo(0) and monthsAgo(23), not monthsAgo(30).
+    const rows = await getMonthlyUsageByModel(999_999)
+    expect(rows.map(r => r.month).sort()).toEqual([monthKey(monthsAgo(23)), monthKey(monthsAgo(0))].sort())
+
+    // A negative/zero input clamps up to the 1-month floor: current month only.
+    const flooredRows = await getMonthlyUsageByModel(-5)
+    expect(flooredRows.map(r => r.month)).toEqual([monthKey(monthsAgo(0))])
+  })
 })
 
 describe('getChatCost', () => {

@@ -5,7 +5,7 @@ _Authoritative current-state bootstrap for a new session. Read this first, then 
 ## TL;DR — where the project is
 
 - **Dynamic Model Registry + Cost Visibility is COMPLETE — all 12 tasks done, gate green, nothing pushed.** T1–T8 shipped to prod earlier this session (`c10d490..1a2c35e`, CI green, Vercel deployed). **T9–T12 are LOCAL ONLY** — 4 commits ahead of `origin/master`. **Opus 5 appeared in the picker with zero code change** — the whole point of the feature, verified against the live Anthropic API.
-- **Nothing is migrated or released.** Migrations `0017` (Grounded & Cited Answers, previous feature) and `0018` (this feature's `usage_events` table) are both authored and **NOT applied** to Supabase. `package.json` is still `4.51.0`; CHANGELOG carries **three unreleased entries** (`4.52.0` dep slice, `4.53.0` grounded & cited, `4.54.0` this feature) and no tags exist past `v4.51.0`.
+- **Migration `0018` is not applied; nothing is released.** Migration `0017` (Grounded & Cited Answers, previous feature) has already been applied to Supabase — verified read-only against the live DB (`drizzle.__drizzle_migrations` has 18 rows, `0000`–`0017`; `document_chunks.page_start`/`page_end` exist; document ingest is healthy, 5 ready / 0 error). Migration `0018` (this feature's `usage_events` table) is authored and **NOT applied**. `package.json` is still `4.51.0`; CHANGELOG carries **three unreleased entries** (`4.52.0` dep slice, `4.53.0` grounded & cited, `4.54.0` this feature) and no tags exist past `v4.51.0`.
 - **981 tests / 141 files green** at the T12 commit (typecheck 0, lint 0/24, cold build clean).
 - **Next action for whoever picks this up is the release checklist below, not more feature work** — the feature is done; only migrate → push → live-smoke remain, and all three are user-gated.
 
@@ -52,7 +52,7 @@ Real defects fixed along the way: a stale `projects.default_model` used to 400 t
 
 There is no more feature work queued for this spec. Pick up here:
 
-1. **Apply migrations `0017` AND `0018` together**: `DIRECT_URL=... npx drizzle-kit migrate`. Do this BEFORE anything below — the standing rule (deployed Drizzle code emits explicit column lists; an unmigrated DB breaks whole tables app-wide, not just the new feature) is in full effect once T10's migration lands locally.
+1. **Apply migration `0018`** (`0017` is already applied — confirmed live, see the TL;DR above): `DIRECT_URL=... npx drizzle-kit migrate`. Do this BEFORE anything below — the standing rule (deployed Drizzle code emits explicit column lists; an unmigrated DB breaks whole tables app-wide, not just the new feature) is in full effect once T10's migration lands locally.
 2. **Push T9–T12** (`7f6ca74..` through the T12 commit) to `origin/master`. Confirm CI green.
 3. **Live-smoke**: send a chat message, then confirm a `usage_events` row exists with a plausible `cost_usd` (not 0/NaN unless the model is genuinely the unpriced sentinel). Open Settings → Usage and confirm it renders spend, not the error state. Open a chat's context menu and confirm a cost line appears.
 4. **Re-confirm the zero-touch premise still holds** — it's a standing behavior claim (any new Anthropic release should appear automatically), not a one-time fact; worth a periodic spot-check whenever Anthropic ships something new, not just today.

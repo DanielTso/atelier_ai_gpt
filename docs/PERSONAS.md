@@ -4,7 +4,7 @@ A **persona** is a saved combination of three things: a **system prompt** (how t
 
 Personas live in the composer's persona picker (the chip next to the model selector). The roster below ships built-in; you can add your own (see [Custom personas](#custom-personas)).
 
-**Models auto-update.** 13 of the 14 built-in personas below don't pin an exact model — they pin a **tier** (flagship / opus / sonnet / haiku) that always resolves to Anthropic's newest release in that family. The model names in the tables are today's resolution of those tiers; when Anthropic ships a new Sonnet, every sonnet-tier persona picks it up automatically, with no update needed here or in the app. The one exception is **Contract Abstract**, which stays pinned to an exact model on purpose — see its row below.
+**Models auto-update.** 13 of the 14 built-in personas below don't pin an exact model — they pin a **tier** (flagship / opus / sonnet / haiku) that always resolves to Anthropic's newest release in that family. The model names in the tables are a **snapshot as of this doc's last edit, not a live status** — a tier can move to a new release without this file being updated, since that's the whole point of tiering (this is expected drift, not a bug). To see what a tier resolves to right now, open the persona picker in the composer (it always shows the live resolved name) or check `GET /api/models` for the current catalog. The one exception is **Contract Abstract**, which stays pinned to an exact model on purpose — see its row below.
 
 ## The roster
 
@@ -21,15 +21,15 @@ Personas live in the composer's persona picker (the chip next to the model selec
 
 | Persona | Model / effort | Use it for |
 |---|---|---|
-| 👨‍💻 **Coding** | Opus 4.8 / high | Writing production-quality code. |
-| 🔎 **Code Review** | Opus 4.8 / high | Reviewing a diff or file for bugs, security, and style. |
-| 🧠 **Deep Analysis** | Opus 4.8 / max | Hard multi-step problems where you want maximum reasoning on Opus. |
+| 👨‍💻 **Coding** | Opus 5 / high | Writing production-quality code. |
+| 🔎 **Code Review** | Opus 5 / high | Reviewing a diff or file for bugs, security, and style. |
+| 🧠 **Deep Analysis** | Opus 5 / max | Hard multi-step problems where you want maximum reasoning on Opus. |
 
 ### Construction suite
 
 | Persona | Model / effort | Use it for |
 |---|---|---|
-| 🏗️ **Construction Pro** | Opus 4.8 / high | Day-to-day superintendent/PM work: RFIs, submittals, schedule questions, meeting-minute drafts. |
+| 🏗️ **Construction Pro** | Opus 5 / high | Day-to-day superintendent/PM work: RFIs, submittals, schedule questions, meeting-minute drafts. |
 | 📐 **Plan & Spec Reader** | Sonnet 5 / medium | Structured extraction from drawings and specs — "what does note 7 on SW-101 say", sheet lookups, spec-section pulls. Cheap enough for follow-up volleys. |
 | ⚖️ **Claims & Delay Analyst** | **Fable 5 / max** | Delay and time-impact analysis, causation chains, entitlement arguments. The heavyweight — use when the answer may end up in a claim. |
 | 📜 **Contract & Spec Analyst** | **Fable 5 / max** | Interpreting contract obligations, finding conflicts between documents, deadline/notice provisions. |
@@ -47,7 +47,7 @@ Personas live in the composer's persona picker (the chip next to the model selec
 
 ## The cost model — "expensive analyst, cheap secretary"
 
-Model tiers differ roughly 10× in cost per step: **Fable 5** (~2× Opus, deepest reasoning) → **Opus 4.8** → **Sonnet 5** → **Haiku 4.5**. The pattern that works:
+Model tiers differ roughly 10× in cost per step: **Fable 5** (~2× Opus, deepest reasoning) → **Opus 5** → **Sonnet 5** → **Haiku 4.5**. The pattern that works:
 
 1. Run the *hard pass* on the heavyweight persona (Claims & Delay Analyst on Fable/max).
 2. Switch to a cheap persona (Plan & Spec Reader on Sonnet, or Brief) for follow-ups, re-phrasings, and "pull that into a table" requests — derivative work doesn't need the analyst.
