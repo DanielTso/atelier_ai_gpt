@@ -7,9 +7,22 @@ vi.mock('@/db', () => ({
   },
 }))
 
+// Realistic AI SDK v6 usage shape: inputTokens is the SDK's INCLUSIVE total.
+const FAKE_TOTAL_USAGE = {
+  inputTokens: 200,
+  inputTokenDetails: { noCacheTokens: 200, cacheReadTokens: 0, cacheWriteTokens: 0 },
+  outputTokens: 20,
+  totalTokens: 220,
+}
+
 const mockGenerateText = vi.fn().mockResolvedValue({
   text: '[{"topic": "coding", "confidence": 85}]',
+  totalUsage: FAKE_TOTAL_USAGE,
 })
+
+// Usage capture (Task 10) — mocked so this file asserts the wiring; recordUsage
+// itself is covered against PGlite in tests/unit/lib/usage.test.ts.
+const mockRecordUsage = vi.fn().mockResolvedValue(undefined)
 
 import { createProject, createChat } from '@/app/actions'
 
@@ -39,6 +52,9 @@ async function importRoute() {
   }))
   vi.doMock('@/lib/settings', () => ({
     getGeminiApiKey: () => Promise.resolve('test-key'),
+  }))
+  vi.doMock('@/lib/usage', () => ({
+    recordUsage: (...args: unknown[]) => mockRecordUsage(...args),
   }))
   const mod = await import('@/app/api/classify/route')
   return mod.POST
@@ -118,5 +134,15 @@ describe('POST /api/classify', () => {
 
     expect(data.topics).toEqual([{ topic: 'coding', confidence: 85 }])
     expect(data.cached).toBe(false)
+
+    // Usage capture (Task 10): pinned housekeeping model; projectId is null by
+    // design (this route never loads the chat row).
+    expect(mockRecordUsage).toHaveBeenCalledExactlyOnceWith({
+      chatId: chat.id,
+      projectId: null,
+      purpose: 'classify',
+      model: 'gemini-3.5-flash',
+      usage: FAKE_TOTAL_USAGE,
+    })
   })
 })

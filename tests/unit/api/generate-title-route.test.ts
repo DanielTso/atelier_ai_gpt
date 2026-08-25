@@ -7,7 +7,19 @@ vi.mock('@/db', () => ({
   },
 }))
 
-const mockGenerateText = vi.fn().mockResolvedValue({ text: 'Hello World Chat' })
+// Realistic AI SDK v6 usage shape: inputTokens is the SDK's INCLUSIVE total.
+const FAKE_TOTAL_USAGE = {
+  inputTokens: 120,
+  inputTokenDetails: { noCacheTokens: 120, cacheReadTokens: 0, cacheWriteTokens: 0 },
+  outputTokens: 8,
+  totalTokens: 128,
+}
+
+const mockGenerateText = vi.fn().mockResolvedValue({ text: 'Hello World Chat', totalUsage: FAKE_TOTAL_USAGE })
+
+// Usage capture (Task 10) — mocked so this file asserts the wiring; recordUsage
+// itself is covered against PGlite in tests/unit/lib/usage.test.ts.
+const mockRecordUsage = vi.fn().mockResolvedValue(undefined)
 
 vi.mock('ai', () => ({
   generateText: (...args: unknown[]) => mockGenerateText(...args),
@@ -43,6 +55,9 @@ async function importRoute() {
   vi.doMock('@/lib/settings', () => ({
     getGeminiApiKey: () => Promise.resolve('test-key'),
   }))
+  vi.doMock('@/lib/usage', () => ({
+    recordUsage: (...args: unknown[]) => mockRecordUsage(...args),
+  }))
   const mod = await import('@/app/api/generate-title/route')
   return mod.POST
 }
@@ -51,10 +66,10 @@ describe('POST /api/generate-title', () => {
   beforeEach(async () => {
     await createTestDb()
     vi.clearAllMocks()
-    mockGenerateText.mockResolvedValue({ text: 'Hello World Chat' })
+    mockGenerateText.mockResolvedValue({ text: 'Hello World Chat', totalUsage: FAKE_TOTAL_USAGE })
   })
 
-  it('returns title for valid request', async () => {
+  it('returns title for valid request and records usage', async () => {
     const POST = await importRoute()
     const res = await POST(makeRequest({
       chatId: 1,
@@ -67,6 +82,16 @@ describe('POST /api/generate-title', () => {
     expect(res.status).toBe(200)
     const data = await res.json()
     expect(data.title).toBe('Hello World Chat')
+
+    // Usage capture (Task 10): this route never loads the chat row, so
+    // projectId is null by design.
+    expect(mockRecordUsage).toHaveBeenCalledExactlyOnceWith({
+      chatId: 1,
+      projectId: null,
+      purpose: 'generate-title',
+      model: 'gemini-3.5-flash',
+      usage: FAKE_TOTAL_USAGE,
+    })
   })
 
   it('returns 400 when messages are missing', async () => {

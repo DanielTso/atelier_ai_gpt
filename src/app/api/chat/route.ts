@@ -12,6 +12,7 @@ import { createReadDocumentTool } from '@/lib/documents/tool';
 import { isStorageConfigured } from '@/lib/storage';
 import { formatPageList } from '@/lib/utils';
 import { CITE_RE, LOOSE_CITE_RE } from '@/lib/citations';
+import { recordUsage } from '@/lib/usage';
 
 // Experience-mode turns run long: web research + several image generations + an
 // HTML artifact build in one streamed response. Make the time budget explicit.
@@ -107,12 +108,16 @@ export async function POST(req: Request) {
     let systemPrompt: string | undefined;
     let semanticContext: string | null = null;
     let documentContext: string | null = null;
+    // Hoisted for usage capture in onFinish (spec C6) — set once the chat's
+    // project is known below.
+    let projectId: number | null = null;
     // Start with provider tools (web_search for Claude, google_search for Gemini, undefined for image)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let tools: Record<string, any> | undefined = providerTools;
 
     if (chatId) {
       const chat = await getChatWithContext(chatId);
+      projectId = chat?.projectId ?? null;
 
       // The project-context read and the retrieval pipeline are independent once we
       // have the chat — run them concurrently to shave a round-trip off time-to-
@@ -157,7 +162,6 @@ export async function POST(req: Request) {
       // 4. Merge Claude tools when Storage is configured. Prepend chat-first
       //    guidance so tools are reserved for explicit requests.
       if (modelName.startsWith('claude') && isStorageConfigured()) {
-        const projectId = chat?.projectId ?? null;
         tools = {
           ...(providerTools ?? {}),
           generate_artifact: createGenerateArtifactTool({ chatId, projectId }),
@@ -211,13 +215,17 @@ export async function POST(req: Request) {
       // Citation-compliance log (server-side; visible in Vercel logs). Plain
       // streamText onFinish — NOT the createUIMessageStream wrapper, which
       // masks route 500s (documented trap, see the 07-12 handoff).
-      onFinish: ({ text }) => {
+      onFinish: ({ text, totalUsage }) => {
         // markers = parseable (canonical grammar); loose = cite-intended tokens
         // that fail the grammar (near-misses the renderer normalizes or strips).
         // Fresh regexes from .source — never match on the shared /g exports.
         const markers = (text.match(new RegExp(CITE_RE.source, 'g')) ?? []).length;
         const loose = (text.match(new RegExp(LOOSE_CITE_RE.source, 'g')) ?? []).length - markers;
         console.log('[cite-compliance]', JSON.stringify({ chatId, grounded, docCtx: !!documentContext, markers, loose }));
+        // Usage capture (spec C6). totalUsage is summed across the 12-step tool
+        // loop — never a single step's usage. Best-effort: a usage-write failure
+        // must never fail the chat turn.
+        void recordUsage({ chatId: chatId ?? null, projectId, purpose: 'chat', model: modelName, usage: totalUsage }).catch(() => {});
       },
     });
 

@@ -6,6 +6,7 @@ import { saveChatTopics, getChatTopics } from '@/app/actions';
 import { apiError } from '@/lib/errors';
 import { classifyRequestSchema } from '@/lib/validation';
 import { messageText } from '@/lib/messageParts';
+import { recordUsage } from '@/lib/usage';
 
 // The model is instructed to return this shape; validate it before persisting so
 // malformed output (prose, wrong types) can't write garbage rows to chat_topics.
@@ -63,13 +64,18 @@ export async function POST(req: Request) {
     // model (which may be a Claude or the Nano Banana image model). The previous
     // `startsWith('gemini')` guard let the image model through, defeating the pin.
     // Mirrors summarize/generate-title.
-    const selectedModel = google('gemini-3.5-flash');
+    const modelName = 'gemini-3.5-flash';
+    const selectedModel = google(modelName);
 
     const result = await generateText({
       model: selectedModel,
       prompt: CLASSIFICATION_PROMPT + conversationText,
       maxOutputTokens: 200,
     });
+
+    // Usage capture (spec C6) — best-effort. projectId is not loaded by this
+    // route; null rather than an extra query.
+    void recordUsage({ chatId, projectId: null, purpose: 'classify', model: modelName, usage: result.totalUsage }).catch(() => {});
 
     // Parse + validate the LLM's JSON response (shape-checked before any DB write).
     let topics: { topic: string; confidence: number }[] = [];

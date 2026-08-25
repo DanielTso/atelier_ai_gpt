@@ -44,6 +44,11 @@ vi.mock('ai', () => ({
 
 const mockRetrieveContext = vi.fn()
 
+// Usage capture (Task 10) — mocked so route tests assert the WIRING (args
+// passed from onFinish); recordUsage's own behavior is covered against PGlite
+// in tests/unit/lib/usage.test.ts.
+const mockRecordUsage = vi.fn().mockResolvedValue(undefined)
+
 const mockGoogleSearch = vi.fn(() => ({ type: 'provider-defined', id: 'google_search' }))
 const mockGoogleFn = Object.assign(
   vi.fn((model: string) => ({ modelId: model, provider: 'google' })),
@@ -117,6 +122,9 @@ describe('POST /api/chat', () => {
     }))
     vi.doMock('@/lib/retrieval', () => ({
       retrieveContext: (...args: unknown[]) => mockRetrieveContext(...args),
+    }))
+    vi.doMock('@/lib/usage', () => ({
+      recordUsage: (...args: unknown[]) => mockRecordUsage(...args),
     }))
     vi.doMock('@/lib/models/registry', () => ({
       resolveRequestedModel: async (requested?: string) => {
@@ -464,6 +472,42 @@ describe('POST /api/chat', () => {
     } finally {
       logSpy.mockRestore()
     }
+  })
+
+  it('records chat usage from onFinish with totalUsage and the chat project id', async () => {
+    const [project] = await createProject('P')
+    const [chat] = await createChat(project.id, 'Chat')
+
+    const response = await postChat({
+      messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] }],
+      model: 'claude-opus-4-8',
+      chatId: chat.id,
+    })
+    expect(response.status).toBe(200)
+
+    const onFinish = mockStreamText.mock.calls[0][0].onFinish as (r: { text: string; totalUsage?: unknown }) => void
+    // Shape captured from a real call: inputTokens is the SDK's INCLUSIVE total.
+    const totalUsage = {
+      inputTokens: 1300,
+      inputTokenDetails: { noCacheTokens: 1000, cacheReadTokens: 200, cacheWriteTokens: 100 },
+      outputTokens: 400,
+      totalTokens: 1700,
+    }
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      onFinish({ text: 'answer', totalUsage })
+    } finally {
+      logSpy.mockRestore()
+    }
+    // The RAW totalUsage object is handed to recordUsage (which owns the
+    // fresh-vs-inclusive split) — summed across the tool loop, never one step's.
+    expect(mockRecordUsage).toHaveBeenCalledExactlyOnceWith({
+      chatId: chat.id,
+      projectId: project.id,
+      purpose: 'chat',
+      model: 'claude-opus-4-8',
+      usage: totalUsage,
+    })
   })
 
   it('passes an onError to toUIMessageStreamResponse that surfaces a provider 400 message instead of the generic string', async () => {

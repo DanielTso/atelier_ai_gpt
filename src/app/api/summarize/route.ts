@@ -3,6 +3,7 @@ import { getMessagesForSummarization, updateChatSummary, getChatWithContext } fr
 import { createProvider } from '@/lib/providers';
 import { apiError } from '@/lib/errors';
 import { summarizeRequestSchema } from '@/lib/validation';
+import { recordUsage } from '@/lib/usage';
 
 const SUMMARIZATION_PROMPT = `You are a conversation summarizer. Your task is to create a concise summary of the conversation that preserves:
 - Key topics discussed
@@ -65,6 +66,10 @@ export async function POST(req: Request) {
         { role: 'user', content: `${existingSummaryContext}${conversationText}` }
       ],
     });
+
+    // Usage capture (spec C6) — best-effort, recorded as soon as tokens are
+    // spent (a later DB failure below doesn't un-spend them).
+    void recordUsage({ chatId, projectId: chat.projectId ?? null, purpose: 'summarize', model: modelName, usage: result.totalUsage }).catch(() => {});
 
     const summary = result.text;
 

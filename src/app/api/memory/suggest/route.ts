@@ -11,6 +11,7 @@ import {
 import { apiError } from '@/lib/errors'
 import { memorySuggestRequestSchema } from '@/lib/validation'
 import { messageText } from '@/lib/messageParts'
+import { recordUsage } from '@/lib/usage'
 
 const PENDING_CAP = 10
 
@@ -67,11 +68,15 @@ export async function POST(req: Request) {
       conversationText
 
     const google = createGoogleGenerativeAI({ apiKey })
+    const modelName = 'gemini-3.5-flash'
     const result = await generateText({
-      model: google('gemini-3.5-flash'),
+      model: google(modelName),
       prompt,
       maxOutputTokens: 300,
     })
+
+    // Usage capture (spec C6) — best-effort.
+    void recordUsage({ chatId: chatId ?? null, projectId, purpose: 'memory-suggest', model: modelName, usage: result.totalUsage }).catch(() => {})
 
     let facts: string[] = []
     try {

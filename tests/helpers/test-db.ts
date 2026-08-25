@@ -12,7 +12,7 @@ export let testDb: ReturnType<typeof drizzle<typeof schema>>
 const TABLES = [
   'artifact_versions', 'artifacts', 'chat_topics', 'generated_images', 'message_attachments',
   'persona_usage', 'document_chunks', 'documents', 'memory_suggestions', 'message_embeddings',
-  'messages', 'chats', 'projects', 'settings',
+  'usage_events', 'messages', 'chats', 'projects', 'settings',
 ]
 
 /**

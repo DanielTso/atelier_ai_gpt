@@ -1,4 +1,4 @@
-import { pgTable, text, integer, boolean, timestamp, vector, index, uniqueIndex, jsonb } from 'drizzle-orm/pg-core';
+import { pgTable, text, integer, boolean, timestamp, vector, index, uniqueIndex, jsonb, numeric } from 'drizzle-orm/pg-core';
 
 const idPk = () => integer('id').primaryKey().generatedAlwaysAsIdentity();
 const createdAt = (name = 'created_at') => timestamp(name, { withTimezone: true }).defaultNow();
@@ -216,6 +216,41 @@ export const generatedImages = pgTable('generated_images', {
   createdAt: createdAt(),
 }, (table) => [
   index('idx_generated_images_project_created').on(table.projectId, table.createdAt.desc()),
+]).enableRLS();
+
+// Cost visibility (spec C6): one row per LLM generation, written best-effort by
+// recordUsage() (src/lib/usage.ts) from the six capture sites — chat,
+// artifact-regenerate, summarize, generate-title, classify, memory-suggest.
+// costUsd is computed and FROZEN at write time: a later price change must never
+// silently reprice history. chatId/projectId are SET NULL (not cascade) so
+// spend history survives chat/project deletion — a usage row is a billing
+// record, not chat content (same rationale as memorySuggestions.chatId).
+export const usageEvents = pgTable('usage_events', {
+  id: idPk(),
+  chatId: integer('chat_id').references(() => chats.id, { onDelete: 'set null' }),
+  projectId: integer('project_id').references(() => projects.id, { onDelete: 'set null' }),
+  purpose: text('purpose').notNull(),
+  model: text('model').notNull(),
+  // FRESH (non-cached) input tokens ONLY — NOT the AI SDK's `usage.inputTokens`,
+  // which on Anthropic is the INCLUSIVE sum fresh + cacheRead + cacheWrite
+  // (verified against @ai-sdk/anthropic@3.0.98 dist/index.mjs:1869-1875). The
+  // three input columns here are mutually exclusive, so rollups can SUM them
+  // without double-counting: inputTokens + cacheReadTokens +
+  // cacheCreationTokens = the SDK's inclusive `usage.inputTokens`.
+  inputTokens: integer('input_tokens').notNull().default(0),
+  outputTokens: integer('output_tokens').notNull().default(0),
+  cacheReadTokens: integer('cache_read_tokens').notNull().default(0),
+  // Anthropic's `cache_creation_input_tokens` (spec C6 column name). The AI SDK
+  // surfaces the same quantity as `inputTokenDetails.cacheWriteTokens`.
+  cacheCreationTokens: integer('cache_creation_tokens').notNull().default(0),
+  // numeric, not float: exact decimal storage for money (scale 8 = hundredths
+  // of a microdollar; one token at the cheapest current rate is 1e-6 USD).
+  costUsd: numeric('cost_usd', { precision: 12, scale: 8, mode: 'number' }).notNull(),
+  costEstimated: boolean('cost_estimated').notNull().default(false),
+  createdAt: createdAt(),
+}, (table) => [
+  index('idx_usage_events_chat_id').on(table.chatId),
+  index('idx_usage_events_model_created').on(table.model, table.createdAt),
 ]).enableRLS();
 
 // Auto-memory: throttled Gemini pass proposes durable project facts as pending

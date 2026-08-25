@@ -10,6 +10,7 @@ import { artifactLanguage } from '@/lib/artifacts/code'
 import type { ArtifactType, SheetSpec } from '@/lib/artifacts/types'
 import { artifactRegenerateRequestSchema } from '@/lib/validation'
 import { apiError } from '@/lib/errors'
+import { recordUsage } from '@/lib/usage'
 
 const REGEN_MODEL = 'claude-sonnet-5'
 
@@ -46,7 +47,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       : `You are revising a document artifact titled "${title}". Current content is Markdown:\n\n${artifact.content ?? ''}\n\nApply this instruction: ${body.data.instruction}\n\nReturn ONLY the full updated Markdown — no commentary, no code fences.`
 
     const anthropic = createAnthropic({ apiKey })
-    const { text } = await generateText({ model: anthropic(REGEN_MODEL), prompt, maxOutputTokens: 8000 })
+    const { text, totalUsage } = await generateText({ model: anthropic(REGEN_MODEL), prompt, maxOutputTokens: 8000 })
+
+    // Usage capture (spec C6) — real Claude spend, recorded best-effort as soon
+    // as tokens are spent (a parse/render failure below doesn't un-spend them).
+    void recordUsage({ chatId: artifact.chatId, projectId: artifact.projectId ?? null, purpose: 'artifact-regenerate', model: REGEN_MODEL, usage: totalUsage }).catch(() => {})
 
     // Strip accidental code fences, then coerce to the artifact's format.
     const raw = text.trim().replace(/^```[a-zA-Z]*\n?/, '').replace(/\n?```$/, '').trim()

@@ -7,7 +7,19 @@ vi.mock('@/db', () => ({
   },
 }))
 
-const mockGenerateText = vi.fn().mockResolvedValue({ text: 'Generated summary' })
+// Realistic AI SDK v6 usage shape: inputTokens is the SDK's INCLUSIVE total.
+const FAKE_TOTAL_USAGE = {
+  inputTokens: 500,
+  inputTokenDetails: { noCacheTokens: 500, cacheReadTokens: 0, cacheWriteTokens: 0 },
+  outputTokens: 60,
+  totalTokens: 560,
+}
+
+const mockGenerateText = vi.fn().mockResolvedValue({ text: 'Generated summary', totalUsage: FAKE_TOTAL_USAGE })
+
+// Usage capture (Task 10) — mocked so this file asserts the wiring; recordUsage
+// itself is covered against PGlite in tests/unit/lib/usage.test.ts.
+const mockRecordUsage = vi.fn().mockResolvedValue(undefined)
 
 vi.mock('ai', () => ({
   generateText: (...args: unknown[]) => mockGenerateText(...args),
@@ -52,6 +64,9 @@ async function importRoute() {
   }))
   vi.doMock('@/lib/settings', () => ({
     getGeminiApiKey: () => Promise.resolve('test-key'),
+  }))
+  vi.doMock('@/lib/usage', () => ({
+    recordUsage: (...args: unknown[]) => mockRecordUsage(...args),
   }))
   const mod = await import('@/app/api/summarize/route')
   return mod.POST
@@ -133,5 +148,15 @@ describe('POST /api/summarize', () => {
     const updatedChat = await getChatWithContext(chat.id)
     expect(updatedChat!.summary).toBe('Generated summary')
     expect(updatedChat!.summaryUpToMessageId).toBe(m2.id)
+
+    // Usage capture (Task 10): the generation's totalUsage is handed to
+    // recordUsage with the chat's project id and the pinned housekeeping model.
+    expect(mockRecordUsage).toHaveBeenCalledExactlyOnceWith({
+      chatId: chat.id,
+      projectId: project.id,
+      purpose: 'summarize',
+      model: 'gemini-3.5-flash',
+      usage: FAKE_TOTAL_USAGE,
+    })
   })
 })

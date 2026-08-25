@@ -127,6 +127,13 @@
       "when": 1784581042496,
       "tag": "0017_clumsy_demogoblin",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1787622113758,
+      "tag": "0018_dapper_morg",
+      "breakpoints": true
     }
   ]
 }

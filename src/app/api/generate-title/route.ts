@@ -2,6 +2,7 @@ import { generateText } from 'ai';
 import { createProvider } from '@/lib/providers';
 import { apiError } from '@/lib/errors';
 import { generateTitleRequestSchema } from '@/lib/validation';
+import { recordUsage } from '@/lib/usage';
 
 const TITLE_PROMPT = `Generate a concise title (3-6 words) for this conversation. Return only the title, no quotes or punctuation.`;
 
@@ -34,6 +35,10 @@ export async function POST(req: Request) {
       // internal thinking, so a tight cap (e.g. 50) can leave the visible title empty.
       maxOutputTokens: 512,
     });
+
+    // Usage capture (spec C6) — best-effort. projectId is not loaded by this
+    // route (the chat row is never read here); null rather than an extra query.
+    void recordUsage({ chatId, projectId: null, purpose: 'generate-title', model: modelName, usage: result.totalUsage }).catch(() => {});
 
     // Clean the title: trim, strip surrounding quotes, truncate
     let title = result.text.trim();

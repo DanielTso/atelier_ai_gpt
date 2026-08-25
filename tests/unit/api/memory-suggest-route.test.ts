@@ -5,6 +5,18 @@ vi.mock('@/db', () => ({ get db() { return testDb } }))
 
 const mockGenerateText = vi.fn()
 
+// Realistic AI SDK v6 usage shape: inputTokens is the SDK's INCLUSIVE total.
+const FAKE_TOTAL_USAGE = {
+  inputTokens: 300,
+  inputTokenDetails: { noCacheTokens: 300, cacheReadTokens: 0, cacheWriteTokens: 0 },
+  outputTokens: 30,
+  totalTokens: 330,
+}
+
+// Usage capture (Task 10) — mocked so this file asserts the wiring; recordUsage
+// itself is covered against PGlite in tests/unit/lib/usage.test.ts.
+const mockRecordUsage = vi.fn().mockResolvedValue(undefined)
+
 import { createProject } from '@/app/actions'
 
 function makeRequest(body: Record<string, unknown>) {
@@ -25,6 +37,9 @@ async function importRoute(geminiKey: string | null = 'test-key') {
   vi.doMock('@/lib/settings', () => ({
     getGeminiApiKey: () => Promise.resolve(geminiKey),
   }))
+  vi.doMock('@/lib/usage', () => ({
+    recordUsage: (...args: unknown[]) => mockRecordUsage(...args),
+  }))
   const mod = await import('@/app/api/memory/suggest/route')
   return mod.POST
 }
@@ -33,7 +48,7 @@ describe('POST /api/memory/suggest', () => {
   beforeEach(async () => {
     await createTestDb()
     vi.clearAllMocks()
-    mockGenerateText.mockResolvedValue({ text: '["PE of record is Jane Doe"]' })
+    mockGenerateText.mockResolvedValue({ text: '["PE of record is Jane Doe"]', totalUsage: FAKE_TOTAL_USAGE })
   })
 
   it('returns 400 on invalid body', async () => {
@@ -59,6 +74,16 @@ describe('POST /api/memory/suggest', () => {
     const data = await res.json()
     expect(data.created).toBe(1)
     expect(await getPendingSuggestions(p.id)).toHaveLength(1)
+
+    // Usage capture (Task 10): pinned housekeeping model + the project id
+    // (no chatId in the request -> recorded as null).
+    expect(mockRecordUsage).toHaveBeenCalledExactlyOnceWith({
+      chatId: null,
+      projectId: p.id,
+      purpose: 'memory-suggest',
+      model: 'gemini-3.5-flash',
+      usage: FAKE_TOTAL_USAGE,
+    })
   })
 
   it('dedups facts already present in memory', async () => {
