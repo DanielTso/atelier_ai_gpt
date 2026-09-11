@@ -260,6 +260,22 @@ describe('sumUsage', () => {
     expect(usageTokens(sumUsage([step1, step2])).inputTokens).toBe(1050)
   })
 
+  it('returns a fresh object for a single step rather than aliasing that step usage', () => {
+    const only = {
+      inputTokens: 1300, outputTokens: 400, totalTokens: 1700,
+      inputTokenDetails: { noCacheTokens: 1000, cacheReadTokens: 200, cacheWriteTokens: 100 },
+      outputTokenDetails: { textTokens: 400, reasoningTokens: 0 },
+    } as LanguageModelUsage
+    const sum = sumUsage([only])!
+    // Same numbers...
+    expect(sum).toEqual(only)
+    // ...but never the SDK's own step record, which the caller must not be able
+    // to mutate through the returned value.
+    expect(sum).not.toBe(only)
+    expect(sum.inputTokenDetails).not.toBe(only.inputTokenDetails)
+    expect(sum.outputTokenDetails).not.toBe(only.outputTokenDetails)
+  })
+
   it('keeps a field undefined only when every step lacks it', () => {
     const a = { inputTokens: 10, inputTokenDetails: {}, outputTokenDetails: {} } as LanguageModelUsage
     const b = { inputTokens: 5, outputTokens: 3, inputTokenDetails: {}, outputTokenDetails: {} } as LanguageModelUsage

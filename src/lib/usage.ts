@@ -63,6 +63,17 @@ export function usageTokens(usage: LanguageModelUsage | undefined): TokenBreakdo
   }
 }
 
+// Identity element for the sumUsage reduce: every count absent, so seeding
+// contributes nothing (addCounts(undefined, x) === x) while guaranteeing the
+// result is always a newly built object with the full shape.
+const EMPTY_USAGE: LanguageModelUsage = {
+  inputTokens: undefined,
+  outputTokens: undefined,
+  totalTokens: undefined,
+  inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+  outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
+}
+
 // Add two optional counts: undefined only when BOTH are absent, so a field no
 // step reported stays absent instead of becoming a misleading 0.
 function addCounts(a: number | undefined, b: number | undefined): number | undefined {
@@ -79,6 +90,10 @@ function addCounts(a: number | undefined, b: number | undefined): number | undef
 export function sumUsage(usages: Array<LanguageModelUsage | undefined>): LanguageModelUsage | undefined {
   const present = usages.filter((u): u is LanguageModelUsage => u != null)
   if (present.length === 0) return undefined
+  // Seeded so a single-step run returns a fresh, fully-normalized object rather
+  // than aliasing steps[0].usage (a caller must never be able to mutate the
+  // SDK's own step record through the returned value). addCounts(undefined, x)
+  // is x, so seeding changes no sum.
   return present.reduce((acc, u) => ({
     inputTokens: addCounts(acc.inputTokens, u.inputTokens),
     outputTokens: addCounts(acc.outputTokens, u.outputTokens),
@@ -92,7 +107,7 @@ export function sumUsage(usages: Array<LanguageModelUsage | undefined>): Languag
       textTokens: addCounts(acc.outputTokenDetails?.textTokens, u.outputTokenDetails?.textTokens),
       reasoningTokens: addCounts(acc.outputTokenDetails?.reasoningTokens, u.outputTokenDetails?.reasoningTokens),
     },
-  }))
+  }), EMPTY_USAGE)
 }
 
 /**

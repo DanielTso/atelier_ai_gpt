@@ -557,6 +557,42 @@ describe('POST /api/chat', () => {
         outputTokenDetails: { textTokens: 120, reasoningTokens: 0 },
       },
     })
+
+    // ai@6.0.230 (verified against dist/index.mjs): an abort AFTER at least one
+    // completed step fires onAbort and THEN closes the stream, and the recording
+    // transform's flush — the only caller of onFinish — has no abort guard once a
+    // step was recorded, so onFinish ALSO runs, with a null usage object. Without
+    // a first-wins guard that second call writes an all-zero, cost_estimated:false
+    // row that reads as a genuinely free generation. onAbort's numbers must win.
+    const onFinish = mockStreamText.mock.calls[0][0].onFinish as (r: { text: string; totalUsage?: unknown }) => void
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      onFinish({ text: 'x', totalUsage: { inputTokenDetails: {}, outputTokenDetails: {} } })
+    } finally {
+      logSpy.mockRestore()
+    }
+    expect(mockRecordUsage).toHaveBeenCalledOnce()
+  })
+
+  it('records nothing when the turn aborts before any step completes — unknown tokens must not become a $0 row', async () => {
+    const [project] = await createProject('P')
+    const [chat] = await createChat(project.id, 'Chat')
+
+    const response = await postChat({
+      messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] }],
+      model: 'claude-opus-4-8',
+      chatId: chat.id,
+    })
+    expect(response.status).toBe(200)
+
+    const options = mockStreamText.mock.calls[0][0] as {
+      onAbort?: (e: { steps: { usage: unknown }[] }) => void
+    }
+    // Stop pressed during the first step: the SDK has no completed step to
+    // report, so sumUsage([]) is undefined. A cost 0 / estimated:false row would
+    // be indistinguishable from a free generation — no row is the honest result.
+    options.onAbort!({ steps: [] })
+    expect(mockRecordUsage).not.toHaveBeenCalled()
   })
 
   it('passes an onError to toUIMessageStreamResponse that surfaces a provider 400 message instead of the generic string', async () => {

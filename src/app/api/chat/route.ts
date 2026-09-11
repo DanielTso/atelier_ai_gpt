@@ -200,7 +200,25 @@ export async function POST(req: Request) {
     // fail the chat turn. `after()` keeps the Vercel function alive until the
     // insert lands instead of racing the freeze; outside a request scope (unit
     // tests, other runtimes) it throws, so fall back to fire-and-forget.
+    //
+    // EXACTLY ONE row per turn, enforced here rather than assumed. Verified
+    // against the installed ai@6.0.230: aborting AFTER at least one completed
+    // step fires onAbort({ steps }) and THEN closes the stream, and the
+    // recording transform's `flush` — the only caller of onFinish — has no
+    // abort guard once a step was recorded, so onFinish ALSO runs, handing over
+    // a null usage object (every field undefined). Without this first-wins flag
+    // that second call would write an all-zero cost_estimated:false row, which
+    // reads as a genuinely free generation. onAbort fires first and carries the
+    // real summed tokens, so first-wins keeps the truthful row.
+    let usageRecorded = false;
     const persistUsage = (usage: LanguageModelUsage | undefined) => {
+      // No usage at all (an abort during the very first step: steps === [] so
+      // sumUsage returns undefined) means the tokens are UNKNOWN, not zero. The
+      // ledger must never carry a $0 row for spend it cannot account for — skip
+      // instead, leaving no row rather than a misleading "free" one.
+      if (usage === undefined) return;
+      if (usageRecorded) return;
+      usageRecorded = true;
       const write = () => recordUsage({ chatId: chatId ?? null, projectId, purpose: 'chat', model: modelName, usage }).catch(() => {});
       try {
         after(write);
@@ -230,8 +248,10 @@ export async function POST(req: Request) {
       // tab close, network drop) — otherwise Anthropic keeps generating, and
       // billing, to maxOutputTokens for a response nobody receives.
       abortSignal: req.signal,
-      // An aborted run never reaches onFinish and has no totalUsage; sum the
-      // steps that did complete so the tokens already billed are still recorded.
+      // An aborted run has no totalUsage, so sum the steps that DID complete —
+      // those tokens are already billed. The SDK also runs onFinish afterwards
+      // (with null usage) whenever a step was recorded before the abort; onAbort
+      // wins because it fires first and is the one holding real numbers.
       onAbort: ({ steps }) => {
         persistUsage(sumUsage(steps.map(s => s.usage)));
       },
@@ -245,7 +265,9 @@ export async function POST(req: Request) {
         const markers = (text.match(new RegExp(CITE_RE.source, 'g')) ?? []).length;
         const loose = (text.match(new RegExp(LOOSE_CITE_RE.source, 'g')) ?? []).length - markers;
         console.log('[cite-compliance]', JSON.stringify({ chatId, grounded, docCtx: !!documentContext, markers, loose }));
-        // totalUsage is summed across the 12-step tool loop — never a single step's.
+        // totalUsage is summed across the 12-step tool loop — never a single
+        // step's. On a post-abort onFinish this is the SDK's null usage object
+        // and persistUsage's first-wins guard drops it.
         persistUsage(totalUsage);
       },
     });
