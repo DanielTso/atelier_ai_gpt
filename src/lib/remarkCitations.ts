@@ -5,9 +5,8 @@
 // `<citation-chip>` element. MessagesList's react-markdown `components` map
 // turns that element into the real CitationChip React component.
 //
-// `unist-util-visit` and the `mdast`/`unist` ambient types ship as transitive
-// deps of react-markdown/remark-gfm (see package-lock.json) and resolve at
-// the top-level node_modules — no new dependency added here.
+// `unist-util-visit` and `@types/mdast` are declared dependencies (audit K1 —
+// they used to resolve only as hoisted transitives of react-markdown).
 import { visit } from 'unist-util-visit'
 import type { Root, Text } from 'mdast'
 import {
