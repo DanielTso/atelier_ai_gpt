@@ -574,9 +574,9 @@ describe('models/registry', () => {
 
       const registry = await getModelRegistry()
       const sonnet5 = registry.byId.get('claude-sonnet-5')
-      // EXACT_PRICING (pricing.ts) is 2/10 introductory; STATIC_SEED's own
-      // hardcoded field (seed.ts) has drifted to the stale 3/15 standing rate.
-      expect(sonnet5?.pricing).toEqual({ inputPerMTok: 2, outputPerMTok: 10, estimated: false })
+      // EXACT_PRICING (pricing.ts) and STATIC_SEED (seed.ts) both carry the
+      // 3/15 standing rate — the 2/10 introductory window ended 2026-08-31.
+      expect(sonnet5?.pricing).toEqual({ inputPerMTok: 3, outputPerMTok: 15, estimated: false })
     })
 
     it('prices a synthesized legacy pin via resolvePricing (family-tier, since it has no hardcoded field to drift from)', async () => {

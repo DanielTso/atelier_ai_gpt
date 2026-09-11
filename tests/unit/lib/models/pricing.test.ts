@@ -17,9 +17,9 @@ describe('resolvePricing', () => {
   })
 
   it('uses the exact-id table when there is no override', () => {
-    // Claude Sonnet 5 introductory pricing (through 2026-08-31): 2/10.
+    // Claude Sonnet 5 standing rate: 3/15 (the 2/10 introductory window ended 2026-08-31).
     expect(resolvePricing('claude-sonnet-5', 'sonnet', {})).toEqual({
-      inputPerMTok: 2, outputPerMTok: 10, estimated: false,
+      inputPerMTok: 3, outputPerMTok: 15, estimated: false,
     })
   })
 

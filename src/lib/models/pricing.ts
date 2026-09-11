@@ -11,12 +11,12 @@ export type PricingOverrides = Record<string, { inputPerMTok: number; outputPerM
 export const EXACT_PRICING: Record<string, { inputPerMTok: number; outputPerMTok: number }> = {
   'claude-opus-4-8': { inputPerMTok: 5, outputPerMTok: 25 },
   'claude-fable-5': { inputPerMTok: 10, outputPerMTok: 50 },
-  // Introductory pricing through 2026-08-31 (standing rate is 3/15, reverting
-  // automatically after that date). Costs are frozen into DB rows at write
-  // time, so the intro rate is the more accurate figure for spend today. If
-  // this drifts, the `model-pricing-overrides` settings row can correct it
-  // without a deploy.
-  'claude-sonnet-5': { inputPerMTok: 2, outputPerMTok: 10 },
+  // Standing rate. The $2/$10 introductory window ended 2026-08-31 — this
+  // table has NO date logic, so an expiring rate must be edited by hand on the
+  // day it expires (or corrected without a deploy via the
+  // `model-pricing-overrides` settings row). Costs are frozen into DB rows at
+  // write time; a stale entry here mis-prices history permanently.
+  'claude-sonnet-5': { inputPerMTok: 3, outputPerMTok: 15 },
   'claude-haiku-4-5': { inputPerMTok: 1, outputPerMTok: 5 },
 }
 
