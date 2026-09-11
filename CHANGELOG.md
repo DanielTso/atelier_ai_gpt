@@ -24,7 +24,7 @@ Source: `docs/audits/2026-09-01-codebase-audit.md` (§4 release order). Plan: `d
 
 ## [4.54.0] - Unreleased — Dynamic Model Registry + Cost Visibility
 
-Spec: `docs/specs/2026-07-21-dynamic-model-registry-design.md`. Subagent-driven build, 12 tasks + per-task reviews. The model list used to be hardcoded in the picker route, `MODEL_IDS` validation, 14 personas, the chat-route default, `providers.ts`'s per-model effort special-case, and the effort pill — every Anthropic release meant editing six files by hand. Now a new release just appears, priced, with the right personas following it: verified live against the real Anthropic API, Opus 5 appeared in the picker with zero code change. **Migration `0017` (Grounded & Cited Answers) is already applied to Supabase; migration `0018` (this feature) must be applied BEFORE deploy.**
+Spec: `docs/specs/2026-07-21-dynamic-model-registry-design.md`. Subagent-driven build, 12 tasks + per-task reviews. The model list used to be hardcoded in the picker route, `MODEL_IDS` validation, 14 personas, the chat-route default, `providers.ts`'s per-model effort special-case, and the effort pill — every Anthropic release meant editing six files by hand. Now a new release just appears, priced, with the right personas following it: verified live against the real Anthropic API, Opus 5 appeared in the picker with zero code change. **Migration `0017` (Grounded & Cited Answers) is already applied to Supabase; migration `0018` (this feature) must be applied BEFORE deploy.** *(Done — `0018`–`0021` were applied 2026-09-11; see 4.55.0.)*
 
 ### Added
 
