@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Model routing for agent work:** subagent dispatches (implementers, reviewers, audit lanes) are routed by stakes × work shape per [docs/MODEL_ROUTING.md](docs/MODEL_ROUTING.md) — Sonnet for mechanical execution, Opus for planning and judgment, Fable only for architecture-from-prose and the final whole-branch review. Always pass `model:` explicitly on a dispatch.
 
-**Start a new session by reading the latest `docs/SESSION_HANDOFF_<date>.md`** (currently `docs/SESSION_HANDOFF_2026-09-01.md`) — it is the authoritative current-state bootstrap (where the build is, what shipped, live infra, open items). This CLAUDE.md is the source of truth for *how the code works*; the handoff tracks *where the project is*.
+**Start a new session by reading the latest `docs/SESSION_HANDOFF_<date>.md`** (currently `docs/SESSION_HANDOFF_2026-09-11.md`) — it is the authoritative current-state bootstrap (where the build is, what shipped, live infra, open items). This CLAUDE.md is the source of truth for *how the code works*; the handoff tracks *where the project is*.
 
 ## Build & Development Commands
 
