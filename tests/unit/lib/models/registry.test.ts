@@ -566,17 +566,29 @@ describe('models/registry', () => {
   })
 
   describe('repricing (Anthropic seed/legacy go through resolvePricing; non-Anthropic is carved out)', () => {
-    it('prices seeded Sonnet 5 at the EXACT_PRICING rate, not the (stale) seed rate', async () => {
+    it('reprices the seeded Sonnet 5 through resolvePricing instead of keeping the seed\'s hardcoded field', async () => {
       getAnthropicApiKey.mockResolvedValue('sk-test')
       const fetchMock = fetch as ReturnType<typeof vi.fn>
       fetchMock.mockResolvedValue({ ok: false, status: 500, json: async () => ({}) }) // -> STATIC_SEED
       vi.spyOn(console, 'warn').mockImplementation(() => {})
 
+      // No override: EXACT_PRICING (pricing.ts) and STATIC_SEED (seed.ts) both
+      // carry the 3/15 standing rate, so this case alone can't tell repriceModel()
+      // calling resolvePricing() apart from repriceModel() doing nothing — the
+      // override case below is what actually discriminates the two.
       const registry = await getModelRegistry()
       const sonnet5 = registry.byId.get('claude-sonnet-5')
-      // EXACT_PRICING (pricing.ts) and STATIC_SEED (seed.ts) both carry the
-      // 3/15 standing rate — the 2/10 introductory window ended 2026-08-31.
       expect(sonnet5?.pricing).toEqual({ inputPerMTok: 3, outputPerMTok: 15, estimated: false })
+
+      // A pricing override (7/70) matches neither EXACT_PRICING nor the seed's
+      // own hardcoded field, so only repriceModel() actually invoking
+      // resolvePricing() (rather than e.g. a dropped `return model`) can
+      // produce it here.
+      getServerSetting.mockResolvedValue(JSON.stringify({ 'claude-sonnet-5': { inputPerMTok: 7, outputPerMTok: 70 } }))
+      clearModelRegistryCache()
+      const repriced = await getModelRegistry()
+      const overriddenSonnet5 = repriced.byId.get('claude-sonnet-5')
+      expect(overriddenSonnet5?.pricing).toEqual({ inputPerMTok: 7, outputPerMTok: 70, estimated: false })
     })
 
     it('prices a synthesized legacy pin via resolvePricing (family-tier, since it has no hardcoded field to drift from)', async () => {
