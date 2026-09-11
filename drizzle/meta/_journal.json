@@ -141,6 +141,20 @@
       "when": 1789135468577,
       "tag": "0019_usage_events_indexes_checks",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1789136272779,
+      "tag": "0020_enable_rls_all_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1789136282587,
+      "tag": "0021_revoke_anon_grants",
+      "breakpoints": true
     }
   ]
 }
