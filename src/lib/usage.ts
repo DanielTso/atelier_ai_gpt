@@ -63,6 +63,38 @@ export function usageTokens(usage: LanguageModelUsage | undefined): TokenBreakdo
   }
 }
 
+// Add two optional counts: undefined only when BOTH are absent, so a field no
+// step reported stays absent instead of becoming a misleading 0.
+function addCounts(a: number | undefined, b: number | undefined): number | undefined {
+  if (a == null && b == null) return undefined
+  return (a ?? 0) + (b ?? 0)
+}
+
+/**
+ * Sum the usage of several completed steps into one LanguageModelUsage (the
+ * shape recordUsage/usageTokens already consume). Used by the chat route's
+ * onAbort — the SDK hands it `steps[]` (each with its own usage) but no
+ * totalUsage, since the run never finished. Undefined when no step has usage.
+ */
+export function sumUsage(usages: Array<LanguageModelUsage | undefined>): LanguageModelUsage | undefined {
+  const present = usages.filter((u): u is LanguageModelUsage => u != null)
+  if (present.length === 0) return undefined
+  return present.reduce((acc, u) => ({
+    inputTokens: addCounts(acc.inputTokens, u.inputTokens),
+    outputTokens: addCounts(acc.outputTokens, u.outputTokens),
+    totalTokens: addCounts(acc.totalTokens, u.totalTokens),
+    inputTokenDetails: {
+      noCacheTokens: addCounts(acc.inputTokenDetails?.noCacheTokens, u.inputTokenDetails?.noCacheTokens),
+      cacheReadTokens: addCounts(acc.inputTokenDetails?.cacheReadTokens, u.inputTokenDetails?.cacheReadTokens),
+      cacheWriteTokens: addCounts(acc.inputTokenDetails?.cacheWriteTokens, u.inputTokenDetails?.cacheWriteTokens),
+    },
+    outputTokenDetails: {
+      textTokens: addCounts(acc.outputTokenDetails?.textTokens, u.outputTokenDetails?.textTokens),
+      reasoningTokens: addCounts(acc.outputTokenDetails?.reasoningTokens, u.outputTokenDetails?.reasoningTokens),
+    },
+  }))
+}
+
 /**
  * Frozen-at-write-time cost in USD. Rates are per million tokens:
  *

@@ -19,7 +19,7 @@ vi.mock('@/lib/models/registry', () => ({
   getModelRegistry: () => Promise.resolve({ curated: [], byId: mockById, source: 'seed' }),
 }))
 
-import { estimateCost, usageTokens, recordUsage, CACHE_READ_RATE, CACHE_WRITE_RATE } from '@/lib/usage'
+import { estimateCost, usageTokens, sumUsage, recordUsage, CACHE_READ_RATE, CACHE_WRITE_RATE } from '@/lib/usage'
 import { createProject, createChat } from '@/app/actions'
 
 const PRICING_OPUS: ModelPricing = { inputPerMTok: 5, outputPerMTok: 25, estimated: false }
@@ -231,5 +231,42 @@ describe('recordUsage', () => {
     } finally {
       warnSpy.mockRestore()
     }
+  })
+})
+
+describe('sumUsage', () => {
+  it('returns undefined when there is nothing to sum', () => {
+    expect(sumUsage([])).toBeUndefined()
+    expect(sumUsage([undefined, undefined])).toBeUndefined()
+  })
+
+  it('adds every field across steps, keeping the fresh/cache split intact', () => {
+    const step1 = {
+      inputTokens: 1300, outputTokens: 400, totalTokens: 1700,
+      inputTokenDetails: { noCacheTokens: 1000, cacheReadTokens: 200, cacheWriteTokens: 100 },
+      outputTokenDetails: { textTokens: 400, reasoningTokens: 0 },
+    } as LanguageModelUsage
+    const step2 = {
+      inputTokens: 50, outputTokens: 10, totalTokens: 60,
+      inputTokenDetails: { noCacheTokens: 50, cacheReadTokens: 0, cacheWriteTokens: 0 },
+      outputTokenDetails: { textTokens: 10, reasoningTokens: 0 },
+    } as LanguageModelUsage
+    expect(sumUsage([step1, undefined, step2])).toEqual({
+      inputTokens: 1350, outputTokens: 410, totalTokens: 1760,
+      inputTokenDetails: { noCacheTokens: 1050, cacheReadTokens: 200, cacheWriteTokens: 100 },
+      outputTokenDetails: { textTokens: 410, reasoningTokens: 0 },
+    })
+    // The summed object must feed usageTokens() unchanged: fresh = noCacheTokens.
+    expect(usageTokens(sumUsage([step1, step2])).inputTokens).toBe(1050)
+  })
+
+  it('keeps a field undefined only when every step lacks it', () => {
+    const a = { inputTokens: 10, inputTokenDetails: {}, outputTokenDetails: {} } as LanguageModelUsage
+    const b = { inputTokens: 5, outputTokens: 3, inputTokenDetails: {}, outputTokenDetails: {} } as LanguageModelUsage
+    const sum = sumUsage([a, b])!
+    expect(sum.inputTokens).toBe(15)
+    expect(sum.outputTokens).toBe(3)
+    expect(sum.totalTokens).toBeUndefined()
+    expect(sum.inputTokenDetails.cacheReadTokens).toBeUndefined()
   })
 })

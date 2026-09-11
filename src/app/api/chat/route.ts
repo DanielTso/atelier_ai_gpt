@@ -1,4 +1,4 @@
-import { streamText, convertToModelMessages, stepCountIs, APICallError, type UIMessage } from 'ai';
+import { streamText, convertToModelMessages, stepCountIs, APICallError, type UIMessage, type LanguageModelUsage } from 'ai';
 import { getChatWithContext, getProjectContext, getProjectDocuments } from '@/app/actions';
 import { buildProjectPreamble } from '@/lib/projectPreamble';
 import { retrieveContext } from '@/lib/retrieval';
@@ -12,7 +12,8 @@ import { createReadDocumentTool } from '@/lib/documents/tool';
 import { isStorageConfigured } from '@/lib/storage';
 import { formatPageList } from '@/lib/utils';
 import { CITE_RE, LOOSE_CITE_RE } from '@/lib/citations';
-import { recordUsage } from '@/lib/usage';
+import { after } from 'next/server';
+import { recordUsage, sumUsage } from '@/lib/usage';
 
 // Experience-mode turns run long: web research + several image generations + an
 // HTML artifact build in one streamed response. Make the time budget explicit.
@@ -195,6 +196,19 @@ export async function POST(req: Request) {
     // Convert UIMessage to ModelMessage format for streamText
     const modelMessages = await convertToModelMessages(contextMessages);
 
+    // Usage capture (spec C6). Best-effort: a usage-write failure must never
+    // fail the chat turn. `after()` keeps the Vercel function alive until the
+    // insert lands instead of racing the freeze; outside a request scope (unit
+    // tests, other runtimes) it throws, so fall back to fire-and-forget.
+    const persistUsage = (usage: LanguageModelUsage | undefined) => {
+      const write = () => recordUsage({ chatId: chatId ?? null, projectId, purpose: 'chat', model: modelName, usage }).catch(() => {});
+      try {
+        after(write);
+      } catch {
+        void write();
+      }
+    };
+
     const result = streamText({
       model: selectedModel,
       system: systemPrompt, // System instruction is always first, never trimmed
@@ -212,6 +226,15 @@ export async function POST(req: Request) {
       // never executes (seen live: "Building document…" stuck forever). 32k covers
       // a large page + prose across every Claude model in the picker.
       maxOutputTokens: 32000,
+      // Cancel the upstream generation when the client goes away (Stop button,
+      // tab close, network drop) — otherwise Anthropic keeps generating, and
+      // billing, to maxOutputTokens for a response nobody receives.
+      abortSignal: req.signal,
+      // An aborted run never reaches onFinish and has no totalUsage; sum the
+      // steps that did complete so the tokens already billed are still recorded.
+      onAbort: ({ steps }) => {
+        persistUsage(sumUsage(steps.map(s => s.usage)));
+      },
       // Citation-compliance log (server-side; visible in Vercel logs). Plain
       // streamText onFinish — NOT the createUIMessageStream wrapper, which
       // masks route 500s (documented trap, see the 07-12 handoff).
@@ -222,12 +245,15 @@ export async function POST(req: Request) {
         const markers = (text.match(new RegExp(CITE_RE.source, 'g')) ?? []).length;
         const loose = (text.match(new RegExp(LOOSE_CITE_RE.source, 'g')) ?? []).length - markers;
         console.log('[cite-compliance]', JSON.stringify({ chatId, grounded, docCtx: !!documentContext, markers, loose }));
-        // Usage capture (spec C6). totalUsage is summed across the 12-step tool
-        // loop — never a single step's usage. Best-effort: a usage-write failure
-        // must never fail the chat turn.
-        void recordUsage({ chatId: chatId ?? null, projectId, purpose: 'chat', model: modelName, usage: totalUsage }).catch(() => {});
+        // totalUsage is summed across the 12-step tool loop — never a single step's.
+        persistUsage(totalUsage);
       },
     });
+
+    // Drain the stream server-side regardless of the client: without this the
+    // recorded-transform `flush` that calls onFinish never runs on a cancelled
+    // response, and the usage row is silently lost (audit C1).
+    void result.consumeStream();
 
     return result.toUIMessageStreamResponse({
       sendSources: true,

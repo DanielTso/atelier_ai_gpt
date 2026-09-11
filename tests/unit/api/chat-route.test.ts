@@ -12,8 +12,10 @@ vi.mock('@/db', () => ({
 // Mock AI SDK. toUIMessageStreamResponse is its own top-level mock so tests
 // can inspect the options (notably `onError`) the route passes to it.
 const mockToUIMessageStreamResponse = vi.fn<(...args: unknown[]) => Response>(() => new Response('streamed', { status: 200 }))
+const mockConsumeStream = vi.fn().mockResolvedValue(undefined)
 const mockStreamText = vi.fn().mockReturnValue({
   toUIMessageStreamResponse: (...args: unknown[]) => mockToUIMessageStreamResponse(...args),
+  consumeStream: (...args: unknown[]) => mockConsumeStream(...args),
 })
 const mockConvertToModelMessages = vi.fn().mockResolvedValue([
   { role: 'user', content: 'Hello' },
@@ -123,9 +125,13 @@ describe('POST /api/chat', () => {
     vi.doMock('@/lib/retrieval', () => ({
       retrieveContext: (...args: unknown[]) => mockRetrieveContext(...args),
     }))
-    vi.doMock('@/lib/usage', () => ({
-      recordUsage: (...args: unknown[]) => mockRecordUsage(...args),
-    }))
+    vi.doMock('@/lib/usage', async () => {
+      const real = await vi.importActual<typeof import('@/lib/usage')>('@/lib/usage')
+      return {
+        recordUsage: (...args: unknown[]) => mockRecordUsage(...args),
+        sumUsage: real.sumUsage,
+      }
+    })
     vi.doMock('@/lib/models/registry', () => ({
       resolveRequestedModel: async (requested?: string) => {
         if (!requested) return { modelId: 'claude-opus-4-8', usedFallback: false }
@@ -507,6 +513,49 @@ describe('POST /api/chat', () => {
       purpose: 'chat',
       model: 'claude-opus-4-8',
       usage: totalUsage,
+    })
+  })
+
+  it('wires abortSignal, onAbort and consumeStream so a stopped or disconnected turn still records usage', async () => {
+    const [project] = await createProject('P')
+    const [chat] = await createChat(project.id, 'Chat')
+
+    const response = await postChat({
+      messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] }],
+      model: 'claude-opus-4-8',
+      chatId: chat.id,
+    })
+    expect(response.status).toBe(200)
+
+    const options = mockStreamText.mock.calls[0][0] as {
+      abortSignal?: AbortSignal
+      onAbort?: (e: { steps: { usage: unknown }[] }) => void
+    }
+    // The request's own signal — Next aborts it when the client disconnects.
+    expect(options.abortSignal).toBeInstanceOf(AbortSignal)
+    expect(typeof options.onAbort).toBe('function')
+    // Draining server-side is what guarantees onFinish/onAbort fire at all.
+    expect(mockConsumeStream).toHaveBeenCalledOnce()
+
+    const step = (n: number) => ({
+      inputTokens: n, outputTokens: n, totalTokens: 2 * n,
+      inputTokenDetails: { noCacheTokens: n, cacheReadTokens: 0, cacheWriteTokens: 0 },
+      outputTokenDetails: { textTokens: n, reasoningTokens: 0 },
+    })
+    options.onAbort!({ steps: [{ usage: step(100) }, { usage: step(20) }] })
+
+    // Outside a Next request scope `after()` throws and the route falls back to
+    // a direct call, so the write is observable synchronously here.
+    expect(mockRecordUsage).toHaveBeenCalledExactlyOnceWith({
+      chatId: chat.id,
+      projectId: project.id,
+      purpose: 'chat',
+      model: 'claude-opus-4-8',
+      usage: {
+        inputTokens: 120, outputTokens: 120, totalTokens: 240,
+        inputTokenDetails: { noCacheTokens: 120, cacheReadTokens: 0, cacheWriteTokens: 0 },
+        outputTokenDetails: { textTokens: 120, reasoningTokens: 0 },
+      },
     })
   })
 
