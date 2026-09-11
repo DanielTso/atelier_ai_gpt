@@ -595,6 +595,75 @@ describe('POST /api/chat', () => {
     expect(mockRecordUsage).not.toHaveBeenCalled()
   })
 
+  it('falls back to the summed step usage when onFinish carries a null-usage total (later step threw)', async () => {
+    const [project] = await createProject('P')
+    const [chat] = await createChat(project.id, 'Chat')
+
+    const response = await postChat({
+      messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] }],
+      model: 'claude-opus-4-8',
+      chatId: chat.id,
+    })
+    expect(response.status).toBe(200)
+
+    const options = mockStreamText.mock.calls[0][0] as {
+      onFinish: (e: { text: string; totalUsage: unknown; steps: { usage: unknown }[] }) => void
+    }
+    const step = (n: number) => ({
+      inputTokens: n, outputTokens: n, totalTokens: 2 * n,
+      inputTokenDetails: { noCacheTokens: n, cacheReadTokens: 0, cacheWriteTokens: 0 },
+      outputTokenDetails: { textTokens: n, reasoningTokens: 0 },
+    })
+    // ai@6.0.230: when a LATER step's stream rejects (a hard 429/529 after
+    // maxRetries) the SDK enqueues an `error` part and closes with NO `finish`
+    // part, so onFinish gets createNullLanguageModelUsage() — a DEFINED object
+    // with every count undefined — while `steps` still holds the completed
+    // steps' real usage. Those tokens are billed; freezing a $0 row loses them.
+    const nullTotal = { inputTokenDetails: {}, outputTokenDetails: {} }
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      options.onFinish({ text: 'partial', totalUsage: nullTotal, steps: [{ usage: step(100) }, { usage: step(20) }] })
+    } finally {
+      logSpy.mockRestore()
+    }
+    expect(mockRecordUsage).toHaveBeenCalledExactlyOnceWith({
+      chatId: chat.id,
+      projectId: project.id,
+      purpose: 'chat',
+      model: 'claude-opus-4-8',
+      usage: {
+        inputTokens: 120, outputTokens: 120, totalTokens: 240,
+        inputTokenDetails: { noCacheTokens: 120, cacheReadTokens: 0, cacheWriteTokens: 0 },
+        outputTokenDetails: { textTokens: 120, reasoningTokens: 0 },
+      },
+    })
+  })
+
+  it('records nothing when a null-usage onFinish carries no completed steps', async () => {
+    const [project] = await createProject('P')
+    const [chat] = await createChat(project.id, 'Chat')
+
+    const response = await postChat({
+      messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] }],
+      model: 'claude-opus-4-8',
+      chatId: chat.id,
+    })
+    expect(response.status).toBe(200)
+
+    const options = mockStreamText.mock.calls[0][0] as {
+      onFinish: (e: { text: string; totalUsage: unknown; steps: { usage: unknown }[] }) => void
+    }
+    // Nothing completed, so sumUsage([]) is undefined: the tokens are UNKNOWN,
+    // not zero, and no row is the honest ledger entry.
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      options.onFinish({ text: '', totalUsage: { inputTokenDetails: {}, outputTokenDetails: {} }, steps: [] })
+    } finally {
+      logSpy.mockRestore()
+    }
+    expect(mockRecordUsage).not.toHaveBeenCalled()
+  })
+
   it('passes an onError to toUIMessageStreamResponse that surfaces a provider 400 message instead of the generic string', async () => {
     // streamText() is synchronous — a provider error never reaches the route's
     // try/catch. It's routed through toUIMessageStreamResponse's onError

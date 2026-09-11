@@ -258,7 +258,7 @@ export async function POST(req: Request) {
       // Citation-compliance log (server-side; visible in Vercel logs). Plain
       // streamText onFinish — NOT the createUIMessageStream wrapper, which
       // masks route 500s (documented trap, see the 07-12 handoff).
-      onFinish: ({ text, totalUsage }) => {
+      onFinish: ({ text, totalUsage, steps }) => {
         // markers = parseable (canonical grammar); loose = cite-intended tokens
         // that fail the grammar (near-misses the renderer normalizes or strips).
         // Fresh regexes from .source — never match on the shared /g exports.
@@ -268,7 +268,23 @@ export async function POST(req: Request) {
         // totalUsage is summed across the 12-step tool loop — never a single
         // step's. On a post-abort onFinish this is the SDK's null usage object
         // and persistUsage's first-wins guard drops it.
-        persistUsage(totalUsage);
+        //
+        // But when a LATER step's stream rejects (a hard 429/529 after
+        // maxRetries) the SDK enqueues an `error` part and closes without a
+        // `finish` part, so onFinish is handed a null-usage object — DEFINED,
+        // with every count undefined — while `steps` still carries each
+        // completed step's real usage. Sum the steps in that case so billed
+        // tokens are never frozen as a $0 row. (An abort with zero completed
+        // steps never reaches onFinish at all — flush returns early when no
+        // step was recorded — which is why persistUsage's undefined check can
+        // sit before its guard.)
+        // (`totalUsage?.` — the SDK always passes an object, but optional so a
+        // partial event can degrade to the steps sum rather than throw.)
+        const usage =
+          totalUsage?.inputTokens == null && totalUsage?.outputTokens == null
+            ? sumUsage((steps ?? []).map(s => s.usage))
+            : totalUsage;
+        persistUsage(usage);
       },
     });
 
