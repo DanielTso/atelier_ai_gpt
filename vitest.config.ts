@@ -12,8 +12,10 @@ export default defineConfig({
     environment: 'node',
     globals: true,
     // PGlite's WASM + `vector` extension can take ~12–15s to initialize on a
-    // cold/slow runner; createTestDb() runs in beforeEach, so raise the hook
-    // timeout above the default 10s to avoid flaky CI timeouts.
+    // cold/slow runner. createTestDb() runs in beforeEach (hookTimeout), but a
+    // test body that touches the DB first still pays the boot cost under
+    // parallel load — cover both.
     hookTimeout: 30000,
+    testTimeout: 15000,
   },
 })

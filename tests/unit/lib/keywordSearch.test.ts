@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createTestDb, testDb } from '../../helpers/test-db'
 
 vi.mock('@/db', () => ({
@@ -8,7 +8,6 @@ vi.mock('@/db', () => ({
 import { findChunksByKeyword, identifierTokens } from '@/lib/keywordSearch'
 
 async function seed() {
-  await createTestDb()
   const { projects, documents, documentChunks } = await import('@/db/schema')
   const [p] = await testDb.insert(projects).values({ name: 'p' }).returning()
   const [d] = await testDb.insert(documents).values({
@@ -23,7 +22,6 @@ async function seed() {
 }
 
 async function seedTwoDocs() {
-  await createTestDb()
   const { projects, documents, documentChunks } = await import('@/db/schema')
   const [p] = await testDb.insert(projects).values({ name: 'p' }).returning()
   const [d1] = await testDb.insert(documents).values({
@@ -47,6 +45,8 @@ describe('identifierTokens', () => {
 })
 
 describe('findChunksByKeyword', () => {
+  beforeEach(async () => { await createTestDb() })
+
   it('finds chunks by FTS phrase', async () => {
     const { projectId } = await seed()
     const r = await findChunksByKeyword('storm drain', projectId, 10)
@@ -96,6 +96,8 @@ describe('findChunksByKeyword', () => {
 })
 
 describe('findChunksByKeyword oversized queries', () => {
+  beforeEach(async () => { await createTestDb() })
+
   it('caps a giant query (inline file attachment) instead of failing FTS', async () => {
     const { projectId } = await seed()
     // Seen live: a message carrying an attached contract arrives as 600k+ chars.
