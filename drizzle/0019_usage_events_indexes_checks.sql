@@ -1,0 +1,4 @@
+CREATE INDEX "idx_usage_events_created_at" ON "usage_events" USING btree ("created_at");--> statement-breakpoint
+CREATE INDEX "idx_usage_events_project_id" ON "usage_events" USING btree ("project_id");--> statement-breakpoint
+ALTER TABLE "usage_events" ADD CONSTRAINT "usage_events_purpose_chk" CHECK ("usage_events"."purpose" in ('chat', 'artifact-regenerate', 'summarize', 'generate-title', 'classify', 'memory-suggest'));--> statement-breakpoint
+ALTER TABLE "usage_events" ADD CONSTRAINT "usage_events_tokens_nonneg_chk" CHECK ("usage_events"."input_tokens" >= 0 and "usage_events"."output_tokens" >= 0 and "usage_events"."cache_read_tokens" >= 0 and "usage_events"."cache_creation_tokens" >= 0 and "usage_events"."cost_usd" >= 0);

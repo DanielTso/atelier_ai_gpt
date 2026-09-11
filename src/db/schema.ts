@@ -1,4 +1,5 @@
-import { pgTable, text, integer, boolean, timestamp, vector, index, uniqueIndex, jsonb, numeric } from 'drizzle-orm/pg-core';
+import { pgTable, text, integer, boolean, timestamp, vector, index, uniqueIndex, jsonb, numeric, check } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 const idPk = () => integer('id').primaryKey().generatedAlwaysAsIdentity();
 const createdAt = (name = 'created_at') => timestamp(name, { withTimezone: true }).defaultNow();
@@ -251,6 +252,15 @@ export const usageEvents = pgTable('usage_events', {
 }, (table) => [
   index('idx_usage_events_chat_id').on(table.chatId),
   index('idx_usage_events_model_created').on(table.model, table.createdAt),
+  // Audit D3: the monthly rollup filters created_at alone (unservable by the
+  // composite above), and project_id is SET NULL on project delete — without
+  // this index every project delete seq-scans the fastest-growing table.
+  index('idx_usage_events_created_at').on(table.createdAt),
+  index('idx_usage_events_project_id').on(table.projectId),
+  // Audit D4: purpose is the only free-text enum a rollup groups on. Keep in
+  // sync with the UsagePurpose union in src/lib/usage.ts.
+  check('usage_events_purpose_chk', sql`${table.purpose} in ('chat', 'artifact-regenerate', 'summarize', 'generate-title', 'classify', 'memory-suggest')`),
+  check('usage_events_tokens_nonneg_chk', sql`${table.inputTokens} >= 0 and ${table.outputTokens} >= 0 and ${table.cacheReadTokens} >= 0 and ${table.cacheCreationTokens} >= 0 and ${table.costUsd} >= 0`),
 ]).enableRLS();
 
 // Auto-memory: throttled Gemini pass proposes durable project facts as pending
