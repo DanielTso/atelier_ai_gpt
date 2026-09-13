@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [4.55.0] - Unreleased — Audit remediation, phases 1–2
+## [4.55.0] - 2026-09-13 — Audit remediation, phases 1–2
 
 Source: `docs/audits/2026-09-01-codebase-audit.md` (§4 release order). Plan: `docs/plans/2026-09-11-audit-remediation.md`. Everything that had to land before migration `0018` was applied and before the local commits were pushed. Phase 3 (user-facing fixes) is a separate plan.
 
@@ -16,13 +16,13 @@ Source: `docs/audits/2026-09-01-codebase-audit.md` (§4 release order). Plan: `d
 
 - **`usage_events` schema** (audit D3/D4) — migration `0019`: indexes on `created_at` (the monthly rollup's filter) and `project_id` (the SET NULL FK), plus `usage_events_purpose_chk` (six purposes) and `usage_events_tokens_nonneg_chk`.
 - **Row-level security declared in code** (audit S3) — migration `0020` enables RLS on all 13 tables that previously had it only via the Supabase dashboard; `0021` revokes `anon`/`authenticated` table grants (guarded no-op where those roles don't exist). The app connects as the owning `postgres` role and bypasses RLS; zero policies is intended. **`drizzle-kit push` is now documented as forbidden.**
-- **Dependencies** — `next` 16.2.10 → 16.3.4 — first to 16.2.11 for GHSA-6gpp-xcg3-4w24 (App Router proxy bypass — `src/proxy.ts` is the app's only auth), then to 16.3.4 because two critical unauthenticated RCEs published after the audit (GHSA-p293-qw3h-jr36, Windows-hosted servers; GHSA-2xp9-vwfh-vxw4, Image Optimization API via AVIF — reachable because `/_next/image` is outside the proxy matcher) are fixed only in ≥16.3.3; `eslint-config-next` in lockstep; `@shikijs/themes`, `@shikijs/langs`, `unist-util-visit`, `@types/mdast` declared explicitly (audit K1 — they were imported directly but resolved only as hoisted transitives).
+- **Dependencies** — `next` 16.2.10 → 16.3.4 — first to 16.2.11 for GHSA-6gpp-xcg3-4w24 (App Router proxy bypass — `src/proxy.ts` is the app's only auth), then to 16.3.4 because two critical unauthenticated RCEs published after the audit (GHSA-p293-qw3h-jr36, Windows-hosted servers; GHSA-2xp9-vwfh-vxw4, Image Optimization API via AVIF — reachable because `/_next/image` is outside the proxy matcher) are fixed only in ≥16.3.3; `eslint-config-next` in lockstep; `@shikijs/themes`, `@shikijs/langs`, `unist-util-visit`, `@types/mdast` declared explicitly (audit K1 — they were imported directly but resolved only as hoisted transitives). The lockfile now carries the nested `esbuild` for vitest's `vite` explicitly (`optional: true` platform entries) so `npm ci` passes on both npm 10 (CI) and npm 11 (local) — the Task 6 prune broke CI's install on the first push.
 
 ### Migrations
 
 - `0018`–`0021` applied to Supabase 2026-09-11 (`drizzle.__drizzle_migrations` = 22).
 
-## [4.54.0] - Unreleased — Dynamic Model Registry + Cost Visibility
+## [4.54.0] - 2026-09-13 — Dynamic Model Registry + Cost Visibility
 
 Spec: `docs/specs/2026-07-21-dynamic-model-registry-design.md`. Subagent-driven build, 12 tasks + per-task reviews. The model list used to be hardcoded in the picker route, `MODEL_IDS` validation, 14 personas, the chat-route default, `providers.ts`'s per-model effort special-case, and the effort pill — every Anthropic release meant editing six files by hand. Now a new release just appears, priced, with the right personas following it: verified live against the real Anthropic API, Opus 5 appeared in the picker with zero code change. **Migration `0017` (Grounded & Cited Answers) is already applied to Supabase; migration `0018` (this feature) must be applied BEFORE deploy.** *(Done — `0018`–`0021` were applied 2026-09-11; see 4.55.0.)*
 
@@ -46,7 +46,7 @@ Spec: `docs/specs/2026-07-21-dynamic-model-registry-design.md`. Subagent-driven 
 - Migration `0018` is authored but **not applied** to Supabase — the Usage tab currently throws `relation "usage_events" does not exist` on every open in production until it's migrated. Apply `0018` before the next deploy (`0017`, above, is already applied).
 - A shared `@/db` test mock (so components that statically import `@/app/actions` don't need a per-call-site dynamic-import workaround) is a follow-up, not built here — `ChatContextMenu` uses a dynamic import for this reason; `UsageSettingsTab.tsx`'s static import is the same hazard, currently latent only because no test renders `SettingsDialog`.
 
-## [4.53.0] - Unreleased — Grounded & Cited Answers
+## [4.53.0] - 2026-09-13 — Grounded & Cited Answers
 
 Spec: `docs/specs/2026-07-17-grounded-cited-answers-design.md` (incl. the §C6 scoping amendment of 2026-07-21). Subagent-driven build, 10 tasks + per-task reviews; the closest thing Atelier had to NotebookLM's citation UX, built for construction-grade defensibility. **Migration `0017` has been applied to Supabase.**
 
@@ -62,7 +62,7 @@ Spec: `docs/specs/2026-07-17-grounded-cited-answers-design.md` (incl. the §C6 s
 - **`useLocalStorage` dynamic-key defects** (latent, exposed by scoping): on a key change the previous key's value leaked into empty buckets and could be persisted under the wrong key; initial values were phantom-written on mount. Key changes now re-hydrate/reset correctly and nothing is written until a real set. All nine existing consumers audited unaffected.
 - **Tailwind content-scanner build break**: literal citation-marker examples in source parsed as arbitrary-property utility candidates and emitted unparseable CSS on COLD builds only (warm `.next` caches masked it — including on Vercel). `@source not` now excludes tests/docs/e2e/api/citation-lib files; gate builds are cold from now on.
 
-## [4.52.0] - Unreleased — Audit Batch D safe slice: dependency currency
+## [4.52.0] - 2026-09-13 — Audit Batch D safe slice: dependency currency
 
 ### Changed
 
