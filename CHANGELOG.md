@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.55.1] - 2026-11-12 — Sidebar review findings + relocation handoff
+
+Docs-only release; no code changes. Cut so the repo can be re-cloned off OneDrive with every finding and plan committed.
+
+### Added
+
+- `docs/audits/2026-11-12-sidebar-code-review.md` — Opus 5.5 + Fable 5.2 `/code-review` findings on six untracked files OneDrive restored after their deletion in `6102f14`, each mapped to whether it exists in live code. Only finding 3 does (archived chats unreachable — audit F2).
+- `docs/plans/2026-11-12-sidebar-review-fixes.md` — three-task fix plan: delete the dead cluster and the stale-closure `createChat` action; make archived chats first-class in `page.tsx` lookups, deep links and restore; render them in the sidebar via an `openChat(id, projectId)` action.
+- `docs/SESSION_HANDOFF_2026-11-12.md` — new bootstrap: clone set-up checklist, Gemini outage/recovery status, open items (security patch, PDF attachment size failure, embedding-gap check).
+
 ## [4.55.0] - 2026-09-13 — Audit remediation, phases 1–2
 
 Source: `docs/audits/2026-09-01-codebase-audit.md` (§4 release order). Plan: `docs/plans/2026-09-11-audit-remediation.md`. Everything that had to land before migration `0018` was applied and before the local commits were pushed. Phase 3 (user-facing fixes) is a separate plan.
