@@ -1,5 +1,7 @@
 # Sidebar Review Fixes Implementation Plan
 
+> **Superseded 2026-11-12** by [2026-11-12-audit-remediation.md](2026-11-12-audit-remediation.md) (folded in as Tasks B4/B5, widened to all seven dead `SidebarActions` members per the owner). Kept for its task detail, which B4/B5 reference.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Resolve the 2026-11-12 Fable `/code-review` findings by deleting the resurrected dead sidebar cluster, and fix the one live bug those findings point at — archived chats are unreachable (audit F2) — without reintroducing finding 3 (archived project chats opened without their project).
