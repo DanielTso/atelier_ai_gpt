@@ -28,4 +28,20 @@ describe('useWebIngest', () => {
     expect(seen).toContainEqual({ url: 'https://a', ok: true })
     expect(seen).toContainEqual({ url: 'https://b', ok: false })
   })
+
+  it('an HTML error page reaches onResult as a readable message, not a JSON parse error (U12)', async () => {
+    ;(fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(new Response('<html>Gateway Timeout</html>', { status: 504 }))
+    const { result } = renderHook(() => useWebIngest())
+    const seen: Array<string | undefined> = []
+    await act(async () => {
+      await result.current.ingestUrls(['https://a'], 1, (r) => seen.push(r.error), 1)
+    })
+    expect(seen).toEqual(['Ingest failed (504)'])
+  })
+
+  it('mapSite surfaces an HTML error as a readable message', async () => {
+    ;(fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(new Response('<html>nope</html>', { status: 502 }))
+    const { result } = renderHook(() => useWebIngest())
+    await expect(act(async () => { await result.current.mapSite('https://site.com') })).rejects.toThrow('Map failed (502)')
+  })
 })

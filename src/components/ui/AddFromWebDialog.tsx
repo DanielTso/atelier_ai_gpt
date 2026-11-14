@@ -36,7 +36,8 @@ export function AddFromWebDialog({ open, onOpenChange, projectId, onIngested }: 
     await ingestUrls(urls, projectId, (r) => {
       setDone(d => d + 1)
       if (r.document) { ok++; onIngested() }
-      else toast.error(`Failed: ${r.url}`)
+      // Say why: "no Tavily key" (503) and "empty page" (422) need different fixes.
+      else toast.error(r.error ? `${r.url}: ${r.error}` : `Failed: ${r.url}`)
     }, 3)
     if (ok > 0) toast.success(`Added ${ok} page${ok !== 1 ? 's' : ''} from the web`)
   }

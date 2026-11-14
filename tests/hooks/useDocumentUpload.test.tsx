@@ -37,4 +37,26 @@ describe('useDocumentUpload', () => {
     await expect(act(async () => { await result.current.upload(file, 1) })).rejects.toThrow('storage boom')
     expect(result.current.uploading).toBe(false)
   })
+
+  it('reports a platform 504 from process as a timeout, not a JSON parse error (U12)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('upload-url')) return new Response(JSON.stringify({ documentId: 5, path: 'p', token: 't', bucket: 'b' }), { status: 200 })
+      return new Response('<html><body>An error occurred with your deployment</body></html>', { status: 504, headers: { 'content-type': 'text/html' } })
+    }))
+    const { useDocumentUpload } = await import('@/hooks/useDocumentUpload')
+    const { result } = renderHook(() => useDocumentUpload())
+    const file = new File(['hi'], 'a.txt', { type: 'text/plain' })
+    let message = ''
+    await act(async () => { await result.current.upload(file, 1).catch((e: Error) => { message = e.message }) })
+    expect(message).not.toMatch(/Unexpected token|JSON|SyntaxError/)
+    expect(message).toBe('Processing timed out — the document may still be indexing; refresh in a minute')
+  })
+
+  it("passes the route's own error through when minting the upload URL fails", async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'Project is at capacity' }), { status: 400 })))
+    const { useDocumentUpload } = await import('@/hooks/useDocumentUpload')
+    const { result } = renderHook(() => useDocumentUpload())
+    const file = new File(['hi'], 'a.txt', { type: 'text/plain' })
+    await expect(act(async () => { await result.current.replace(file, 3) })).rejects.toThrow('Project is at capacity')
+  })
 })

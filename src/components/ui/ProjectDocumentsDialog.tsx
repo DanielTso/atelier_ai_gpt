@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import type { DocumentSummary } from '@/types'
 import { useDocumentUpload } from '@/hooks/useDocumentUpload'
+import { readError } from '@/lib/readError'
 import { DocumentCard } from '@/components/chat/DocumentCard'
 import { DocumentPreviewDialog } from '@/components/ui/DocumentPreviewDialog'
 import { AddFromWebDialog } from '@/components/ui/AddFromWebDialog'
@@ -90,12 +91,14 @@ export const ProjectDocumentsDialog = memo(function ProjectDocumentsDialog({
   const handleDelete = async (docId: number, filename: string) => {
     try {
       const res = await fetch(`/api/documents?id=${docId}`, { method: 'DELETE' })
-      if (res.ok) {
-        setDocuments(prev => prev.filter(d => d.id !== docId))
-        toast.success(`Deleted: ${filename}`)
+      if (!res.ok) {
+        toast.error(await readError(res, `Failed to delete ${filename}`))
+        return
       }
+      setDocuments(prev => prev.filter(d => d.id !== docId))
+      toast.success(`Deleted: ${filename}`)
     } catch {
-      toast.error('Failed to delete document')
+      toast.error(`Failed to delete ${filename}`)
     }
   }
 

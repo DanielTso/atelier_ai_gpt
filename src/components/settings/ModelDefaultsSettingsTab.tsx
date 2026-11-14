@@ -2,6 +2,7 @@
 
 import { memo, useState, useEffect } from 'react'
 import { Loader2, Plus, Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { getSetting, setSettings } from '@/app/actions'
 import { usePersonas, type Persona } from '@/hooks/usePersonas'
 import { cn } from '@/lib/utils'
@@ -37,17 +38,23 @@ export const ModelDefaultsSettingsTab = memo(function ModelDefaultsSettingsTab({
 
   useEffect(() => {
     async function load() {
-      const [model, prompt] = await Promise.all([
-        getSetting('default-model'),
-        getSetting('default-system-prompt'),
-      ])
-      if (model) {
-        // Only restore if the model still exists in the available list
-        const isValid = models.some(m => m.model === model)
-        if (isValid) setDefaultModel(model)
+      try {
+        const [model, prompt] = await Promise.all([
+          getSetting('default-model'),
+          getSetting('default-system-prompt'),
+        ])
+        if (model) {
+          // Only restore if the model still exists in the available list
+          const isValid = models.some(m => m.model === model)
+          if (isValid) setDefaultModel(model)
+        }
+        if (prompt) setDefaultSystemPrompt(prompt)
+      } catch {
+        // Show the form with empty defaults rather than an endless spinner.
+        toast.error("Couldn't load the saved defaults")
+      } finally {
+        setLoaded(true)
       }
-      if (prompt) setDefaultSystemPrompt(prompt)
-      setLoaded(true)
     }
     load()
   }, [models])
@@ -59,7 +66,10 @@ export const ModelDefaultsSettingsTab = memo(function ModelDefaultsSettingsTab({
       if (defaultModel) entries.push({ key: 'default-model', value: defaultModel })
       entries.push({ key: 'default-system-prompt', value: defaultSystemPrompt })
       await setSettings(entries)
+      toast.success('Defaults saved')
       onSettingsChanged?.()
+    } catch {
+      toast.error("Couldn't save the defaults")
     } finally {
       setSaving(false)
     }

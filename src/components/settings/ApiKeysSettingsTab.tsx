@@ -1,7 +1,8 @@
 'use client'
 
-import { memo, useState, useEffect } from 'react'
-import { Loader2, Check } from 'lucide-react'
+import { memo, useState, useEffect, useCallback } from 'react'
+import { Loader2, Check, AlertCircle } from 'lucide-react'
+import { toast } from 'sonner'
 import { getApiKeyStatus, setSettings } from '@/app/actions'
 
 interface ApiKeysSettingsTabProps {
@@ -16,10 +17,15 @@ export const ApiKeysSettingsTab = memo(function ApiKeysSettingsTab({
   const [geminiInput, setGeminiInput] = useState('')
   const [tavilyInput, setTavilyInput] = useState('')
   const [saving, setSaving] = useState(false)
+  const [statusFailed, setStatusFailed] = useState(false)
+  const [saveFailed, setSaveFailed] = useState(false)
 
-  useEffect(() => {
-    getApiKeyStatus().then(setStatus)
+  // A failed status call must end the spinner — it used to spin forever (U17).
+  const loadStatus = useCallback(() => {
+    setStatusFailed(false)
+    getApiKeyStatus().then(setStatus, () => setStatusFailed(true))
   }, [])
+  useEffect(() => { loadStatus() }, [loadStatus])
 
   const handleSave = async () => {
     const entries: { key: string; value: string }[] = []
@@ -28,16 +34,43 @@ export const ApiKeysSettingsTab = memo(function ApiKeysSettingsTab({
     if (tavilyInput.trim()) entries.push({ key: 'tavily-api-key', value: tavilyInput.trim() })
     if (entries.length === 0) return
     setSaving(true)
+    setSaveFailed(false)
     try {
       await setSettings(entries)
-      setAnthropicInput('')
-      setGeminiInput('')
-      setTavilyInput('')
+    } catch {
+      // Keep what was typed so the user can retry without re-pasting.
+      setSaveFailed(true)
+      setSaving(false)
+      return
+    }
+    setAnthropicInput('')
+    setGeminiInput('')
+    setTavilyInput('')
+    toast.success('API keys saved')
+    onSettingsChanged?.()
+    try {
       setStatus(await getApiKeyStatus())
-      onSettingsChanged?.()
+    } catch {
+      // The keys are saved; only the Configured chips are stale.
     } finally {
       setSaving(false)
     }
+  }
+
+  if (statusFailed && !status) {
+    return (
+      <div role="alert" className="flex flex-col items-center gap-3 py-12 text-sm text-muted-foreground">
+        <p className="flex items-center gap-2 text-destructive">
+          <AlertCircle className="h-4 w-4" /> Couldn&apos;t load the key status.
+        </p>
+        <button
+          onClick={loadStatus}
+          className="px-3 py-1.5 text-sm rounded-lg border border-border hover:bg-accent text-foreground transition-colors"
+        >
+          Retry
+        </button>
+      </div>
+    )
   }
 
   if (!status) {
@@ -115,6 +148,11 @@ export const ApiKeysSettingsTab = memo(function ApiKeysSettingsTab({
         {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
         Save Keys
       </button>
+      {saveFailed && (
+        <p role="alert" className="flex items-center gap-2 text-sm text-destructive">
+          <AlertCircle className="h-4 w-4" /> Couldn&apos;t save the keys. Try again.
+        </p>
+      )}
     </div>
   )
 })

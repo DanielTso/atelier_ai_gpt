@@ -53,6 +53,27 @@ export function moveRestoredChat<C extends ChatRef>(lists: ChatLists<C>, chatId:
     : { chats: prepend(lists.chats), standaloneChats: lists.standaloneChats, archivedChats }
 }
 
+/** Optimistically re-files a just-moved chat under `projectId` (null = quick
+ * chats), moving it to the front of its destination list in ONE step. The two list
+ * reloads that follow a move land independently; without this the open chat could
+ * be absent from every list in between and the deep-link validator would close it
+ * (the same race moveRestoredChat fixes for restores). An archived chat is updated
+ * in place and stays archived. Returns `lists` itself for an unknown id. */
+export function moveChatInLists<C extends ChatRef>(lists: ChatLists<C>, chatId: number, projectId: number | null): ChatLists<C> {
+  const archived = lists.archivedChats.find(c => c.id === chatId)
+  if (archived) {
+    return { ...lists, archivedChats: lists.archivedChats.map(c => (c.id === chatId ? { ...c, projectId } : c)) }
+  }
+  const chat = lists.chats.find(c => c.id === chatId) ?? lists.standaloneChats.find(c => c.id === chatId)
+  if (!chat) return lists
+  const moved = { ...chat, projectId }
+  const chats = lists.chats.filter(c => c.id !== chatId)
+  const standaloneChats = lists.standaloneChats.filter(c => c.id !== chatId)
+  return projectId == null
+    ? { chats: chat.projectId == null ? lists.chats : chats, standaloneChats: [moved, ...standaloneChats], archivedChats: lists.archivedChats }
+    : { chats: [moved, ...chats], standaloneChats: chat.projectId == null ? standaloneChats : lists.standaloneChats, archivedChats: lists.archivedChats }
+}
+
 /** Drops a deleted project's chats (the DB cascades them) from the project-chat and
  * archived lists so the palette and the deep-link validator stop seeing them (U14).
  * Returns `lists` itself when the project owned none. */

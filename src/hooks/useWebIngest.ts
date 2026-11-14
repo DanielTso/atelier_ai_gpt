@@ -1,6 +1,7 @@
 'use client'
 import { useState, useCallback } from 'react'
 import type { DocumentSummary } from '@/types'
+import { readError } from '@/lib/readError'
 
 /** Map a site + per-page ingest of web URLs into a project (mirrors useDocumentUpload). */
 export function useWebIngest() {
@@ -13,7 +14,7 @@ export function useWebIngest() {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ url, ...opts }),
     })
-    if (!res.ok) throw new Error((await res.json()).error || 'Map failed')
+    if (!res.ok) throw new Error(await readError(res, `Map failed (${res.status})`))
     return res.json()
   }, [])
 
@@ -22,7 +23,7 @@ export function useWebIngest() {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ url, projectId }),
     })
-    if (!res.ok) throw new Error((await res.json()).error || 'Ingest failed')
+    if (!res.ok) throw new Error(await readError(res, `Ingest failed (${res.status})`))
     return (await res.json()).document
   }, [])
 

@@ -915,10 +915,13 @@ export async function saveMessageAttachments(
     // Best-effort: the attachments ARE saved, so a signing failure just leaves
     // `url` null (the client keeps the data URL).
     const urlMap = await createSignedDownloadUrls(uploaded, ATTACHMENT_URL_TTL_SECONDS).catch(() => new Map<string, string>())
+    // One output row per input, in input order: the client pairs them by index, so
+    // a dropped row would shift every later URL onto the wrong image.
     const byPath = new Map(inserted.map(r => [r.storagePath, r]))
-    return rows.flatMap(r => {
+    return rows.map(r => {
       const row = byPath.get(r.storagePath ?? null)
-      return row ? [{ ...row, url: (r.storagePath && urlMap.get(r.storagePath)) || null }] : []
+      if (!row) throw new Error(`Saved attachment row missing for ${r.storagePath}`)
+      return { ...row, url: (r.storagePath && urlMap.get(r.storagePath)) || null }
     })
   }
   const rows = attachments.map(a => ({ messageId, chatId, filename: a.filename, mediaType: a.mediaType, dataUrl: a.dataUrl, fileSize: a.fileSize }))

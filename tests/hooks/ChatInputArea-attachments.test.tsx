@@ -194,6 +194,55 @@ describe('ChatInputArea attachments', () => {
     expect(screen.queryByText('Extracting...')).toBeNull()
   })
 
+  it('an extraction that finishes after a chat switch is dropped, not attached to the new chat', async () => {
+    const pending = deferred<Response>()
+    handler = async (url) => {
+      if (url.startsWith('/api/embed')) return json({ available: false, provider: null, embeddingCount: 0 })
+      if (url === '/api/attachments/upload-url') return json({ error: 'not configured' }, 503)
+      if (url === '/api/extract') return pending.promise
+      throw new Error(`unexpected fetch ${url}`)
+    }
+    const onFilesChange = vi.fn()
+    const props = {
+      input: '', onInputChange: vi.fn(), onFormSubmit: vi.fn(), onKeyDown: vi.fn(), isLoading: false,
+      activeProjectId: null, systemPrompt: null, onSystemPromptChange: vi.fn(), onSystemPromptClick: vi.fn(),
+      attachedFiles: [], onFilesChange, attachedImages: [], onImagesChange: vi.fn(),
+    }
+    const { container, rerender } = render(<ChatInputArea {...props} activeChatId={7} />)
+    attach(container, [new File(['a'], 'a.txt', { type: 'text/plain' })])
+    await screen.findByText('Extracting...')
+
+    rerender(<ChatInputArea {...props} activeChatId={8} />)
+    await act(async () => { pending.resolve(extractOk('a.txt')) })
+
+    await waitFor(() => expect(mockToastError).toHaveBeenCalledWith(expect.stringContaining('a.txt')))
+    expect(onFilesChange).not.toHaveBeenCalled()
+  })
+
+  it('an extraction that finishes after the composer unmounts is dropped', async () => {
+    const pending = deferred<Response>()
+    handler = async (url) => {
+      if (url.startsWith('/api/embed')) return json({ available: false, provider: null, embeddingCount: 0 })
+      if (url === '/api/attachments/upload-url') return json({ error: 'not configured' }, 503)
+      if (url === '/api/extract') return pending.promise
+      throw new Error(`unexpected fetch ${url}`)
+    }
+    const onFilesChange = vi.fn()
+    const { container, unmount } = render(
+      <ChatInputArea
+        input="" onInputChange={vi.fn()} onFormSubmit={vi.fn()} onKeyDown={vi.fn()} isLoading={false}
+        activeChatId={null} activeProjectId={null} systemPrompt={null} onSystemPromptChange={vi.fn()} onSystemPromptClick={vi.fn()}
+        attachedFiles={[]} onFilesChange={onFilesChange} attachedImages={[]} onImagesChange={vi.fn()}
+      />,
+    )
+    attach(container, [new File(['a'], 'a.txt', { type: 'text/plain' })])
+    await screen.findByText('Extracting...')
+    unmount()
+    await act(async () => { pending.resolve(extractOk('a.txt')) })
+    await waitFor(() => expect(mockToastError).toHaveBeenCalled())
+    expect(onFilesChange).not.toHaveBeenCalled()
+  })
+
   it('routes a non-image file through a signed Storage upload, then extracts by storage path', async () => {
     const path = 'attachments/7/pending/0b8f6a52-3c1e-4d7a-9f10-2a6b5c4d3e21-geotech.pdf'
     let extractBody: unknown = null

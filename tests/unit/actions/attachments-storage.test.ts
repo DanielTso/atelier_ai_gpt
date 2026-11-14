@@ -81,6 +81,29 @@ describe('attachment storage lifecycle', () => {
     ])
   })
 
+  it('configured → never returns fewer rows than it was given (the client pairs them by index)', async () => {
+    // Simulate an insert whose RETURNING comes back short: silently dropping the
+    // missing row would shift every later index onto the wrong image.
+    const realInsert = testDb.insert.bind(testDb)
+    const spy = vi.spyOn(testDb, 'insert').mockImplementationOnce(((table: Parameters<typeof realInsert>[0]) => {
+      const builder = realInsert(table)
+      return {
+        values: (rows: Parameters<typeof builder.values>[0]) => {
+          const query = builder.values(rows)
+          return { returning: async () => (await query.returning()).slice(1) }
+        },
+      }
+    }) as never)
+    try {
+      await expect(saveMessageAttachments(messageId, chatId, [
+        { filename: 'a.png', mediaType: 'image/png', dataUrl: 'data:image/png;base64,QUJD', fileSize: 3 },
+        { filename: 'b.png', mediaType: 'image/png', dataUrl: 'data:image/png;base64,QUJD', fileSize: 3 },
+      ])).rejects.toThrow(/attachment/i)
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
   it('configured → a signing failure still saves the rows, with a null url', async () => {
     mockCreateSignedDownloadUrls.mockRejectedValue(new Error('sign failed'))
     const saved = await saveMessageAttachments(messageId, chatId, [

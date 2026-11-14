@@ -21,7 +21,9 @@ interface ProjectLandingPageProps {
   composer: ReactNode
   onSelectChat: (chatId: number) => void
   onAddFiles: () => void
-  onSaveContext: (id: number, fields: { memory?: string; instructions?: string }) => void
+  onSaveContext: (id: number, fields: { memory?: string; instructions?: string }) => void | Promise<unknown>
+  /** The rail accepted a memory suggestion — keep the parent's project state in step (U6). */
+  onMemoryChanged?: (projectId: number, memory: string) => void
   onDeleteProject: (id: number) => void
   onBack: () => void
   onRename: () => void
@@ -47,6 +49,7 @@ export const ProjectLandingPage = memo(function ProjectLandingPage({
   onSelectChat,
   onAddFiles,
   onSaveContext,
+  onMemoryChanged,
   onDeleteProject,
   onBack,
   onRename,
@@ -215,7 +218,7 @@ export const ProjectLandingPage = memo(function ProjectLandingPage({
         </div>
 
         {/* RIGHT: Context rail — keyed by project so local edit state resets per project */}
-        <ProjectContextRail key={project.id} project={project} onSaveContext={onSaveContext} onAddFiles={onAddFiles} excludedDocIds={excludedDocIds} onExcludedChange={onExcludedChange} />
+        <ProjectContextRail key={project.id} project={project} onSaveContext={onSaveContext} onMemoryChanged={onMemoryChanged} onAddFiles={onAddFiles} excludedDocIds={excludedDocIds} onExcludedChange={onExcludedChange} />
       </div>
     </div>
   )

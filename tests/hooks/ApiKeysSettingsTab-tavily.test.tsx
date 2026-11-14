@@ -37,4 +37,24 @@ describe('ApiKeysSettingsTab — Tavily', () => {
     // a Configured chip is present for the Tavily section
     expect(screen.getAllByText(/Configured/i).length).toBeGreaterThanOrEqual(1)
   })
+
+  it('shows an error with a retry, not an endless spinner, when the status call fails (U17)', async () => {
+    getStatus.mockRejectedValueOnce(new Error('db down'))
+    render(<ApiKeysSettingsTab />)
+    expect(await screen.findByText(/couldn.t load the key status/i)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: /retry/i }))
+    expect(await screen.findByPlaceholderText(/tvly-/i)).toBeTruthy()
+  })
+
+  it('keeps the typed key and says so when saving fails', async () => {
+    mockSetSettings.mockRejectedValueOnce(new Error('db down'))
+    const onSettingsChanged = vi.fn()
+    render(<ApiKeysSettingsTab onSettingsChanged={onSettingsChanged} />)
+    const input = await screen.findByPlaceholderText(/tvly-/i)
+    fireEvent.change(input, { target: { value: 'tvly-secret' } })
+    fireEvent.click(screen.getByRole('button', { name: /save keys/i }))
+    expect(await screen.findByText(/couldn.t save the keys/i)).toBeTruthy()
+    expect((input as HTMLInputElement).value).toBe('tvly-secret')
+    expect(onSettingsChanged).not.toHaveBeenCalled()
+  })
 })

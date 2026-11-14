@@ -51,11 +51,15 @@ import { useDialogs } from "@/hooks/useDialogs"
 import { useChatPersistence, type FinishedTurn, type StartedTurn } from "@/hooks/useChatPersistence"
 import { useChatSessions, type TurnFinish, type TurnStart } from "@/hooks/useChatSessions"
 import { useUrlNavSync } from "@/hooks/useUrlNavSync"
-import { findChatById, isStaleChatId, moveRestoredChat, removeProjectChats, type LoadedFlags } from "@/lib/chatLookup"
+import { findChatById, isStaleChatId, moveChatInLists, moveRestoredChat, removeProjectChats, type LoadedFlags } from "@/lib/chatLookup"
 
 // Types matching DB schema roughly
 type Project = { id: number; name: string; memory?: string | null; instructions?: string | null; createdAt?: Date | null; updatedAt?: Date | null }
 type Chat = { id: number; projectId: number | null; title: string; archived?: boolean | null }
+// The composer's contents, taken (and cleared) at the start of a send.
+type ComposerSnapshot = { input: string; files: AttachedFile[]; images: AttachedImage[] }
+// A message handed to its chat session; `turn` resolves when the reply ends.
+type StartedSend = { turn: Promise<void> }
 
 export default function Home() {
   const { setTheme, theme } = useTheme()
@@ -100,6 +104,9 @@ export default function Home() {
   // Which chat lists have finished their first load (success or failure). The
   // deep-link validator waits for all three: the server actions resolve one
   // round-trip apart, so judging an id against a partial set clears valid links.
+  // A FAILED load counts as loaded on purpose: otherwise one failing list would
+  // hold every stale id open forever. The cost — a deep link into a list that
+  // failed to load is cleared — is visible: the load's error banner says why.
   const [chatListsLoaded, setChatListsLoaded] = useState<LoadedFlags>({ chats: false, standalone: false, archived: false })
   const [activeChatId, setActiveChatId] = useState<number | null>(null)
   // "New chat" started inside a project: show a compose surface (not the project
@@ -182,6 +189,7 @@ export default function Home() {
     setActiveProjectId,
     setActiveChatId,
   })
+  const suppressNextNavPush = navSync.suppressNextPush
 
   // Auto-name a still-"New Chat" once it has a full exchange. Logic lives in useChatTitle;
   // page state is injected via stable callbacks.
@@ -396,19 +404,18 @@ export default function Home() {
     }
   }, [chatError])
 
-  // Auto-dismiss errors after 5 seconds
-  useEffect(() => {
-    if (error) {
-      const timeout = setTimeout(() => setError(null), 5000)
-      return () => clearTimeout(timeout)
-    }
-  }, [error])
+  // Errors stay on screen until dismissed or replaced — no auto-dismiss (F6 /
+  // prior C9): a failure the user glanced away from must not vanish unseen.
 
   // Helper Functions defined with useCallback
-  const fetchModels = useCallback(async () => {
+  // `fresh` bypasses the browser cache: /api/models is served with a 5-minute
+  // max-age, so after an API-key change a cached (possibly empty) list would
+  // hide the new models (U8). 'reload' also re-primes the cache, so a page
+  // reload right after a key change sees the new list too ('no-store' would not).
+  const fetchModels = useCallback(async ({ fresh = false }: { fresh?: boolean } = {}) => {
     try {
       setError(null)
-      const res = await fetch("/api/models")
+      const res = await fetch("/api/models", fresh ? { cache: 'reload' } : undefined)
       if (!res.ok) throw new Error("Failed to fetch models")
 
       const data = await res.json()
@@ -432,6 +439,7 @@ export default function Home() {
       setError("Failed to load models. Please check your configuration.")
     }
   }, [])
+  const refreshModels = useCallback(() => fetchModels({ fresh: true }), [fetchModels])
 
   const loadProjects = useCallback(async () => {
     try {
@@ -552,8 +560,13 @@ export default function Home() {
 
   const refreshChatPreviews = useCallback(async () => {
     if (activeProjectId) {
-      const previews = await getProjectChatPreviews(activeProjectId)
-      setChatPreviews(previews)
+      try {
+        const previews = await getProjectChatPreviews(activeProjectId)
+        setChatPreviews(previews)
+      } catch (e) {
+        // Best-effort refresh after an action that already succeeded.
+        console.error(e)
+      }
     }
   }, [activeProjectId])
 
@@ -805,26 +818,44 @@ export default function Home() {
     applyGroundedDefault(!!defaultPersona.grounded)
   }, [resetGroundedPick, applyGroundedDefault, defaultPersona.grounded])
 
-  // Shared tail of every send path: snapshot the composer, clear it, and send the
-  // message through the TARGET chat's own session. The chat id is passed in rather
-  // than read from state — a chat created a moment ago (deferred create) is not the
-  // "active" one in this render yet, and the turn must be bound to it regardless:
-  // its session starts with an empty transcript, and /api/chat saves both messages
-  // to that chat.
-  const sendComposerMessage = useCallback(async (chatId: number) => {
-    // Images wait for the server to report the saved user row (turn pipeline).
-    if (attachedImages.length > 0) pendingImagesRef.current.set(chatId, [...attachedImages])
-    else pendingImagesRef.current.delete(chatId)
-    groundedAtSendRef.current.set(chatId, groundedRef.current)
+  // Double-send guard (U5). Set synchronously when a send starts and released
+  // once the message is handed to its chat session — NOT when the reply ends:
+  // sending from another chat while a reply streams in the background is allowed.
+  // Without it, a second Enter during the deferred-create round-trips created a
+  // second chat. The composer is also cleared before the first await, so a
+  // second keypress finds nothing to send.
+  const sendingRef = useRef(false)
 
-    const message = buildComposerMessage(input, attachedFiles, attachedImages)
-
+  // Snapshot the composer and clear it — synchronously, before any await.
+  const takeComposer = useCallback((): ComposerSnapshot => {
+    const snapshot = { input, files: attachedFiles, images: attachedImages }
     setInput("")
     setAttachedFiles([])
     setAttachedImages([])
+    return snapshot
+  }, [input, attachedFiles, attachedImages])
 
-    await sendToChat(chatId, message)
-  }, [input, attachedFiles, attachedImages, sendToChat])
+  // A send that failed before reaching a chat puts its message back, unless the
+  // user has already started typing or attaching a new one.
+  const restoreComposer = useCallback((snapshot: ComposerSnapshot) => {
+    setInput(prev => prev || snapshot.input)
+    setAttachedFiles(prev => (prev.length > 0 ? prev : snapshot.files))
+    setAttachedImages(prev => (prev.length > 0 ? prev : snapshot.images))
+  }, [])
+
+  // Shared tail of every send path: send the composer snapshot through the TARGET
+  // chat's own session. The chat id is passed in rather than read from state — a
+  // chat created a moment ago (deferred create) is not the "active" one in this
+  // render yet, and the turn must be bound to it regardless: its session starts
+  // with an empty transcript, and /api/chat saves both messages to that chat.
+  // Returns the turn's promise (it resolves when the reply ends).
+  const sendComposerMessage = useCallback((chatId: number, snapshot: ComposerSnapshot) => {
+    // Images wait for the server to report the saved user row (turn pipeline).
+    if (snapshot.images.length > 0) pendingImagesRef.current.set(chatId, [...snapshot.images])
+    else pendingImagesRef.current.delete(chatId)
+    groundedAtSendRef.current.set(chatId, groundedRef.current)
+    return sendToChat(chatId, buildComposerMessage(snapshot.input, snapshot.files, snapshot.images))
+  }, [sendToChat])
 
   // Refuse a send whose /api/chat body would pass the platform's request limit —
   // measured as the real request: the target chat's whole live transcript (earlier
@@ -849,10 +880,25 @@ export default function Home() {
   }, [input, attachedFiles, attachedImages, peekChatMessages])
 
   const handleSendMessage = async () => {
-    if ((!input.trim() && attachedFiles.length === 0 && attachedImages.length === 0) || isLoading) return
-    // Checked before creating a chat, so a refused send leaves nothing behind.
+    if ((!input.trim() && attachedFiles.length === 0 && attachedImages.length === 0) || isLoading || sendingRef.current) return
+    // Checked before creating a chat, so a refused send leaves nothing behind
+    // (and the composer keeps the message).
     if (refuseOversizedSend(activeChatId)) return
+    sendingRef.current = true
+    const composed = takeComposer()
+    let started: StartedSend | null
+    try {
+      started = await startSend(composed)
+    } finally {
+      sendingRef.current = false
+    }
+    await started?.turn
+  }
 
+  // Resolves once the message is handed to a chat session — the turn itself is
+  // wrapped so awaiting this doesn't wait for the reply — or to null when the
+  // chat could not be created (the composer is restored).
+  const startSend = async (composed: ComposerSnapshot): Promise<StartedSend | null> => {
     // No chat yet → create it now (deferred create). In a project compose, create the
     // chat in that project and persist the (default) system prompt; otherwise a quick
     // standalone chat. Either way nothing is persisted until this first message.
@@ -887,11 +933,12 @@ export default function Home() {
       } catch (e) {
         console.error(e)
         setError("Failed to create chat.")
-        return
+        restoreComposer(composed)
+        return null
       }
     }
 
-    await sendComposerMessage(targetChatId)
+    return { turn: sendComposerMessage(targetChatId, composed) }
   }
 
   const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -916,13 +963,9 @@ export default function Home() {
   // Project-landing composer: create a chat in the CURRENT project (applying its
   // persona/model defaults), open it, and send the first message — all inline using
   // local values to avoid setState-then-read timing bugs (mirrors handleSendMessage).
-  const handleProjectLandingCompose = useCallback(async () => {
-    if ((!input.trim() && attachedFiles.length === 0 && attachedImages.length === 0) || isLoading) return
-    // Always a new chat: only the message itself is measured.
-    if (refuseOversizedSend(null)) return
-    const projectId = activeProjectIdRef.current
-    if (projectId == null) return
-
+  // Resolves once the message is handed to the new chat's session (null when the
+  // chat could not be created — the composer is restored).
+  const startLandingSend = useCallback(async (projectId: number, composed: ComposerSnapshot): Promise<StartedSend | null> => {
     // An explicit persona picked in this composer wins (currentSystemPrompt is
     // null on the landing surface unless the user picked one — the chat-switch
     // effect clears it whenever activeChatId goes null). Project defaults only
@@ -974,11 +1017,31 @@ export default function Home() {
     } catch (e) {
       console.error(e)
       setError("Failed to create chat.")
-      return
+      restoreComposer(composed)
+      return null
     }
 
-    await sendComposerMessage(newChatId)
-  }, [input, attachedFiles, attachedImages, isLoading, getPersonaById, sendComposerMessage, refuseOversizedSend, currentSystemPrompt, applyGroundedDefault, models])
+    return { turn: sendComposerMessage(newChatId, composed) }
+  }, [getPersonaById, sendComposerMessage, restoreComposer, currentSystemPrompt, applyGroundedDefault, models])
+
+  const handleProjectLandingCompose = useCallback(async () => {
+    if ((!input.trim() && attachedFiles.length === 0 && attachedImages.length === 0) || isLoading || sendingRef.current) return
+    // Always a new chat: only the message itself is measured.
+    if (refuseOversizedSend(null)) return
+    const projectId = activeProjectIdRef.current
+    if (projectId == null) return
+    // Same double-send guard as handleSendMessage, over a wider window (defaults
+    // load + create + system prompt, all before the message is handed over).
+    sendingRef.current = true
+    const composed = takeComposer()
+    let started: StartedSend | null
+    try {
+      started = await startLandingSend(projectId, composed)
+    } finally {
+      sendingRef.current = false
+    }
+    await started?.turn
+  }, [input, attachedFiles, attachedImages, isLoading, refuseOversizedSend, takeComposer, startLandingSend])
 
   const handleProjectLandingKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -1014,15 +1077,20 @@ export default function Home() {
         setChats(next.chats)
         setArchivedChats(next.archivedChats)
       }
-      if (findChatById(activeChatIdRef.current, lists)?.projectId === targetId) setActiveChatId(null)
-      if (activeProjectId === targetId) setActiveProjectId(null)
+      const closesChat = findChatById(activeChatIdRef.current, lists)?.projectId === targetId
+      const closesProject = activeProjectIdRef.current === targetId
+      // Leaving a deleted project's page is a correction, not a navigation: replace
+      // the URL so Back doesn't land on the dead ?project= / ?chat= entry.
+      if (closesChat || closesProject) suppressNextNavPush()
+      if (closesChat) setActiveChatId(null)
+      if (closesProject) setActiveProjectId(null)
       dialogs.deleteProject.close()
       toast.success("Project deleted")
     } catch (e) {
       console.error("Delete project failed:", e)
       toast.error("Failed to delete project")
     }
-  }, [dialogs.deleteProject, activeProjectId])
+  }, [dialogs.deleteProject, suppressNextNavPush])
 
   const handleRenameProject = useCallback(async (id: number, name: string) => {
     try {
@@ -1078,7 +1146,13 @@ export default function Home() {
   const handleConfirmRename = useCallback(async (newTitle: string) => {
     if (!dialogs.renameChat.target) return
     const target = dialogs.renameChat.target
-    await updateChatTitle(target.id, newTitle)
+    try {
+      await updateChatTitle(target.id, newTitle)
+    } catch (e) {
+      console.error("Rename failed:", e)
+      toast.error("Failed to rename chat")
+      return
+    }
     setChats(prev => prev.map(c => c.id === target.id ? { ...c, title: newTitle } : c))
     setStandaloneChats(prev => prev.map(c => c.id === target.id ? { ...c, title: newTitle } : c))
     setArchivedChats(prev => prev.map(c => c.id === target.id ? { ...c, title: newTitle } : c))
@@ -1088,8 +1162,21 @@ export default function Home() {
   }, [dialogs.renameChat, refreshChatPreviews])
 
   const handleMoveChat = useCallback(async (chatId: number, projectId: number | null) => {
-    await moveChatToProject(chatId, projectId)
-    // Refresh all chat lists
+    try {
+      await moveChatToProject(chatId, projectId)
+    } catch (e) {
+      console.error("Move failed:", e)
+      toast.error("Failed to move chat")
+      return
+    }
+    // Move it between lists now, in one batched tick (as handleRestoreChat does):
+    // the two reloads below land independently, and the moved chat (possibly the
+    // open one) must never be absent from every list in between or the validator
+    // would close it.
+    const next = moveChatInLists({ chats: chatsRef.current, standaloneChats: standaloneChatsRef.current, archivedChats: archivedChatsRef.current }, chatId, projectId)
+    setChats(next.chats)
+    setStandaloneChats(next.standaloneChats)
+    setArchivedChats(next.archivedChats)
     loadStandaloneChats()
     loadAllProjectChats()
     refreshChatPreviews()
@@ -1097,7 +1184,13 @@ export default function Home() {
   }, [loadAllProjectChats, loadStandaloneChats, refreshChatPreviews])
 
   const handleArchiveChat = useCallback(async (chatId: number) => {
-    await archiveChat(chatId)
+    try {
+      await archiveChat(chatId)
+    } catch (e) {
+      console.error("Archive failed:", e)
+      toast.error("Failed to archive chat")
+      return
+    }
     setChats(prev => prev.filter(c => c.id !== chatId))
     setStandaloneChats(prev => prev.filter(c => c.id !== chatId))
     if (activeChatId === chatId) setActiveChatId(null)
@@ -1109,7 +1202,13 @@ export default function Home() {
   }, [activeChatId, loadArchivedChats, refreshChatPreviews])
 
   const handleRestoreChat = useCallback(async (chatId: number) => {
-    await restoreChat(chatId)
+    try {
+      await restoreChat(chatId)
+    } catch (e) {
+      console.error("Restore failed:", e)
+      toast.error("Failed to restore chat")
+      return
+    }
     // Move it between lists now, in one batched tick: the three reloads below land
     // independently, and the restored chat (possibly the open one) must never be
     // absent from all three in between or the validator would close it.
@@ -1238,9 +1337,23 @@ export default function Home() {
     toast.success(`Switched to ${suggestedPersona.name}`)
   }, [suggestedPersona, handleSaveSystemPrompt, dismissSuggestion, models])
 
+  // Rejects on failure (after a toast) so the rail can show "Not saved".
   const handleSaveProjectContext = useCallback(async (id: number, fields: { memory?: string; instructions?: string }) => {
-    await updateProjectContext(id, fields)
+    try {
+      await updateProjectContext(id, fields)
+    } catch (e) {
+      console.error("Save project context failed:", e)
+      toast.error("Couldn't save the project context")
+      throw e
+    }
     setProjects(prev => prev.map(p => p.id === id ? { ...p, ...fields, updatedAt: new Date() } : p))
+  }, [])
+
+  // The rail accepted a memory suggestion server-side. Mirror it into page state:
+  // the rail remounts from `projects`, and a stale copy would be shown — then
+  // debounce-saved back over the accepted fact — on the next visit (U6).
+  const handleMemoryChanged = useCallback((projectId: number, memory: string) => {
+    setProjects(prev => prev.map(p => p.id === projectId ? { ...p, memory } : p))
   }, [])
 
   useEffect(() => { getSetting('display-name').then(v => { if (v) setDisplayName(v) }).catch(() => {}) }, [])
@@ -1308,6 +1421,17 @@ export default function Home() {
         >
           <Menu className="h-5 w-5" />
         </button>
+        {/* Error banner — page level, so an error raised on Home, a project landing
+            or a tab view is shown too (F6). Stays until dismissed or replaced. */}
+        {error && (
+          <div role="alert" className="shrink-0 flex items-center gap-2 border-b border-destructive/30 bg-destructive/10 px-6 py-2 text-sm text-destructive max-md:pl-14">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span className="min-w-0 flex-1">{error}</span>
+            <button onClick={() => setError(null)} className="shrink-0 hover:opacity-80">
+              Dismiss
+            </button>
+          </div>
+        )}
         <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={viewKey}
@@ -1344,17 +1468,6 @@ export default function Home() {
               projectName={currentChatProjectName}
               onProjectClick={currentChat?.projectId ? () => { setActiveView('home'); handleSelectProject(currentChat.projectId!); setActiveChatId(null); } : undefined}
             />
-
-            {/* Error Banner */}
-            {error && (
-              <div className="bg-destructive/10 border-b border-destructive/30 px-6 py-2 flex items-center gap-2 text-sm text-destructive">
-                <AlertCircle className="h-4 w-4" />
-                <span>{error}</span>
-                <button onClick={() => setError(null)} className="ml-auto hover:opacity-80">
-                  Dismiss
-                </button>
-              </div>
-            )}
 
             {/* Messages */}
             <div ref={attachScrollContainer} className={cn(
@@ -1483,6 +1596,7 @@ export default function Home() {
             onSelectChat={setActiveChatId}
             onAddFiles={() => handleOpenProjectDocuments(activeProjectId)}
             onSaveContext={handleSaveProjectContext}
+            onMemoryChanged={handleMemoryChanged}
             onDeleteProject={handleRequestDeleteProject}
             onBack={() => { setActiveView('projects'); setActiveChatId(null); setActiveProjectId(null) }}
             onRename={() => handleRequestRenameProject(activeProjectId)}
@@ -1607,7 +1721,7 @@ export default function Home() {
         open={dialogs.settings.isOpen}
         onOpenChange={dialogs.settings.setOpen}
         models={models}
-        onSettingsChanged={fetchModels}
+        onSettingsChanged={refreshModels}
         fontSize={fontSize}
         onFontSizeChange={setFontSize}
         messageDensity={messageDensity}

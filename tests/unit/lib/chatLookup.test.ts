@@ -3,6 +3,7 @@ import {
   findChatById,
   isStaleChatId,
   moveRestoredChat,
+  moveChatInLists,
   removeProjectChats,
   type ChatLists,
   type LoadedFlags,
@@ -120,5 +121,37 @@ describe('removeProjectChats (U14)', () => {
 
   it('returns the identical lists object when the project owns no chats', () => {
     expect(removeProjectChats(lists, 404)).toBe(lists)
+  })
+})
+
+describe('moveChatInLists (handleMoveChat race)', () => {
+  it('moves a quick chat to the front of chats under its new project, in one step', () => {
+    const next = moveChatInLists(lists, 2, 5)
+    expect(next.standaloneChats.map(c => c.id)).toEqual([])
+    expect(next.chats).toEqual([{ id: 2, projectId: 5 }, p1])
+    expect(next.archivedChats).toBe(lists.archivedChats)
+  })
+
+  it('moves a project chat to quick chats when the target is null', () => {
+    const next = moveChatInLists(lists, 1, null)
+    expect(next.chats).toEqual([])
+    expect(next.standaloneChats).toEqual([{ id: 1, projectId: null }, s1])
+  })
+
+  it('re-files a project chat under another project without leaving chats', () => {
+    const next = moveChatInLists(lists, 1, 6)
+    expect(next.chats).toEqual([{ id: 1, projectId: 6 }])
+    expect(next.standaloneChats).toBe(lists.standaloneChats)
+  })
+
+  it('updates an archived chat in place (it stays archived)', () => {
+    const next = moveChatInLists(lists, 9, null)
+    expect(next.archivedChats).toEqual([{ id: 9, projectId: null, archived: true }])
+    expect(next.chats).toBe(lists.chats)
+    expect(next.standaloneChats).toBe(lists.standaloneChats)
+  })
+
+  it('returns the identical lists object for an unknown id', () => {
+    expect(moveChatInLists(lists, 404, 5)).toBe(lists)
   })
 })

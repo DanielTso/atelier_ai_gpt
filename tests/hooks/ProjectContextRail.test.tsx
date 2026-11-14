@@ -9,6 +9,8 @@ const { mockGetPending, mockAccept, mockDismiss } = vi.hoisted(() => ({
   mockAccept: vi.fn(async () => ({ memory: 'Hub\nNew fact' })),
   mockDismiss: vi.fn(async () => undefined),
 }))
+const { mockToastError, mockToastSuccess } = vi.hoisted(() => ({ mockToastError: vi.fn(), mockToastSuccess: vi.fn() }))
+vi.mock('sonner', () => ({ toast: { error: (...a: unknown[]) => mockToastError(...a), success: (...a: unknown[]) => mockToastSuccess(...a) } }))
 vi.mock('@/app/actions', () => ({
   getPendingSuggestions: (...a: unknown[]) => mockGetPending(...(a as [])),
   acceptSuggestion: (...a: unknown[]) => mockAccept(...(a as [])),
@@ -18,7 +20,7 @@ vi.mock('@/app/actions', () => ({
 beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ documents: [] }) })) as never)
 })
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks() })
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.clearAllMocks() })
 
 import { ProjectContextRail } from '@/components/chat/ProjectContextRail'
 import type { DocumentSummary } from '@/types'
@@ -65,6 +67,52 @@ describe('ProjectContextRail', () => {
     fireEvent.click(await screen.findByTitle('Accept'))
     await waitFor(() => expect(mockAccept).toHaveBeenCalledWith(7, undefined))
     await waitFor(() => expect((screen.getByLabelText('Memory') as HTMLTextAreaElement).value).toBe('Hub\nNew fact'))
+  })
+
+  it('reports an accepted suggestion to the parent so its project state matches (U6)', async () => {
+    mockGetPending.mockResolvedValueOnce([{ id: 7, text: 'PE is Jane Doe', createdAt: null }])
+    const onMemoryChanged = vi.fn()
+    render(<ProjectContextRail project={{ id: 1, name: 'Drover', memory: 'Hub', instructions: '' }} onSaveContext={vi.fn()} onMemoryChanged={onMemoryChanged} onAddFiles={vi.fn()} />)
+    fireEvent.click(await screen.findByTitle('Accept'))
+    await waitFor(() => expect(onMemoryChanged).toHaveBeenCalledWith(1, 'Hub\nNew fact'))
+  })
+
+  it('shows Saved after a debounced save lands, and a failure when it does not', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    let fail = false
+    const onSaveContext = vi.fn(async () => { if (fail) throw new Error('db down') })
+    render(<ProjectContextRail project={{ id: 1, name: 'Drover', memory: '', instructions: '' }} onSaveContext={onSaveContext} onAddFiles={vi.fn()} />)
+    fireEvent.change(screen.getByLabelText('Memory'), { target: { value: 'A' } })
+    vi.advanceTimersByTime(700)
+    expect(await screen.findByText('Saved')).toBeTruthy()
+    fail = true
+    fireEvent.change(screen.getByLabelText('Memory'), { target: { value: 'AB' } })
+    vi.advanceTimersByTime(700)
+    expect(await screen.findByText('Not saved')).toBeTruthy()
+    vi.useRealTimers()
+  })
+
+  it('toasts the server reason when a document delete fails (U12)', async () => {
+    const doc = readyDoc(4, 'plan.pdf')
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => init?.method === 'DELETE'
+      ? new Response(JSON.stringify({ error: 'Document is still processing' }), { status: 409 })
+      : new Response(JSON.stringify({ documents: [doc] }), { status: 200 })) as never)
+    render(<ProjectContextRail project={{ id: 1, name: 'Drover', memory: '', instructions: '' }} onSaveContext={vi.fn()} onAddFiles={vi.fn()} />)
+    await screen.findByText('plan.pdf')
+    fireEvent.click(screen.getByTitle('Delete document'))
+    await waitFor(() => expect(mockToastError).toHaveBeenCalledWith('Document is still processing'))
+    expect(screen.getByText('plan.pdf')).toBeTruthy()
+  })
+
+  it('toasts, not a JSON parse error, when the delete hits an HTML error page', async () => {
+    const doc = readyDoc(4, 'plan.pdf')
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => init?.method === 'DELETE'
+      ? new Response('<html>Bad gateway</html>', { status: 502 })
+      : new Response(JSON.stringify({ documents: [doc] }), { status: 200 })) as never)
+    render(<ProjectContextRail project={{ id: 1, name: 'Drover', memory: '', instructions: '' }} onSaveContext={vi.fn()} onAddFiles={vi.fn()} />)
+    await screen.findByText('plan.pdf')
+    fireEvent.click(screen.getByTitle('Delete document'))
+    await waitFor(() => expect(mockToastError).toHaveBeenCalledWith('Failed to delete plan.pdf'))
   })
 
   it('dismisses a suggestion', async () => {

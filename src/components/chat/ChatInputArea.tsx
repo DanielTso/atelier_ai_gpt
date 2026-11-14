@@ -128,6 +128,18 @@ export const ChatInputArea = memo(function ChatInputArea({
   const [extractingCount, setExtractingCount] = useState(0)
   const isExtracting = extractingCount > 0
 
+  // Each extraction belongs to the chat it started in. If the user switches chats
+  // (or leaves this composer — every view swap remounts it) before it finishes,
+  // its result is dropped: the attachment list is page-level state, so a late
+  // result would otherwise land in whatever composer is on screen by then.
+  const activeChatIdRef = useRef(activeChatId)
+  activeChatIdRef.current = activeChatId
+  const mountedRef = useRef(false)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
+
   // Track when loading state changes to detect response completion
   const prevLoading = useRef(isLoading)
 
@@ -162,6 +174,10 @@ export const ChatInputArea = memo(function ChatInputArea({
   }, [activeChatId, activeProjectId, isLoading])
 
   const processFiles = useCallback(async (files: File[]) => {
+    const startedIn = activeChatId
+    const stillHere = () => mountedRef.current && activeChatIdRef.current === startedIn
+    const dropLate = (names: string[]) =>
+      toast.error(`${names.join(', ')} ${names.length === 1 ? 'was' : 'were'} not attached — the chat changed before ${names.length === 1 ? 'it' : 'they'} finished processing`)
     const imageFiles: File[] = []
     const textFiles: File[] = []
 
@@ -208,7 +224,8 @@ export const ChatInputArea = memo(function ChatInputArea({
           newImages.push(img)
         }
         if (newImages.length > 0) {
-          onImagesChange(prev => [...prev, ...newImages])
+          if (stillHere()) onImagesChange(prev => [...prev, ...newImages])
+          else dropLate(newImages.map(img => img.name))
         }
       } finally {
         setExtractingCount(n => n - 1)
@@ -228,7 +245,8 @@ export const ChatInputArea = memo(function ChatInputArea({
           }
         }
         if (results.length > 0) {
-          onFilesChange(prev => [...prev, ...results])
+          if (stillHere()) onFilesChange(prev => [...prev, ...results])
+          else dropLate(results.map(f => f.name))
         }
       } finally {
         setExtractingCount(n => n - 1)

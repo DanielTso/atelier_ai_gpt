@@ -14,6 +14,7 @@ import { AddFromWebDialog } from '@/components/ui/AddFromWebDialog'
 import { CapacityBar } from '@/components/chat/CapacityBar'
 import { PROJECT_CAPACITY_BYTES } from '@/lib/projectCapacity'
 import { useLocalStorage } from '@/hooks/useLocalStorage'
+import { readError } from '@/lib/readError'
 
 // Resizable context rail: drag the left edge to resize, double-click to reset,
 // collapse to a thin strip. Width + collapsed state persist in localStorage.
@@ -22,7 +23,11 @@ const MIN_RAIL_WIDTH = 280
 
 interface ProjectContextRailProps {
   project: { id: number; name: string; memory?: string | null; instructions?: string | null }
-  onSaveContext: (id: number, fields: { memory?: string; instructions?: string }) => void
+  /** Persists an edit. A returned promise drives the inline Saved / Not saved status. */
+  onSaveContext: (id: number, fields: { memory?: string; instructions?: string }) => void | Promise<unknown>
+  /** The server changed this project's memory (an accepted suggestion). The parent
+   *  must update its own project state: this rail remounts from it (U6). */
+  onMemoryChanged?: (projectId: number, memory: string) => void
   onAddFiles: () => void
   /** Source-scoping: EXCLUDED document ids for grounded retrieval. When provided,
    *  each ready document row gets an include/exclude checkbox. */
@@ -30,17 +35,37 @@ interface ProjectContextRailProps {
   onExcludedChange?: (ids: number[]) => void
 }
 
+type SaveStatus = 'idle' | 'saved' | 'error'
+
 function useDebouncedSave(projectId: number, onSaveContext: ProjectContextRailProps['onSaveContext']) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [status, setStatus] = useState<SaveStatus>('idle')
+  // Only the latest save may set the status — an older one resolving late must
+  // not show "Saved" over a newer failure (or the reverse).
+  const seq = useRef(0)
   const save = useCallback((fields: { memory?: string; instructions?: string }) => {
     if (timer.current) clearTimeout(timer.current)
-    timer.current = setTimeout(() => onSaveContext(projectId, fields), 600)
+    setStatus('idle')
+    timer.current = setTimeout(() => {
+      const mine = ++seq.current
+      Promise.resolve(onSaveContext(projectId, fields)).then(
+        () => { if (seq.current === mine) setStatus('saved') },
+        () => { if (seq.current === mine) setStatus('error') },
+      )
+    }, 600)
   }, [projectId, onSaveContext])
   const cancel = useCallback(() => { if (timer.current) clearTimeout(timer.current) }, [])
-  return { save, cancel }
+  return { save, cancel, status }
 }
 
-export function ProjectContextRail({ project, onSaveContext, onAddFiles, excludedDocIds, onExcludedChange }: ProjectContextRailProps) {
+function SaveStatusText({ status }: { status: SaveStatus }) {
+  if (status === 'idle') return null
+  return status === 'saved'
+    ? <span className="text-xs text-muted-foreground">Saved</span>
+    : <span className="text-xs text-destructive">Not saved</span>
+}
+
+export function ProjectContextRail({ project, onSaveContext, onMemoryChanged, onAddFiles, excludedDocIds, onExcludedChange }: ProjectContextRailProps) {
   const [memory, setMemory] = useState(project.memory ?? '')
   const [instructions, setInstructions] = useState(project.instructions ?? '')
   const [documents, setDocuments] = useState<DocumentSummary[]>([])
@@ -51,8 +76,8 @@ export function ProjectContextRail({ project, onSaveContext, onAddFiles, exclude
   const [railWidth, setRailWidth] = useLocalStorage('project-rail-width', DEFAULT_RAIL_WIDTH, (v) => typeof v === 'number' && v >= 240 && v <= 1000)
   const [collapsed, setCollapsed] = useLocalStorage('project-rail-collapsed', false, (v) => typeof v === 'boolean')
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const { save: saveMemory, cancel: cancelMemorySave } = useDebouncedSave(project.id, onSaveContext)
-  const { save: saveInstructions } = useDebouncedSave(project.id, onSaveContext)
+  const { save: saveMemory, cancel: cancelMemorySave, status: memoryStatus } = useDebouncedSave(project.id, onSaveContext)
+  const { save: saveInstructions, status: instructionsStatus } = useDebouncedSave(project.id, onSaveContext)
 
   // Note: the parent remounts this component via `key={project.id}`, so local
   // Memory/Instructions state initializes fresh per project — no reset effect needed.
@@ -85,6 +110,7 @@ export function ProjectContextRail({ project, onSaveContext, onAddFiles, exclude
         // content over the server-appended value we just received.
         cancelMemorySave()
         setMemory(res.memory)
+        onMemoryChanged?.(project.id, res.memory)
       }
       setSuggestions(prev => prev.filter(s => s.id !== id))
       setEditingId(null)
@@ -101,7 +127,8 @@ export function ProjectContextRail({ project, onSaveContext, onAddFiles, exclude
   const { upload, replace, uploading } = useDocumentUpload()
   // Upload one or more files sequentially (drag-drop can yield several), then refresh once.
   const handleFiles = async (files: File[]) => {
-    if (uploading || files.length === 0) return
+    if (files.length === 0) return
+    if (uploading) { toast.error('An upload is already running — add these files when it finishes'); return }
     for (const file of files) {
       try { await upload(file, project.id); toast.success(`Uploaded: ${file.name}`) }
       catch (e) { toast.error(e instanceof Error ? e.message : `Upload failed: ${file.name}`) }
@@ -119,11 +146,13 @@ export function ProjectContextRail({ project, onSaveContext, onAddFiles, exclude
     try { await replace(file, docId); toast.success(`Updated: ${file.name}`); await loadDocuments() }
     catch (e) { toast.error(e instanceof Error ? e.message : 'Replace failed') }
   }
-  const handleDelete = async (docId: number) => {
+  const handleDelete = async (docId: number, filename: string) => {
     try {
       const res = await fetch(`/api/documents?id=${docId}`, { method: 'DELETE' })
-      if (res.ok) { setDocuments(prev => prev.filter(d => d.id !== docId)); toast.success('Deleted') }
-    } catch { toast.error('Failed to delete') }
+      if (!res.ok) { toast.error(await readError(res, `Failed to delete ${filename}`)); return }
+      setDocuments(prev => prev.filter(d => d.id !== docId))
+      toast.success('Deleted')
+    } catch { toast.error(`Failed to delete ${filename}`) }
   }
   const usedBytes = documents.reduce((sum, d) => sum + (d.fileSize ?? 0), 0)
 
@@ -191,7 +220,10 @@ export function ProjectContextRail({ project, onSaveContext, onAddFiles, exclude
         </div>
       {/* Memory */}
       <section>
-        <label htmlFor="rail-memory" className="text-sm font-semibold text-foreground">Memory</label>
+        <div className="flex items-center justify-between" aria-live="polite">
+          <label htmlFor="rail-memory" className="text-sm font-semibold text-foreground">Memory</label>
+          <SaveStatusText status={memoryStatus} />
+        </div>
         <textarea
           id="rail-memory" aria-label="Memory" value={memory}
           onChange={e => { setMemory(e.target.value); saveMemory({ memory: e.target.value }) }}
@@ -229,7 +261,10 @@ export function ProjectContextRail({ project, onSaveContext, onAddFiles, exclude
 
       {/* Instructions */}
       <section>
-        <label htmlFor="rail-instructions" className="text-sm font-semibold text-foreground">Instructions</label>
+        <div className="flex items-center justify-between" aria-live="polite">
+          <label htmlFor="rail-instructions" className="text-sm font-semibold text-foreground">Instructions</label>
+          <SaveStatusText status={instructionsStatus} />
+        </div>
         <textarea
           id="rail-instructions" aria-label="Instructions" value={instructions}
           onChange={e => { setInstructions(e.target.value); saveInstructions({ instructions: e.target.value }) }}
@@ -307,7 +342,7 @@ export function ProjectContextRail({ project, onSaveContext, onAddFiles, exclude
                     />
                   </label>
                 )}
-                <DocumentCard doc={doc} onOpen={setPreviewDoc} onDelete={(d) => handleDelete(d.id)} onReplace={(d, f) => handleReplace(d.id, f)} />
+                <DocumentCard doc={doc} onOpen={setPreviewDoc} onDelete={(d) => handleDelete(d.id, d.filename)} onReplace={(d, f) => handleReplace(d.id, f)} />
               </div>
             ))}
           </div>
