@@ -12,12 +12,12 @@ const PLAIN_NUMBER = /^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$/
 // "1e3", "1.50" keep their spelling as text. Then the formula guard: it prefixes an
 // apostrophe, which shows in the cell, so it only applies to text that could be read
 // as a formula — a leading = + - @ TAB or CR that is not a plain number or a lone "-"
-// (audit B18).
-function cleanCell(value: unknown): unknown {
+// (audit B18). Header-row cells skip the number conversion: "2025" is a label, not data.
+function cleanCell(value: unknown, allowNumber = true): unknown {
   if (typeof value !== 'string' || value.length === 0) return value
   const text = /[*_`#~]/.test(value) ? mdToPlainText(value) : value
   const num = Number(text)
-  if (Number.isFinite(num) && String(num) === text) return num
+  if (allowNumber && Number.isFinite(num) && String(num) === text) return num
   const formulaLike = /^[=+\-@\t\r]/.test(text) && text !== '-' && !PLAIN_NUMBER.test(text)
   return formulaLike ? `'${text}` : text
 }
@@ -57,7 +57,7 @@ export async function toXlsx(sheets: SheetSpec[]): Promise<Buffer> {
   for (const [si, spec] of specs.entries()) {
     const ws = wb.addWorksheet(names[si])
     // Cleaned once, so column sizing and right-alignment see the real cell values.
-    const rows = (spec.rows ?? []).map(row => row.map(cleanCell))
+    const rows = (spec.rows ?? []).map((row, r) => row.map(v => cleanCell(v, r > 0)))
 
     rows.forEach((row, i) => {
       const added = ws.addRow(row)

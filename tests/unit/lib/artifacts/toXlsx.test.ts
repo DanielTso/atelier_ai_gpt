@@ -93,6 +93,14 @@ describe('toXlsx', () => {
     expect(row.getCell(6).value).toBe('Infinity')
   })
 
+  it('keeps header-row labels as text even when they look numeric', async () => {
+    const buf = await toXlsx([{ name: 'S', rows: [['2025', '2026'], ['1', '2']] }])
+    const ws = (await load(buf)).getWorksheet('S')!
+    expect(ws.getRow(1).getCell(1).value).toBe('2025')
+    expect(ws.getRow(1).getCell(2).value).toBe('2026')
+    expect(ws.getRow(2).getCell(1).value).toBe(1)
+  })
+
   it('keeps empty (null) cells and names a sheet that has no name', async () => {
     // @ts-expect-error null cells and a missing name arrive from parsed JSON (edit/regenerate)
     const buf = await toXlsx([{ rows: [['Item', 'Qty'], ['Rebar', null]] }])
