@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { safeNextPath } from '@/lib/safeNext'
 
 export default function LoginPage() {
   const [password, setPassword] = useState('')
@@ -20,13 +21,11 @@ export default function LoginPage() {
         body: JSON.stringify({ password }),
       })
       if (res.ok) {
-        // Return to the originally requested page if the middleware passed a safe
-        // same-origin `next` path; otherwise go home. Re-validate it here too —
-        // including '/\': browsers normalize backslash to slash, so '/\evil.com'
-        // becomes protocol-relative '//evil.com' (same guard as proxy.ts).
+        // Return to the originally requested page if `next` resolves to this origin;
+        // otherwise go home. safeNextPath resolves before comparing, so tab/newline and
+        // backslash tricks that survive a prefix check cannot leave the origin.
         const next = new URLSearchParams(window.location.search).get('next')
-        const dest = next && next.startsWith('/') && !next.startsWith('//') && !next.startsWith('/\\') ? next : '/'
-        router.replace(dest)
+        router.replace(safeNextPath(next, window.location.origin))
         router.refresh()
       } else {
         setError((await res.json().catch(() => ({}))).error || 'Incorrect password')

@@ -3,52 +3,58 @@
 // State lives in the serverless function instance's memory. Vercel Fluid Compute reuses
 // instances across requests, so this throttles brute-force effectively in practice, but
 // it is NOT shared across instances — for a hard guarantee add a Vercel WAF rate-limit
-// rule on /api/auth or back this with a KV store. It exists to slow online guessing of
-// the access password, not to be a distributed limiter.
+// rule on POST /api/auth or back this with a KV store. It exists to slow online guessing
+// of the access password, not to be a distributed limiter.
+//
+// Attempts are RESERVED (counted) synchronously on entry, before the route awaits
+// anything, and cleared on a successful login. A check-now/record-later pair let a
+// parallel burst through: every request passed the check before any had recorded a
+// failure, so all of them were evaluated against the real password.
 
+/** Attempts allowed per key per window (a successful login clears the count). */
 export const LOGIN_MAX_FAILURES = 10
 export const LOGIN_WINDOW_MS = 15 * 60 * 1000 // 15 minutes
 
-type FailureRecord = { count: number; resetAt: number }
-const failures = new Map<string, FailureRecord>()
+type AttemptRecord = { count: number; resetAt: number }
+const attempts = new Map<string, AttemptRecord>()
 
 // Bound memory: drop expired records when the map grows. Cheap and only runs on writes.
 function pruneExpired(now: number) {
-  if (failures.size < 1000) return
-  for (const [key, rec] of failures) {
-    if (now >= rec.resetAt) failures.delete(key)
+  if (attempts.size < 1000) return
+  for (const [key, rec] of attempts) {
+    if (now >= rec.resetAt) attempts.delete(key)
   }
 }
 
-/** Is this key currently blocked (too many recent failures in the window)? Does not mutate. */
-export function loginThrottle(
+/**
+ * Reserve one login attempt for this key. Synchronous on purpose: call it BEFORE the
+ * first await so concurrent requests see each other's reservations. Returns
+ * `allowed: false` (and how long until the window resets) once the key has used
+ * LOGIN_MAX_FAILURES attempts in the current window; a blocked call is not counted.
+ */
+export function reserveLoginAttempt(
   key: string,
   now: number = Date.now()
-): { blocked: boolean; retryAfterSeconds: number } {
-  const rec = failures.get(key)
-  if (rec && now < rec.resetAt && rec.count >= LOGIN_MAX_FAILURES) {
-    return { blocked: true, retryAfterSeconds: Math.ceil((rec.resetAt - now) / 1000) }
-  }
-  return { blocked: false, retryAfterSeconds: 0 }
-}
-
-/** Record a failed login for this key, opening (or extending) its window. */
-export function recordLoginFailure(key: string, now: number = Date.now()): void {
+): { allowed: boolean; retryAfterSec: number } {
   pruneExpired(now)
-  const rec = failures.get(key)
+  const rec = attempts.get(key)
   if (!rec || now >= rec.resetAt) {
-    failures.set(key, { count: 1, resetAt: now + LOGIN_WINDOW_MS })
-    return
+    attempts.set(key, { count: 1, resetAt: now + LOGIN_WINDOW_MS })
+    return { allowed: true, retryAfterSec: 0 }
+  }
+  if (rec.count >= LOGIN_MAX_FAILURES) {
+    return { allowed: false, retryAfterSec: Math.ceil((rec.resetAt - now) / 1000) }
   }
   rec.count += 1
+  return { allowed: true, retryAfterSec: 0 }
 }
 
-/** Clear failures for this key (call on a successful login). */
-export function clearLoginFailures(key: string): void {
-  failures.delete(key)
+/** Clear this key's attempts (call on a successful login). */
+export function clearLoginAttempts(key: string): void {
+  attempts.delete(key)
 }
 
 /** Test-only: reset all state. */
 export function _resetLoginThrottle(): void {
-  failures.clear()
+  attempts.clear()
 }

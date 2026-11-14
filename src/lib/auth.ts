@@ -15,9 +15,38 @@ export function isAuthEnabled(): boolean {
   return Boolean(process.env.APP_ACCESS_PASSWORD)
 }
 
-// AUTH_SECRET signs the cookie; fall back to the password so a single env var
-// is enough to turn the gate on. Falling back is a weak config — the cookie is
-// then signed with the low-entropy human password — so warn once when it happens.
+/**
+ * Why the gate cannot run safely, or null when it can. In production the gate refuses
+ * to run without AUTH_SECRET: the password fallback below would sign cookies and the
+ * file-path signatures embedded in downloadable HTML artifacts with the low-entropy
+ * password, turning every such `sig` into an offline cracking oracle. The proxy
+ * answers 503 on every path while this is non-null. Never includes a secret value.
+ */
+export function authConfigError(): string | null {
+  if (!isAuthEnabled()) return null
+  if (process.env.NODE_ENV !== 'production') return null
+  if (process.env.AUTH_SECRET) return null
+  return '[auth] APP_ACCESS_PASSWORD is set but AUTH_SECRET is not. The access gate refuses ' +
+    'to run in production without it; every request returns 503. Set AUTH_SECRET to a ' +
+    'high-entropy value (openssl rand -hex 32) and redeploy.'
+}
+
+let loggedConfigError = false
+/** authConfigError(), logging it once per process when it is non-null. */
+export function checkAuthConfig(): string | null {
+  const err = authConfigError()
+  if (err && !loggedConfigError) {
+    loggedConfigError = true
+    console.error(err)
+  }
+  return err
+}
+
+// AUTH_SECRET signs the cookie; outside production, fall back to the password so a
+// single env var is enough to turn the gate on locally. Falling back is a weak config —
+// the cookie is then signed with the low-entropy human password — so warn once when it
+// happens. Production refuses this config (authConfigError). File-path signatures never
+// use the fallback (see signFilePath).
 let warnedNoSecret = false
 function authSecret(): string {
   const secret = process.env.AUTH_SECRET
@@ -29,12 +58,19 @@ function authSecret(): string {
       console.warn(
         '[auth] APP_ACCESS_PASSWORD is set but AUTH_SECRET is not — the access cookie is ' +
         'being signed with the password itself (low-entropy key, two secrets collapsed into one). ' +
-        'Set AUTH_SECRET to a high-entropy value (openssl rand -hex 32) in any real deployment.'
+        'Generated images in HTML artifacts will not load. Production refuses this config: ' +
+        'set AUTH_SECRET to a high-entropy value (openssl rand -hex 32).'
       )
     }
     return password
   }
   return ''
+}
+
+/** Test-only: re-arm the one-time auth config log and warning. */
+export function _resetAuthWarnings(): void {
+  loggedConfigError = false
+  warnedNoSecret = false
 }
 
 function toHex(buf: ArrayBuffer): string {
@@ -63,9 +99,9 @@ function b64urlDecode(s: string): string {
   return atob(s.replace(/-/g, '+').replace(/_/g, '/') + pad)
 }
 
-async function hmacHex(message: string): Promise<string> {
+async function hmacHex(message: string, secret: string = authSecret()): Promise<string> {
   const key = await crypto.subtle.importKey(
-    'raw', enc.encode(authSecret()), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+    'raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
   )
   const sig = await crypto.subtle.sign('HMAC', key, enc.encode(message))
   return toHex(sig)
@@ -116,18 +152,24 @@ export async function verifyAuthCookie(value: string | undefined | null): Promis
  * cookie gate and enforces THIS signature instead: unforgeable without the secret,
  * deliberately non-expiring (the URL lives inside permanent artifact HTML).
  * Domain-separated from the cookie HMAC by the `file:` prefix.
+ *
+ * Keyed by AUTH_SECRET ONLY — never the password fallback. These signatures ship inside
+ * HTML artifacts the owner downloads and shares, so a password-keyed `sig` would let
+ * anyone holding one test password guesses offline.
  */
 export async function signFilePath(path: string): Promise<string> {
-  // Gate off → no secret to sign with (and Web Crypto rejects empty HMAC keys);
-  // the route accepts any signature in that mode.
-  if (!authSecret()) return ''
-  return hmacHex(`file:${path}`)
+  // No AUTH_SECRET → nothing safe to sign with (and Web Crypto rejects empty HMAC keys).
+  // With the gate off the route accepts any signature; with it on, it refuses them all.
+  const secret = process.env.AUTH_SECRET
+  if (!secret) return ''
+  return hmacHex(`file:${path}`, secret)
 }
 
 export async function verifyFilePathSig(path: string, sig: string | null | undefined): Promise<boolean> {
   if (!isAuthEnabled()) return true // gate off → open, matching every other route
-  if (!sig) return false
-  return safeEqual(sig, await hmacHex(`file:${path}`))
+  const secret = process.env.AUTH_SECRET
+  if (!sig || !secret) return false // fail closed: no password-keyed fallback
+  return safeEqual(sig, await hmacHex(`file:${path}`, secret))
 }
 
 // Compare HMAC digests of both sides (fixed 64-hex length, collision-resistant) so the

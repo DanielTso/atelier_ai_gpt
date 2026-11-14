@@ -1,7 +1,7 @@
-﻿import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+﻿import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 import { proxy, config } from '@/proxy'
-import { mintAuthToken, AUTH_COOKIE_NAME } from '@/lib/auth'
+import { mintAuthToken, AUTH_COOKIE_NAME, _resetAuthWarnings } from '@/lib/auth'
 
 const ORIG = { pw: process.env.APP_ACCESS_PASSWORD, secret: process.env.AUTH_SECRET }
 
@@ -14,10 +14,10 @@ afterEach(() => {
   if (ORIG.secret === undefined) delete process.env.AUTH_SECRET; else process.env.AUTH_SECRET = ORIG.secret
 })
 
-function mkReq(path: string, cookie?: string) {
+function mkReq(path: string, cookie?: string, method = 'GET') {
   const headers: Record<string, string> = {}
   if (cookie) headers.cookie = `${AUTH_COOKIE_NAME}=${cookie}`
-  return new NextRequest(new URL(path, 'http://localhost'), { headers })
+  return new NextRequest(new URL(path, 'http://localhost'), { headers, method })
 }
 
 // Part A â€” the matcher decides which paths the gate even runs on. This locks the
@@ -82,9 +82,58 @@ describe('proxy gate', () => {
     expect((await proxy(mkReq('/api/auth'))).headers.get('x-middleware-next')).toBe('1')
   })
 
+  it('lets GET and HEAD to /login through, but not an unauthenticated POST', async () => {
+    expect((await proxy(mkReq('/login', undefined, 'GET'))).headers.get('x-middleware-next')).toBe('1')
+    expect((await proxy(mkReq('/login', undefined, 'HEAD'))).headers.get('x-middleware-next')).toBe('1')
+
+    // A POST to /login would reach Next's Server Action handler pre-auth (S3).
+    const post = await proxy(mkReq('/login', undefined, 'POST'))
+    expect(post.headers.get('x-middleware-next')).toBeNull()
+    expect(post.status).toBe(401)
+  })
+
+  it('lets a POST to /login through with a valid cookie', async () => {
+    const token = await mintAuthToken()
+    const res = await proxy(mkReq('/login', token, 'POST'))
+    expect(res.headers.get('x-middleware-next')).toBe('1')
+  })
+
   it('is a no-op for every path when the gate is disabled', async () => {
     delete process.env.APP_ACCESS_PASSWORD
     expect((await proxy(mkReq('/api/chat'))).headers.get('x-middleware-next')).toBe('1')
     expect((await proxy(mkReq('/dashboard'))).headers.get('x-middleware-next')).toBe('1')
+  })
+})
+
+describe('proxy gate — production without AUTH_SECRET', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.restoreAllMocks()
+    _resetAuthWarnings()
+  })
+
+  it('returns 503 on every path and logs one error naming AUTH_SECRET, with no secret value', async () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    delete process.env.AUTH_SECRET
+    _resetAuthWarnings()
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    for (const p of ['/', '/api/chat', '/login', '/api/auth', '/api/files/raw']) {
+      const res = await proxy(mkReq(p))
+      expect(res.status, p).toBe(503)
+      expect(res.headers.get('x-middleware-next'), p).toBeNull()
+    }
+
+    expect(errSpy).toHaveBeenCalledTimes(1)
+    const logged = errSpy.mock.calls[0]!.map(String).join(' ')
+    expect(logged).toContain('AUTH_SECRET')
+    expect(logged).not.toContain('hunter2')
+  })
+
+  it('does not 503 outside production (dev keeps the single-var setup)', async () => {
+    delete process.env.AUTH_SECRET
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const res = await proxy(mkReq('/login'))
+    expect(res.headers.get('x-middleware-next')).toBe('1')
   })
 })
