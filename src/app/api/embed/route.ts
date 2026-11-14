@@ -1,5 +1,5 @@
 import { embedAndStore, ensureEmbeddingModel } from '@/lib/embeddings';
-import { getEmbeddingCount } from '@/app/actions';
+import { getChatWithContext, getEmbeddingCount } from '@/app/actions';
 import { apiError } from '@/lib/errors';
 import { embedRequestSchema } from '@/lib/validation';
 
@@ -43,7 +43,18 @@ export async function POST(req: Request) {
     if (!body.success) {
       return apiError(body.error, 'Invalid request body', 400);
     }
-    const { messageId, chatId, projectId, content } = body.data;
+    // A body `projectId` is accepted but ignored: the embedding is filed under the
+    // chat's DB project. The client's nav project can be stale, and project-scoped
+    // retrieval would then surface this message in the wrong project (audit U3).
+    const { messageId, chatId, content } = body.data;
+
+    const chat = await getChatWithContext(chatId);
+    if (!chat) {
+      return new Response(JSON.stringify({ error: 'Chat not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
 
     // Check if any embedding provider is available
     const { available } = await ensureEmbeddingModel();
@@ -54,7 +65,7 @@ export async function POST(req: Request) {
       });
     }
 
-    await embedAndStore(messageId, chatId, projectId ?? null, content);
+    await embedAndStore(messageId, chatId, chat.projectId ?? null, content);
 
     return new Response(JSON.stringify({ success: true }), {
       status: 200,

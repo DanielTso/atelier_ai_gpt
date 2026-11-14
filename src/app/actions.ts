@@ -248,8 +248,20 @@ export async function getAssistantReplyId(chatId: number, userMessageId: number)
   return next?.role === 'assistant' ? next.id : null
 }
 
+// A chat's children carry their own project_id (for project-scoped retrieval,
+// listings and spend). Re-tag them with the chat in one transaction: left on the
+// old project they are invisible from the new one, and deleting the old project
+// would cascade the artifacts, embeddings and persona usage away (audit B2).
 export async function moveChatToProject(chatId: number, projectId: number | null) {
-  return await db.update(chats).set({ projectId }).where(eq(chats.id, chatId)).returning()
+  return await db.transaction(async (tx) => {
+    const moved = await tx.update(chats).set({ projectId }).where(eq(chats.id, chatId)).returning()
+    if (moved.length === 0) return moved
+    await tx.update(artifacts).set({ projectId }).where(eq(artifacts.chatId, chatId))
+    await tx.update(messageEmbeddings).set({ projectId }).where(eq(messageEmbeddings.chatId, chatId))
+    await tx.update(personaUsage).set({ projectId }).where(eq(personaUsage.chatId, chatId))
+    await tx.update(usageEvents).set({ projectId }).where(eq(usageEvents.chatId, chatId))
+    return moved
+  })
 }
 
 export async function archiveChat(id: number) {
@@ -437,14 +449,16 @@ export async function getProjectDefaults(projectId: number) {
 
 // ── Persona Usage Tracking Actions ──
 
+// The usage row's project is the chat's DB project, never a client-supplied one —
+// the client's nav project can be stale (audit U3).
 export async function recordPersonaUsage(data: {
-  projectId: number | null
   chatId: number
   personaId: string
   modelUsed: string | null
 }) {
+  const [chat] = await db.select({ projectId: chats.projectId }).from(chats).where(eq(chats.id, data.chatId))
   return await db.insert(personaUsage).values({
-    projectId: data.projectId,
+    projectId: chat?.projectId ?? null,
     chatId: data.chatId,
     personaId: data.personaId,
     modelUsed: data.modelUsed,

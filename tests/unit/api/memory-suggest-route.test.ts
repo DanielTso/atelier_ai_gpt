@@ -17,7 +17,7 @@ const FAKE_TOTAL_USAGE = {
 // itself is covered against PGlite in tests/unit/lib/usage.test.ts.
 const mockRecordUsage = vi.fn().mockResolvedValue(undefined)
 
-import { createProject } from '@/app/actions'
+import { createProject, createChat, createStandaloneChat } from '@/app/actions'
 
 function makeRequest(body: Record<string, unknown>) {
   return new Request('http://localhost/api/memory/suggest', {
@@ -57,10 +57,19 @@ describe('POST /api/memory/suggest', () => {
     expect(res.status).toBe(400)
   })
 
+  it('returns 400 without a chatId (the project is derived from the chat)', async () => {
+    const [p] = await createProject('P')
+    const POST = await importRoute()
+    const res = await POST(makeRequest({ projectId: p.id, messages: [{ role: 'user', content: 'hi' }] }))
+    expect(res.status).toBe(400)
+    expect(mockGenerateText).not.toHaveBeenCalled()
+  })
+
   it('returns created:0 when no Gemini key (silent degrade)', async () => {
     const [p] = await createProject('P')
+    const [c] = await createChat(p.id, 'C')
     const POST = await importRoute(null)
-    const res = await POST(makeRequest({ projectId: p.id, messages: [{ role: 'user', content: 'hi' }] }))
+    const res = await POST(makeRequest({ projectId: p.id, chatId: c.id, messages: [{ role: 'user', content: 'hi' }] }))
     expect(res.status).toBe(200)
     expect((await res.json()).created).toBe(0)
     expect(mockGenerateText).not.toHaveBeenCalled()
@@ -69,16 +78,16 @@ describe('POST /api/memory/suggest', () => {
   it('parses facts and persists pending suggestions', async () => {
     const { getPendingSuggestions } = await import('@/app/actions')
     const [p] = await createProject('P')
+    const [c] = await createChat(p.id, 'C')
     const POST = await importRoute()
-    const res = await POST(makeRequest({ projectId: p.id, messages: [{ role: 'user', content: 'The PE of record is Jane Doe' }] }))
+    const res = await POST(makeRequest({ projectId: p.id, chatId: c.id, messages: [{ role: 'user', content: 'The PE of record is Jane Doe' }] }))
     const data = await res.json()
     expect(data.created).toBe(1)
     expect(await getPendingSuggestions(p.id)).toHaveLength(1)
 
-    // Usage capture (Task 10): pinned housekeeping model + the project id
-    // (no chatId in the request -> recorded as null).
+    // Usage capture (Task 10): pinned housekeeping model + the chat's project id.
     expect(mockRecordUsage).toHaveBeenCalledExactlyOnceWith({
-      chatId: null,
+      chatId: c.id,
       projectId: p.id,
       purpose: 'memory-suggest',
       model: 'gemini-3.5-flash',
@@ -89,18 +98,20 @@ describe('POST /api/memory/suggest', () => {
   it('dedups facts already present in memory', async () => {
     const { createProject: cp, updateProjectContext } = await import('@/app/actions')
     const [p] = await cp('P2')
+    const [c] = await createChat(p.id, 'C')
     await updateProjectContext(p.id, { memory: 'PE of record is Jane Doe' })
     const POST = await importRoute()
-    const res = await POST(makeRequest({ projectId: p.id, messages: [{ role: 'user', content: 'x' }] }))
+    const res = await POST(makeRequest({ projectId: p.id, chatId: c.id, messages: [{ role: 'user', content: 'x' }] }))
     expect((await res.json()).created).toBe(0)
   })
 
   it('returns capped when pending is at the cap, without calling the model', async () => {
     const { createProject: cp, createMemorySuggestions } = await import('@/app/actions')
     const [p] = await cp('P3')
+    const [c] = await createChat(p.id, 'C')
     await createMemorySuggestions(p.id, null, Array.from({ length: 10 }, (_, i) => `fact ${i}`))
     const POST = await importRoute()
-    const res = await POST(makeRequest({ projectId: p.id, messages: [{ role: 'user', content: 'x' }] }))
+    const res = await POST(makeRequest({ projectId: p.id, chatId: c.id, messages: [{ role: 'user', content: 'x' }] }))
     const data = await res.json()
     expect(data).toEqual({ created: 0, capped: true })
     expect(mockGenerateText).not.toHaveBeenCalled()
@@ -108,10 +119,58 @@ describe('POST /api/memory/suggest', () => {
 
   it('never throws — malformed model output yields created:0', async () => {
     const [p] = await createProject('P4')
+    const [c] = await createChat(p.id, 'C')
     mockGenerateText.mockResolvedValue({ text: 'not json at all' })
     const POST = await importRoute()
-    const res = await POST(makeRequest({ projectId: p.id, messages: [{ role: 'user', content: 'x' }] }))
+    const res = await POST(makeRequest({ projectId: p.id, chatId: c.id, messages: [{ role: 'user', content: 'x' }] }))
     expect(res.status).toBe(200)
     expect((await res.json()).created).toBe(0)
+  })
+
+  // Audit U3/B13: suggestions are filed on the chat's DB project, never on the
+  // client's (possibly stale) nav project.
+  describe('project scope', () => {
+    it('files suggestions on the chat\'s project, ignoring a body projectId', async () => {
+      const { getPendingSuggestions } = await import('@/app/actions')
+      const [real] = await createProject('Real')
+      const [stale] = await createProject('Stale')
+      const [c] = await createChat(real.id, 'C')
+      const POST = await importRoute()
+      const res = await POST(makeRequest({ projectId: stale.id, chatId: c.id, messages: [{ role: 'user', content: 'The PE of record is Jane Doe' }] }))
+      expect((await res.json()).created).toBe(1)
+      expect(await getPendingSuggestions(real.id)).toHaveLength(1)
+      expect(await getPendingSuggestions(stale.id)).toHaveLength(0)
+      expect(mockRecordUsage).toHaveBeenCalledWith(expect.objectContaining({ chatId: c.id, projectId: real.id }))
+    })
+
+    it('accepts a body without projectId', async () => {
+      const { getPendingSuggestions } = await import('@/app/actions')
+      const [p] = await createProject('P')
+      const [c] = await createChat(p.id, 'C')
+      const POST = await importRoute()
+      const res = await POST(makeRequest({ chatId: c.id, messages: [{ role: 'user', content: 'The PE of record is Jane Doe' }] }))
+      expect((await res.json()).created).toBe(1)
+      expect(await getPendingSuggestions(p.id)).toHaveLength(1)
+    })
+
+    it('suggests nothing for a standalone chat, even with a body projectId', async () => {
+      const { getPendingSuggestions } = await import('@/app/actions')
+      const [p] = await createProject('P')
+      const [solo] = await createStandaloneChat('Solo')
+      const POST = await importRoute()
+      const res = await POST(makeRequest({ projectId: p.id, chatId: solo.id, messages: [{ role: 'user', content: 'x' }] }))
+      expect(res.status).toBe(200)
+      expect((await res.json()).created).toBe(0)
+      expect(mockGenerateText).not.toHaveBeenCalled()
+      expect(await getPendingSuggestions(p.id)).toHaveLength(0)
+    })
+
+    it('returns 404 for an unknown chat without calling the model', async () => {
+      const [p] = await createProject('P')
+      const POST = await importRoute()
+      const res = await POST(makeRequest({ projectId: p.id, chatId: 9999, messages: [{ role: 'user', content: 'x' }] }))
+      expect(res.status).toBe(404)
+      expect(mockGenerateText).not.toHaveBeenCalled()
+    })
   })
 })

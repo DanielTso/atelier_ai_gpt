@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { eq } from 'drizzle-orm'
 import { createTestDb, testDb } from '../../helpers/test-db'
+import { artifacts, messageEmbeddings, personaUsage, usageEvents } from '@/db/schema'
 
 vi.mock('@/db', () => ({
   get db() {
@@ -20,6 +22,11 @@ import {
   updateChatTitle,
   deleteChat,
   getArchivedChats,
+  deleteProject,
+  saveMessage,
+  saveMessageEmbedding,
+  createArtifact,
+  recordPersonaUsage,
 } from '@/app/actions'
 
 describe('chat actions', () => {
@@ -97,6 +104,87 @@ describe('chat actions', () => {
     const [chat] = await createChat(project.id, 'Chat')
     const [moved] = await moveChatToProject(chat.id, null)
     expect(moved.projectId).toBeNull()
+  })
+
+  // Audit B2: the move must carry the chat's children, or deleting the old project
+  // cascades them away (artifacts, embeddings, persona usage) and retrieval scopes
+  // the moved history to the wrong project.
+  describe("moving carries the chat's data", () => {
+    async function seedChatWithChildren(projectId: number | null) {
+      const [chat] = projectId == null
+        ? await createStandaloneChat('Movable')
+        : await createChat(projectId, 'Movable')
+      const [msg] = await saveMessage(chat.id, 'user', 'hello')
+      await saveMessageEmbedding(msg.id, chat.id, projectId, 'hello', new Array(768).fill(0.01))
+      await createArtifact({ chatId: chat.id, projectId, type: 'pdf', title: 'Report', storagePath: 'artifacts/r.pdf' })
+      await recordPersonaUsage({ chatId: chat.id, personaId: 'default', modelUsed: null })
+      await testDb.insert(usageEvents).values({
+        chatId: chat.id, projectId, purpose: 'chat', model: 'claude-opus-4-8', costUsd: 0.01,
+      })
+      return chat
+    }
+
+    async function childProjectIds(chatId: number) {
+      const art = await testDb.select({ p: artifacts.projectId }).from(artifacts).where(eq(artifacts.chatId, chatId))
+      const emb = await testDb.select({ p: messageEmbeddings.projectId }).from(messageEmbeddings).where(eq(messageEmbeddings.chatId, chatId))
+      const per = await testDb.select({ p: personaUsage.projectId }).from(personaUsage).where(eq(personaUsage.chatId, chatId))
+      const use = await testDb.select({ p: usageEvents.projectId }).from(usageEvents).where(eq(usageEvents.chatId, chatId))
+      return { art: art.map(r => r.p), emb: emb.map(r => r.p), per: per.map(r => r.p), use: use.map(r => r.p) }
+    }
+
+    it('re-tags artifacts, embeddings, persona usage and usage events with the new project', async () => {
+      const [a] = await createProject('A')
+      const [b] = await createProject('B')
+      const chat = await seedChatWithChildren(a.id)
+
+      await moveChatToProject(chat.id, b.id)
+
+      expect(await childProjectIds(chat.id)).toEqual({ art: [b.id], emb: [b.id], per: [b.id], use: [b.id] })
+    })
+
+    it('keeps the artifact and embeddings when the old project is then deleted', async () => {
+      const [a] = await createProject('A')
+      const [b] = await createProject('B')
+      const chat = await seedChatWithChildren(a.id)
+
+      await moveChatToProject(chat.id, b.id)
+      await deleteProject(a.id)
+
+      expect(await childProjectIds(chat.id)).toEqual({ art: [b.id], emb: [b.id], per: [b.id], use: [b.id] })
+    })
+
+    it("moves a standalone chat's data into a project, and back out to standalone", async () => {
+      const [b] = await createProject('B')
+      const chat = await seedChatWithChildren(null)
+
+      await moveChatToProject(chat.id, b.id)
+      expect(await childProjectIds(chat.id)).toEqual({ art: [b.id], emb: [b.id], per: [b.id], use: [b.id] })
+
+      await moveChatToProject(chat.id, null)
+      expect(await childProjectIds(chat.id)).toEqual({ art: [null], emb: [null], per: [null], use: [null] })
+    })
+
+    it("leaves other chats' data alone", async () => {
+      const [a] = await createProject('A')
+      const [b] = await createProject('B')
+      const moved = await seedChatWithChildren(a.id)
+      const stays = await seedChatWithChildren(a.id)
+
+      await moveChatToProject(moved.id, b.id)
+
+      expect(await childProjectIds(stays.id)).toEqual({ art: [a.id], emb: [a.id], per: [a.id], use: [a.id] })
+    })
+  })
+
+  it("records persona usage under the chat's own project, never a caller-supplied one", async () => {
+    const [p] = await createProject('P')
+    const [chat] = await createChat(p.id, 'C')
+    const [solo] = await createStandaloneChat('S')
+
+    const [row] = await recordPersonaUsage({ chatId: chat.id, personaId: 'default', modelUsed: null })
+    expect(row.projectId).toBe(p.id)
+    const [soloRow] = await recordPersonaUsage({ chatId: solo.id, personaId: 'default', modelUsed: null })
+    expect(soloRow.projectId).toBeNull()
   })
 
   it('updates chat title', async () => {

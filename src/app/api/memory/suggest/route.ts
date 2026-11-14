@@ -2,6 +2,7 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { generateText } from 'ai'
 import { getGeminiApiKey } from '@/lib/settings'
 import {
+  getChatWithContext,
   getProjectContext,
   getPendingSuggestions,
   countPendingSuggestions,
@@ -40,7 +41,20 @@ export async function POST(req: Request) {
     if (!body.success) {
       return apiError(body.error, 'Invalid request body', 400)
     }
-    const { projectId, chatId, messages } = body.data
+    // A body `projectId` is accepted but ignored: suggestions are filed on the
+    // chat's DB project. The client's nav project can be stale, which used to file
+    // one project's facts on another (audit U3).
+    const { chatId, messages } = body.data
+
+    const chat = await getChatWithContext(chatId)
+    if (!chat) {
+      return new Response(JSON.stringify({ error: 'Chat not found' }), {
+        status: 404, headers: { 'Content-Type': 'application/json' },
+      })
+    }
+    // Standalone chats have no project memory to suggest into.
+    const projectId = chat.projectId
+    if (projectId == null) return ok({ created: 0 })
 
     const apiKey = await getGeminiApiKey()
     if (!apiKey) return ok({ created: 0 })
@@ -76,7 +90,7 @@ export async function POST(req: Request) {
     })
 
     // Usage capture (spec C6) — best-effort.
-    void recordUsage({ chatId: chatId ?? null, projectId, purpose: 'memory-suggest', model: modelName, usage: result.totalUsage }).catch(() => {})
+    void recordUsage({ chatId, projectId, purpose: 'memory-suggest', model: modelName, usage: result.totalUsage }).catch(() => {})
 
     let facts: string[] = []
     try {
@@ -105,7 +119,7 @@ export async function POST(req: Request) {
       if (pendingCount + fresh.length >= PENDING_CAP) break
     }
 
-    if (fresh.length > 0) await createMemorySuggestions(projectId, chatId ?? null, fresh)
+    if (fresh.length > 0) await createMemorySuggestions(projectId, chatId, fresh)
     return ok({ created: fresh.length })
   } catch (error) {
     return apiError(error, 'Memory suggestion failed', 200)

@@ -1142,10 +1142,10 @@ export default function Home() {
       setCurrentSystemPrompt(prompt)
       toast.success(prompt ? "System instruction saved" : "System instruction cleared")
 
-      // Record persona usage for tracking
+      // Record persona usage for tracking. The server files it under the chat's own
+      // project — the nav project (activeProjectIdRef) can be stale here.
       const matchedPersona = getPersonaByPrompt(prompt)
       recordPersonaUsage({
-        projectId: activeProjectIdRef.current,
         chatId: activeChatId,
         personaId: matchedPersona?.id ?? (prompt ? 'custom' : 'default'),
         modelUsed: selectedModelRef.current || null,

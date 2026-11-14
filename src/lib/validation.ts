@@ -57,6 +57,8 @@ export const suggestFollowupsRequestSchema = z.object({
 export const embedRequestSchema = z.object({
   messageId: z.number(),
   chatId: z.number(),
+  // Ignored: the route files the embedding under the chat's DB project. Kept
+  // optional for one release so older clients still validate.
   projectId: z.number().nullable().optional(),
   content: z.string().min(1),
 })
@@ -70,8 +72,10 @@ export const classifyRequestSchema = z.object({
 })
 
 export const memorySuggestRequestSchema = z.object({
-  projectId: z.number().int().positive(),
-  chatId: z.number().int().positive().optional(),
+  // Ignored: the route derives the project from `chatId`. Kept optional for one
+  // release so older clients still validate.
+  projectId: z.number().int().positive().optional(),
+  chatId: z.number().int().positive(),
   messages: z.array(uiMessageSchema).min(1),
 })
 
