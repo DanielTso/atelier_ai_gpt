@@ -297,7 +297,7 @@ Model: implementer Opus; review Opus.
 
 ### Task C8: Restore the unreachable features (D1, D2, D4/U9; owner decision 2)
 
-Model: implementer Opus; review Opus.
+Model: implementer Opus; review Opus. **Ruling (2026-11-14):** the fix-round re-review ran on Opus, not Sonnet — round 1 redesigned regenerate persistence (in-place replace in a transaction inside the B1 recorder), a concurrency/persistence change, not a short fix list (MODEL_ROUTING rule 4). Round 2 (~40 src lines) was verified inline by the controller. Same inline check for C5 round 1.
 
 **Files:** Modify `ChatHeader.tsx` (project chat ⋮ menu), `ProjectsView.tsx` (project card menu), `ProjectLandingPage.tsx` (header menu). Each takes an `onOpenProjectSettings(projectId: number)` prop that `page.tsx` wires to `handleOpenProjectSettings`. `page.tsx:1339-1351` (pass `onDeleteMessage`, `onRegenerate` to `MessagesList`); `MessagesList.tsx`, `MessageActions.tsx`; `page.tsx` new-chat create paths (`:781-805`, `:873-909`) apply `default-system-prompt`; Tests `tests/hooks/ProjectsView.test.tsx`, `ProjectLandingPage.test.tsx`, `MessagesList-actions.test.tsx` (create), `tests/unit/actions/messages.test.ts`; Docs `docs/PERSONAS.md` (K21, K22).
 
