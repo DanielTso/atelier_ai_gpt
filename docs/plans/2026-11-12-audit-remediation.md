@@ -480,6 +480,7 @@ Model: implementer Opus; review Opus.
 - **D27:** the vestigial `artifacts.status` / `error_message` columns. Dropping them needs a migration for no user benefit.
 - **`pdfjs-dist` 6:** a major-version hygiene bump; its advisory isn't reachable (S7 table).
 - **Per-chat document scoping:** an open follow-up in the grounded-citations spec.
+- **Historical cost rows (owner decision):** C6 corrected Sonnet 5 to $2/$10 (the scheduled $3/$15 never took effect) and added per-model cache-read rates (Opus 5.5 / Sonnet 5.5 0.05×, Fable 5.1/5.2 0.025×). `usage_events.cost_usd` is frozen at write time by design, so Sonnet 5 rows since 2026-09-01 read ~1.5× high and cache reads on those newer models 2–4× high. Repricing them is a production write — owner decides at release (first a read-only sum of the affected rows). Actual Anthropic invoices were always correct; only Atelier's own ledger is off.
 - **Legacy hybrid page stamps (owner decision):** hybrid documents ingested before C5 keep wrong `page_start`/`page_end` (the X1 `{4,4}` stamping). `extracted.txt` can't repair them (the old splice stored no page boundaries). Options: (a) re-process each via Replace with the same file (Gemini cost); (b) null those chunks' `page_start`/`page_end` so citations stop pointing at the wrong page (a production write — owner-approved release step). First a read-only count of `extraction_method = 'hybrid'` documents created before the release.
 
 ## Release steps (owner-approved, not part of execution)
