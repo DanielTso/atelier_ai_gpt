@@ -428,10 +428,12 @@ export async function updateProjectDefaults(
     // must never land in the row (that's the root cause of the live bug: an
     // unvalidated default reaching /api/chat). null ("no project default")
     // is the correct semantic here, not a silent substitution of whatever
-    // resolveRequestedModel falls back to.
-    const { resolveRequestedModel } = await import('@/lib/models/registry')
+    // resolveRequestedModel falls back to. Only a LIVE catalog proves the id
+    // is gone (audit B12): under a stale or seed registry the id may simply
+    // be newer than the fallback list, so it is kept as given.
+    const { getModelRegistry, resolveRequestedModel } = await import('@/lib/models/registry')
     const { usedFallback } = await resolveRequestedModel(defaultModel)
-    if (usedFallback) defaultModel = null
+    if (usedFallback && (await getModelRegistry()).source === 'live') defaultModel = null
   }
   return await db.update(projects)
     .set({ ...defaults, defaultModel })

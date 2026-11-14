@@ -223,8 +223,10 @@ export const generatedImages = pgTable('generated_images', {
 ]).enableRLS();
 
 // Cost visibility (spec C6): one row per LLM generation, written best-effort by
-// recordUsage() (src/lib/usage.ts) from the six capture sites — chat,
-// artifact-regenerate, summarize, generate-title, classify, memory-suggest.
+// recordUsage() (src/lib/usage.ts) from every LLM call site — chat,
+// artifact-regenerate, summarize, generate-title, classify, memory-suggest,
+// and (audit C5, migration 0023) suggest-followups, query-rewrite, rerank,
+// image-generate, vision-extract.
 // costUsd is computed and FROZEN at write time: a later price change must never
 // silently reprice history. chatId/projectId are SET NULL (not cascade) so
 // spend history survives chat/project deletion — a usage row is a billing
@@ -261,8 +263,10 @@ export const usageEvents = pgTable('usage_events', {
   index('idx_usage_events_created_at').on(table.createdAt),
   index('idx_usage_events_project_id').on(table.projectId),
   // Audit D4: purpose is the only free-text enum a rollup groups on. Keep in
-  // sync with the UsagePurpose union in src/lib/usage.ts.
-  check('usage_events_purpose_chk', sql`${table.purpose} in ('chat', 'artifact-regenerate', 'summarize', 'generate-title', 'classify', 'memory-suggest')`),
+  // sync with the UsagePurpose union in src/lib/usage.ts. Never drop a value
+  // stored rows already hold ('classify' outlives /api/classify): the CHECK is
+  // re-validated against every existing row when it is replaced.
+  check('usage_events_purpose_chk', sql`${table.purpose} in ('chat', 'artifact-regenerate', 'summarize', 'generate-title', 'classify', 'memory-suggest', 'suggest-followups', 'query-rewrite', 'rerank', 'image-generate', 'vision-extract')`),
   check('usage_events_tokens_nonneg_chk', sql`${table.inputTokens} >= 0 and ${table.outputTokens} >= 0 and ${table.cacheReadTokens} >= 0 and ${table.cacheCreationTokens} >= 0 and ${table.costUsd} >= 0`),
 ]).enableRLS();
 

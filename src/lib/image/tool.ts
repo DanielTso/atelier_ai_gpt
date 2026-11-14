@@ -26,7 +26,7 @@ export function createGenerateImageTool(ctx: { chatId: number; projectId: number
       try {
         if (!isStorageConfigured()) return { error: 'Image storage is not configured.' }
 
-        const { bytes, mediaType, ext } = await generateImageBytes(prompt, aspectRatio)
+        const { bytes, mediaType, ext } = await generateImageBytes(prompt, aspectRatio, ctx)
 
         const path = `attachments/${ctx.chatId}/generated/${randomUUID()}.${ext}`
         await uploadBuffer(path, bytes, mediaType)

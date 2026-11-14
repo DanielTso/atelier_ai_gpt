@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 const mockGenerateText = vi.fn()
 const mockSplit = vi.fn()
 const mockSplitRuns = vi.fn()
+const mockRecordUsage = vi.fn<(...a: unknown[]) => Promise<undefined>>(async () => undefined)
 
 const seg = (firstPage: number, lastPage: number) => ({ bytes: new Uint8Array([1]), firstPage, lastPage })
 
@@ -11,6 +12,7 @@ function setup(key: string | null = 'k') {
   vi.doMock('ai', () => ({ generateText: (...a: unknown[]) => mockGenerateText(...a) }))
   vi.doMock('@ai-sdk/google', () => ({ createGoogleGenerativeAI: () => (m: string) => ({ modelId: m }) }))
   vi.doMock('@/lib/settings', () => ({ getGeminiApiKey: () => Promise.resolve(key) }))
+  vi.doMock('@/lib/usage', () => ({ recordUsage: mockRecordUsage }))
   vi.doMock('@/lib/pdfSegments', () => ({
     splitPdfIntoSegments: (...a: unknown[]) => mockSplit(...a),
     splitPdfPageRuns: (...a: unknown[]) => mockSplitRuns(...a),
@@ -39,6 +41,34 @@ describe('extractViaVision (segmented)', () => {
     expect(content[1]).toMatchObject({ type: 'file', mediaType: 'application/pdf' })
     // prompt carries the absolute page range so headings use real page numbers
     expect(content[0].text).toContain('pages 1-2')
+  })
+
+  // Audit C5: every vision call writes one usage_events row.
+  it('records one vision-extract usage row per successful segment call', async () => {
+    mockRecordUsage.mockClear()
+    setup()
+    mockSplit.mockResolvedValue({ segments: [seg(1, 2), seg(3, 4)], pageCount: 4, skippedPages: [], cappedPages: [] })
+    const usage = { inputTokens: 120, inputTokenDetails: { noCacheTokens: 120, cacheReadTokens: 0, cacheWriteTokens: 0 }, outputTokens: 30, outputTokenDetails: { textTokens: 30, reasoningTokens: 0 }, totalTokens: 150 }
+    mockGenerateText
+      .mockResolvedValueOnce({ text: 'SEG ONE', finishReason: 'stop', totalUsage: usage })
+      .mockRejectedValueOnce(new Error('boom'))
+    const { extractViaVision } = await import('@/lib/visionExtraction')
+    await extractViaVision(Buffer.from('pdf'))
+    expect(mockRecordUsage).toHaveBeenCalledExactlyOnceWith({
+      chatId: null, projectId: null, purpose: 'vision-extract', model: 'gemini-3.5-flash', usage,
+    })
+  })
+
+  it('records a vision-extract usage row for the single-image path and the hybrid page-run path', async () => {
+    mockRecordUsage.mockClear()
+    setup()
+    mockGenerateText.mockResolvedValue({ text: 'IMG', finishReason: 'stop' })
+    mockSplitRuns.mockResolvedValue({ segments: [seg(2, 2)], skippedPages: [] })
+    const { extractViaVisionImage, extractPagesViaVision } = await import('@/lib/visionExtraction')
+    await extractViaVisionImage(Buffer.from('img'), 'image/png')
+    await extractPagesViaVision(Buffer.from('pdf'), [2])
+    expect(mockRecordUsage).toHaveBeenCalledTimes(2)
+    for (const [args] of mockRecordUsage.mock.calls as unknown as [{ purpose: string }][]) expect(args.purpose).toBe('vision-extract')
   })
 
   it('transcribes at temperature 0 — re-processing the same sheet must not produce different text', async () => {

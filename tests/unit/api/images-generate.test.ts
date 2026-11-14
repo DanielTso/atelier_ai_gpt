@@ -57,6 +57,13 @@ describe('POST /api/images/generate', () => {
     })
   })
 
+  // Audit C5: the generation is recorded (inside generateImageBytes) against this project.
+  it('passes the project to generateImageBytes so the usage row is attributed to it', async () => {
+    const POST = await importRoute()
+    await POST(req({ prompt: 'a sunset', aspectRatio: '16:9', projectId: 5 }))
+    expect(m.generateImageBytes).toHaveBeenCalledWith('a sunset', '16:9', { chatId: null, projectId: 5 })
+  })
+
   it('returns 503 when no Gemini API key is configured', async () => {
     m.getGeminiApiKey.mockResolvedValue(null)
     const POST = await importRoute()

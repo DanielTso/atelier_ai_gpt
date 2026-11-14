@@ -2,23 +2,38 @@ import { getAnthropicApiKey, getGeminiApiKey } from '@/lib/settings'
 import { curateCatalog, parseFamily, DATED_SNAPSHOT_RE } from './curate'
 import { loadPricingOverrides, resolvePricing, type PricingOverrides } from './pricing'
 import { fetchAllAnthropicModels, type RawAnthropicModel } from './fetch'
-import { STATIC_SEED, LEGACY_PINS, GEMINI_MODELS } from './seed'
+import { STATIC_SEED, SEED_ROUTABLE, LEGACY_PINS, GEMINI_MODELS } from './seed'
 import { isModelTier, tierFamily, type CatalogModel, type ModelCapabilities, type ModelTier, type Effort } from './types'
+
+/**
+ * Where the Claude half of the registry came from:
+ * - `live`: this build's own /v1/models fetch.
+ * - `stale`: the fetch failed, so the last successful live catalog in this
+ *   process is served again (re-priced with the current overrides) — audit
+ *   B12: one failed refresh must not swap the models out from under a chat.
+ * - `seed`: the fetch failed and there has never been a live build here.
+ * Only `live` proves an id is absent from Anthropic's catalog.
+ */
+export type RegistrySource = 'live' | 'stale' | 'seed'
 
 export interface ModelRegistry {
   curated: CatalogModel[]
   byId: Map<string, CatalogModel>
-  source: 'live' | 'seed'
+  source: RegistrySource
 }
 
 const EFFORT_LEVELS: Effort[] = ['low', 'medium', 'high', 'xhigh', 'max']
 
+// The id every resolver falls back to when the registry has no Anthropic
+// entry at all (no key): the seed's first (newest Opus) model.
+const DEFAULT_MODEL_ID = STATIC_SEED[0]?.id ?? 'claude-opus-5-5'
+
 // Mirrors the TTL pattern in src/lib/settings.ts:5-40 — a confirmed live
-// catalog is trusted longer than a degraded (seed) one, so a transient
-// Anthropic outage self-heals within a minute instead of pinning the app to
-// the seed list for a full 5 minutes.
+// catalog is trusted longer than a degraded (stale or seed) one, so a
+// transient Anthropic outage self-heals within a minute instead of pinning the
+// app to the degraded list for a full 5 minutes.
 const LIVE_TTL_MS = 5 * 60 * 1000
-const SEED_TTL_MS = 60 * 1000
+const DEGRADED_TTL_MS = 60 * 1000
 
 const SAFE_DEFAULT_CAPABILITIES: ModelCapabilities = {
   supportsEffort: false,
@@ -29,12 +44,26 @@ const SAFE_DEFAULT_CAPABILITIES: ModelCapabilities = {
 }
 
 let cache: { registry: ModelRegistry; expiresAt: number } | null = null
+// The normalized Claude catalog of the last successful live fetch — what a
+// failed refresh serves as `stale`. Survives a plain cache clear.
+let lastLiveClaude: CatalogModel[] | null = null
+// One shared build for every caller that misses the cache at once, so a cold
+// start under load makes one /v1/models round-trip, not one per request.
+let inflight: Promise<ModelRegistry> | null = null
+// Bumped on every clear: a build that started before the clear must not write
+// its (pre-clear) result into the cache.
+let generation = 0
 
 /** Invalidate the cached registry. Call after anything that can change what
  * the registry can see (an API key edit, a pricing-override edit) — mirrors
- * `clearSettingsCache()`, wired into `actions.ts` beside it. */
-export function clearModelRegistryCache(): void {
+ * `clearSettingsCache()`, wired into `actions.ts` beside it. The next read
+ * rebuilds; the last good live catalog is kept as the fallback for that
+ * rebuild (it is re-priced on use) unless `includeLastGood` is set. */
+export function clearModelRegistryCache(options: { includeLastGood?: boolean } = {}): void {
   cache = null
+  inflight = null
+  generation++
+  if (options.includeLastGood) lastLiveClaude = null
 }
 
 /**
@@ -86,11 +115,11 @@ function normalizeAnthropicModel(raw: RawAnthropicModel, overrides: PricingOverr
 
 /**
  * Re-price a model that already carries a `pricing` field (STATIC_SEED,
- * GEMINI_MODELS) through resolvePricing(). Carry-over fact from the Task 1
- * review: seed.ts hardcodes a `pricing` field per model that DUPLICATES
- * pricing.ts and has already drifted (Sonnet 5's seed entry says 3/15 while
- * EXACT_PRICING now has the introductory 2/10 rate). Every ANTHROPIC model
- * this registry serves — live, seed, and legacy pin alike — is re-priced
+ * SEED_ROUTABLE, GEMINI_MODELS, a stale live entry) through resolvePricing().
+ * seed.ts hardcodes a `pricing` field per model that DUPLICATES pricing.ts and
+ * has drifted before (Task 1 review), and a stale entry carries the overrides
+ * of the build that fetched it. Every ANTHROPIC model this registry serves —
+ * live, stale, seed, and legacy pin alike — is re-priced
  * HERE so pricing.ts stays the single source of truth; a model's own
  * hardcoded `pricing` field is never trusted downstream of this function.
  *
@@ -167,13 +196,13 @@ function buildLegacyPin(id: string, overrides: PricingOverrides): CatalogModel {
   }
 }
 
-async function buildRegistry(): Promise<ModelRegistry> {
+async function buildRegistry(): Promise<{ registry: ModelRegistry; liveClaude: CatalogModel[] | null }> {
   // getAnthropicApiKey()/getGeminiApiKey() are getServerSetting() -> db.select()
   // and can reject (DB outage, pool exhaustion) — unlike loadPricingOverrides(),
   // which already catches internally. A rejection here must not propagate past
   // buildRegistry(): the "never throws" contract on resolveRequestedModel() /
   // getModelCapabilities() depends on it. Degrade to "no key" so the registry
-  // still builds (seed/empty), cached under the shorter SEED_TTL_MS so a
+  // still builds (seed/empty), cached under the shorter DEGRADED_TTL_MS so a
   // transient DB blip self-heals in 60s instead of throwing on every request.
   const [anthropicApiKey, geminiApiKey, overrides] = await Promise.all([
     getAnthropicApiKey().catch((error) => {
@@ -189,7 +218,8 @@ async function buildRegistry(): Promise<ModelRegistry> {
 
   const byId = new Map<string, CatalogModel>()
   let curatedClaude: CatalogModel[] = []
-  let source: 'live' | 'seed' = 'seed'
+  let source: RegistrySource = 'seed'
+  let liveClaude: CatalogModel[] | null = null
 
   // No Anthropic key -> no Claude entries at all (matches today's gate in
   // src/app/api/models/route.ts) and the live fetch must never even be
@@ -200,22 +230,38 @@ async function buildRegistry(): Promise<ModelRegistry> {
       const raw = await fetchAllAnthropicModels(anthropicApiKey)
       claudeModels = raw.map(r => normalizeAnthropicModel(r, overrides))
       source = 'live'
+      liveClaude = claudeModels
     } catch (error) {
-      console.warn('[models] live Anthropic models fetch failed, falling back to seed', error)
-      claudeModels = STATIC_SEED.map(m => repriceModel(m, overrides))
-      source = 'seed'
+      if (lastLiveClaude) {
+        console.warn('[models] live Anthropic models fetch failed, serving the last live catalog (stale)', error)
+        claudeModels = lastLiveClaude.map(m => repriceModel(m, overrides))
+        source = 'stale'
+      } else {
+        console.warn('[models] live Anthropic models fetch failed and no live catalog was ever loaded, falling back to seed', error)
+        claudeModels = STATIC_SEED.map(m => repriceModel(m, overrides))
+        source = 'seed'
+      }
     }
 
     // byId gets the FULL normalized/seed catalog (not just curated) — dated
-    // snapshots and unrecognized families (fact (d): e.g. claude-3-7-sonnet-*
-    // collapsing into family 'other') stay routable even though curateCatalog
-    // only surfaces the newest-per-family subset in the picker.
+    // snapshots, older family members and unrecognized families stay routable
+    // even though curateCatalog only surfaces the newest-per-family subset in
+    // the picker.
     for (const model of claudeModels) byId.set(model.id, model)
     // Alias pass runs AFTER all real ids are set, so a real bare entry (if
     // Anthropic ever ships one) is already in byId and the guard inside
     // registerDatedAliases() leaves it untouched regardless of array order.
     registerDatedAliases(byId, claudeModels)
     curatedClaude = curateCatalog(claudeModels)
+
+    // Seed path only: the previous seed generation stays routable (byId, not
+    // the picker) so an id already held by a chat, persona or project default
+    // keeps its own model instead of falling back to the default.
+    if (source === 'seed') {
+      for (const model of SEED_ROUTABLE) {
+        if (!byId.has(model.id)) byId.set(model.id, repriceModel(model, overrides))
+      }
+    }
 
     // Legacy pins stay routable even though they're not offered in the
     // picker. Resolve each from the full (live or seed) catalog when
@@ -233,19 +279,35 @@ async function buildRegistry(): Promise<ModelRegistry> {
     for (const model of geminiModels) byId.set(model.id, model)
   }
 
-  return { curated: [...curatedClaude, ...geminiModels], byId, source }
+  return { registry: { curated: [...curatedClaude, ...geminiModels], byId, source }, liveClaude }
 }
 
 /** Get the (cached) model registry, rebuilding when the TTL has expired.
- * TTL is 5 min for a confirmed live catalog, 60 s for a seed/degraded one. */
+ * TTL is 5 min for a confirmed live catalog, 60 s for a stale or seed one.
+ * Concurrent callers that miss the cache share one in-flight build. */
 export async function getModelRegistry(): Promise<ModelRegistry> {
   if (cache && Date.now() < cache.expiresAt) {
     return cache.registry
   }
-  const registry = await buildRegistry()
-  const ttl = registry.source === 'live' ? LIVE_TTL_MS : SEED_TTL_MS
-  cache = { registry, expiresAt: Date.now() + ttl }
-  return registry
+  if (inflight) return inflight
+
+  const startedAt = generation
+  const build: Promise<ModelRegistry> = buildRegistry()
+    .then(({ registry, liveClaude }) => {
+      // A clear landed while this build ran: hand the result to the callers
+      // already waiting, but never cache it or keep it as the last good one.
+      if (startedAt === generation) {
+        if (liveClaude) lastLiveClaude = liveClaude
+        const ttl = registry.source === 'live' ? LIVE_TTL_MS : DEGRADED_TTL_MS
+        cache = { registry, expiresAt: Date.now() + ttl }
+      }
+      return registry
+    })
+    .finally(() => {
+      if (inflight === build) inflight = null
+    })
+  inflight = build
+  return build
 }
 
 /**
@@ -253,8 +315,9 @@ export async function getModelRegistry(): Promise<ModelRegistry> {
  * the fix for a real bug where a stale project default 400s the chat.
  * - No id requested: returns the current default (not a "correction", so
  *   `usedFallback` is false).
- * - Known id (curated, full raw catalog, legacy pin, or Gemini): passed
- *   through unchanged.
+ * - Known id (curated, full raw catalog, legacy pin, or Gemini): returns the
+ *   id of the catalog entry it matched (prior audit C3) — for a bare alias of
+ *   a dated-only model that is the dated id, the one Anthropic serves.
  * - Unknown / retired / tampered id: falls back to the default with a
  *   console.warn and `usedFallback: true`.
  *
@@ -266,7 +329,7 @@ export async function getModelRegistry(): Promise<ModelRegistry> {
  */
 export async function resolveRequestedModel(requested?: string): Promise<{ modelId: string; usedFallback: boolean }> {
   const registry = await getModelRegistry()
-  const fallback = registry.curated.find(m => m.provider === 'anthropic')?.id ?? 'claude-opus-4-8'
+  const fallback = registry.curated.find(m => m.provider === 'anthropic')?.id ?? DEFAULT_MODEL_ID
 
   if (!requested) {
     return { modelId: fallback, usedFallback: false }
@@ -280,11 +343,12 @@ export async function resolveRequestedModel(requested?: string): Promise<{ model
   if (isModelTier(requested)) {
     return { modelId: await resolveTier(requested), usedFallback: false }
   }
-  if (registry.byId.has(requested)) {
-    return { modelId: requested, usedFallback: false }
+  const match = registry.byId.get(requested)
+  if (match) {
+    return { modelId: match.id, usedFallback: false }
   }
 
-  console.warn(`[models] unknown model id "${requested}" requested, falling back to "${fallback}"`)
+  console.warn(`[models] unknown model id "${requested}" requested (registry: ${registry.source}), falling back to "${fallback}"`)
   return { modelId: fallback, usedFallback: true }
 }
 
@@ -306,7 +370,7 @@ export async function resolveTier(tier: ModelTier): Promise<string> {
   const match = registry.curated.find(m => m.family === family)
   if (match) return match.id
 
-  const fallback = registry.curated.find(m => m.provider === 'anthropic')?.id ?? 'claude-opus-4-8'
+  const fallback = registry.curated.find(m => m.provider === 'anthropic')?.id ?? DEFAULT_MODEL_ID
   console.warn(`[models] tier "${tier}" (family "${family}") has no match in the curated registry, falling back to "${fallback}"`)
   return fallback
 }

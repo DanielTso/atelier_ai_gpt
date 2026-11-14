@@ -1,0 +1,2 @@
+ALTER TABLE "usage_events" DROP CONSTRAINT "usage_events_purpose_chk";--> statement-breakpoint
+ALTER TABLE "usage_events" ADD CONSTRAINT "usage_events_purpose_chk" CHECK ("usage_events"."purpose" in ('chat', 'artifact-regenerate', 'summarize', 'generate-title', 'classify', 'memory-suggest', 'suggest-followups', 'query-rewrite', 'rerank', 'image-generate', 'vision-extract'));

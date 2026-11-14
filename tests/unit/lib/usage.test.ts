@@ -114,6 +114,13 @@ describe('estimateCost', () => {
     expect(cost).not.toBeCloseTo(DOUBLE_COUNTED_COST, 12)
   })
 
+  it('prices cache hits at the model own cache-hit rate when its pricing carries one', () => {
+    // Opus 5.5: cache hits are 0.05x input ($0.20), not the standard 0.1x.
+    const opus55: ModelPricing = { inputPerMTok: 4, outputPerMTok: 20, cacheReadPerMTok: 0.2, estimated: false }
+    // 1000x4 + 200x0.2 + 100x4x1.25 + 400x20 = 4000+40+500+8000 = 12540 / 1e6
+    expect(estimateCost('claude-opus-5-5', makeUsage(), opus55)).toBeCloseTo(0.01254, 12)
+  })
+
   it('is zero for an undefined usage', () => {
     expect(estimateCost('claude-opus-4-8', undefined, PRICING_OPUS)).toBe(0)
   })
@@ -196,6 +203,18 @@ describe('recordUsage', () => {
       costEstimated: true,
     })
   })
+
+  // Audit C5: the five formerly unrecorded LLM call sites each have a purpose
+  // the usage_events CHECK accepts (migration 0023).
+  it.each(['suggest-followups', 'query-rewrite', 'rerank', 'image-generate', 'vision-extract'] as const)(
+    'writes a row for the %s purpose',
+    async (purpose) => {
+      await recordUsage({ chatId: null, projectId: null, purpose, model: 'gemini-3.5-flash', usage: makeUsage() })
+      const rows = await testDb.select().from(usageEvents)
+      expect(rows).toHaveLength(1)
+      expect(rows[0].purpose).toBe(purpose)
+    },
+  )
 
   it('supports the Task 11 rollup: SUM of the mutually exclusive columns groups cleanly by model', async () => {
     await recordUsage({ chatId: null, projectId: null, purpose: 'chat', model: 'claude-opus-4-8', usage: makeUsage() })

@@ -136,6 +136,16 @@ const NULL_EFFORT_RAW = {
   },
 }
 
+// A model the live catalog serves but STATIC_SEED does not — the B12 probe.
+// If a refresh failure dropped to the seed, this id would miss byId and
+// silently resolve to the seed default instead.
+const OPUS5_RAW = {
+  ...OPUS_RAW,
+  id: 'claude-opus-5',
+  display_name: 'Claude Opus 5',
+  created_at: '2026-09-01T00:00:00Z',
+}
+
 function mockLivePage(data: unknown[]) {
   return { ok: true, status: 200, json: async () => ({ data, has_more: false }) }
 }
@@ -148,7 +158,7 @@ describe('models/registry', () => {
     getServerSetting.mockResolvedValue(null) // no pricing overrides by default
     getGeminiApiKey.mockResolvedValue(null)
     vi.stubGlobal('fetch', vi.fn())
-    clearModelRegistryCache()
+    clearModelRegistryCache({ includeLastGood: true })
   })
 
   afterEach(() => {
@@ -196,7 +206,7 @@ describe('models/registry', () => {
 
       expect(registry.source).toBe('seed')
       expect(registry.curated.map(m => m.id)).toEqual([
-        'claude-opus-4-8', 'claude-fable-5', 'claude-sonnet-5', 'claude-haiku-4-5',
+        'claude-opus-5-5', 'claude-fable-5-2', 'claude-sonnet-5-5', 'claude-haiku-5-5',
       ])
       expect(warn).toHaveBeenCalled()
       warn.mockRestore()
@@ -266,6 +276,109 @@ describe('models/registry', () => {
     })
   })
 
+  // Audit B12: one failed /v1/models refresh must not swap the live catalog
+  // for the seed (which silently changes the model and nulls project defaults).
+  describe('getModelRegistry — last good live catalog (B12)', () => {
+    async function liveThenFailingRefresh() {
+      vi.useFakeTimers()
+      getAnthropicApiKey.mockResolvedValue('sk-test')
+      const fetchMock = fetch as ReturnType<typeof vi.fn>
+      fetchMock.mockResolvedValue(mockLivePage([OPUS5_RAW, HAIKU_RAW]))
+      const live = await getModelRegistry()
+      expect(live.source).toBe('live')
+
+      fetchMock.mockResolvedValue({ ok: false, status: 500, json: async () => ({}) })
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      vi.setSystemTime(Date.now() + 5 * 60 * 1000 + 1000) // past the live TTL
+      return fetchMock
+    }
+
+    it('serves the last live catalog marked stale when a refresh fails, and a live id still passes through', async () => {
+      const fetchMock = await liveThenFailingRefresh()
+
+      const registry = await getModelRegistry()
+      expect(fetchMock).toHaveBeenCalledTimes(2) // the refresh WAS attempted
+      expect(registry.source).toBe('stale')
+      expect(registry.curated.map(m => m.id)).toEqual(['claude-opus-5', 'claude-haiku-4-5'])
+      expect(await resolveRequestedModel('claude-opus-5')).toEqual({ modelId: 'claude-opus-5', usedFallback: false })
+      // Legacy pins stay routable on the stale path too.
+      expect(registry.byId.has('claude-sonnet-4-6')).toBe(true)
+    })
+
+    it('retries a stale catalog after the short (60s) TTL and returns to live when the fetch recovers', async () => {
+      const fetchMock = await liveThenFailingRefresh()
+      expect((await getModelRegistry()).source).toBe('stale')
+
+      fetchMock.mockResolvedValue(mockLivePage([OPUS5_RAW]))
+      vi.setSystemTime(Date.now() + 59 * 1000)
+      expect((await getModelRegistry()).source).toBe('stale') // still cached
+      vi.setSystemTime(Date.now() + 2 * 1000)
+      expect((await getModelRegistry()).source).toBe('live')
+      expect(fetchMock).toHaveBeenCalledTimes(3)
+    })
+
+    it('re-prices the stale catalog with the current overrides', async () => {
+      await liveThenFailingRefresh()
+      getServerSetting.mockResolvedValue(JSON.stringify({ 'claude-opus-5': { inputPerMTok: 7, outputPerMTok: 70 } }))
+
+      const registry = await getModelRegistry()
+      expect(registry.source).toBe('stale')
+      expect(registry.byId.get('claude-opus-5')?.pricing).toEqual({ inputPerMTok: 7, outputPerMTok: 70, estimated: false })
+    })
+
+    it('keeps the last good catalog across a plain clearModelRegistryCache() (a settings save), dropping it only on request', async () => {
+      const fetchMock = await liveThenFailingRefresh()
+
+      clearModelRegistryCache()
+      expect((await getModelRegistry()).source).toBe('stale')
+
+      clearModelRegistryCache({ includeLastGood: true })
+      expect((await getModelRegistry()).source).toBe('seed')
+      expect(fetchMock).toHaveBeenCalledTimes(3)
+    })
+
+    it('falls back to the seed only when there was never a live build', async () => {
+      getAnthropicApiKey.mockResolvedValue('sk-test')
+      const fetchMock = fetch as ReturnType<typeof vi.fn>
+      fetchMock.mockResolvedValue({ ok: false, status: 500, json: async () => ({}) })
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      expect((await getModelRegistry()).source).toBe('seed')
+    })
+  })
+
+  describe('getModelRegistry — in-flight build deduplication', () => {
+    it('concurrent callers on a cold cache share ONE build (one catalog fetch)', async () => {
+      getAnthropicApiKey.mockResolvedValue('sk-test')
+      const fetchMock = fetch as ReturnType<typeof vi.fn>
+      fetchMock.mockResolvedValue(mockLivePage([OPUS_RAW]))
+
+      const [a, b, c] = await Promise.all([getModelRegistry(), getModelRegistry(), resolveRequestedModel('claude-opus-4-8')])
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(a).toBe(b)
+      expect(c).toEqual({ modelId: 'claude-opus-4-8', usedFallback: false })
+    })
+
+    it('a build in flight when the cache is cleared does not repopulate the cache with pre-clear state', async () => {
+      getAnthropicApiKey.mockResolvedValue('sk-test')
+      const fetchMock = fetch as ReturnType<typeof vi.fn>
+      let release!: (v: unknown) => void
+      fetchMock.mockImplementationOnce(() => new Promise(resolve => { release = resolve }))
+      fetchMock.mockResolvedValue(mockLivePage([OPUS5_RAW]))
+
+      const first = getModelRegistry()
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+      clearModelRegistryCache()
+      release(mockLivePage([OPUS_RAW]))
+      expect((await first).curated.map(m => m.id)).toEqual(['claude-opus-4-8'])
+
+      // The next read rebuilds instead of serving the superseded result.
+      const next = await getModelRegistry()
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      expect(next.curated.map(m => m.id)).toEqual(['claude-opus-5'])
+    })
+  })
+
   describe('resolveRequestedModel', () => {
     it('returns the current default with usedFallback:false when no id is requested (omission is the normal default path, not a correction)', async () => {
       getAnthropicApiKey.mockResolvedValue('sk-test')
@@ -304,7 +417,7 @@ describe('models/registry', () => {
       vi.spyOn(console, 'warn').mockImplementation(() => {})
 
       // claude-sonnet-4-6 is not in STATIC_SEED (it's the id superseded BY
-      // Sonnet 5) so this only passes if buildLegacyPin() synthesizes it.
+      // Sonnet 5.5) so this only passes if buildLegacyPin() synthesizes it.
       const result = await resolveRequestedModel('claude-sonnet-4-6')
       expect(result).toEqual({ modelId: 'claude-sonnet-4-6', usedFallback: false })
     })
@@ -345,7 +458,7 @@ describe('models/registry', () => {
       fetchMock.mockResolvedValue({ ok: false, status: 500, json: async () => ({}) }) // -> STATIC_SEED
 
       const result = await resolveRequestedModel('flagship')
-      expect(result).toEqual({ modelId: 'claude-fable-5', usedFallback: false })
+      expect(result).toEqual({ modelId: 'claude-fable-5-2', usedFallback: false })
     })
   })
 
@@ -360,7 +473,7 @@ describe('models/registry', () => {
 
       // resolveRequestedModel still returns a usable fallback, never a throw.
       const result = await resolveRequestedModel('claude-opus-4-8')
-      expect(result).toEqual({ modelId: 'claude-opus-4-8', usedFallback: true })
+      expect(result).toEqual({ modelId: 'claude-opus-5-5', usedFallback: true })
       warn.mockRestore()
     })
 
@@ -405,7 +518,9 @@ describe('models/registry', () => {
       // request becomes an Opus request, ~5x the input/output cost.
       const result = await resolveRequestedModel('claude-haiku-4-5')
       expect(result.usedFallback).toBe(false)
-      expect(['claude-haiku-4-5', 'claude-haiku-4-5-20251001']).toContain(result.modelId)
+      // C3: the MATCHED catalog id goes to the provider, not the alias that
+      // Anthropic may not serve at /v1/messages.
+      expect(result.modelId).toBe('claude-haiku-4-5-20251001')
     })
 
     it('byId contains both the dated id and its bare alias, pointing at the same model', async () => {
@@ -477,20 +592,20 @@ describe('models/registry', () => {
     })
 
     it("'flagship' resolves to the newest 'fable'-family model", async () => {
-      expect(await resolveTier('flagship')).toBe('claude-fable-5')
+      expect(await resolveTier('flagship')).toBe('claude-fable-5-2')
     })
 
     it("'opus'/'sonnet'/'haiku' resolve to their own family", async () => {
-      expect(await resolveTier('opus')).toBe('claude-opus-4-8')
-      expect(await resolveTier('sonnet')).toBe('claude-sonnet-5')
-      expect(await resolveTier('haiku')).toBe('claude-haiku-4-5')
+      expect(await resolveTier('opus')).toBe('claude-opus-5-5')
+      expect(await resolveTier('sonnet')).toBe('claude-sonnet-5-5')
+      expect(await resolveTier('haiku')).toBe('claude-haiku-5-5')
     })
 
     it('falls back to the literal default id (or the one Anthropic model present) and warns when curated is empty entirely', async () => {
       getAnthropicApiKey.mockResolvedValue(null) // -> curated is empty entirely
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-      expect(await resolveTier('opus')).toBe('claude-opus-4-8')
+      expect(await resolveTier('opus')).toBe('claude-opus-5-5')
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('opus'))
       warn.mockRestore()
     })
@@ -521,7 +636,7 @@ describe('models/registry', () => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
       const result = await resolveTier('opus')
-      expect(result).toBe('claude-opus-4-8')
+      expect(result).toBe('claude-opus-5-5')
       expect(result).not.toBe('gemini-3.1-flash-image')
       warn.mockRestore()
     })
@@ -531,7 +646,7 @@ describe('models/registry', () => {
       getGeminiApiKey.mockResolvedValue('gk-test') // -> curated === [nanoBanana] alone
 
       const result = await resolveRequestedModel(undefined)
-      expect(result).toEqual({ modelId: 'claude-opus-4-8', usedFallback: false })
+      expect(result).toEqual({ modelId: 'claude-opus-5-5', usedFallback: false })
     })
   })
 
@@ -566,29 +681,29 @@ describe('models/registry', () => {
   })
 
   describe('repricing (Anthropic seed/legacy go through resolvePricing; non-Anthropic is carved out)', () => {
-    it('reprices the seeded Sonnet 5 through resolvePricing instead of keeping the seed\'s hardcoded field', async () => {
+    it('reprices the seeded Sonnet 5.5 through resolvePricing instead of keeping the seed\'s hardcoded field', async () => {
       getAnthropicApiKey.mockResolvedValue('sk-test')
       const fetchMock = fetch as ReturnType<typeof vi.fn>
       fetchMock.mockResolvedValue({ ok: false, status: 500, json: async () => ({}) }) // -> STATIC_SEED
       vi.spyOn(console, 'warn').mockImplementation(() => {})
 
       // No override: EXACT_PRICING (pricing.ts) and STATIC_SEED (seed.ts) both
-      // carry the 3/15 standing rate, so this case alone can't tell repriceModel()
+      // carry the 2/10 rate, so this case alone can't tell repriceModel()
       // calling resolvePricing() apart from repriceModel() doing nothing — the
       // override case below is what actually discriminates the two.
       const registry = await getModelRegistry()
-      const sonnet5 = registry.byId.get('claude-sonnet-5')
-      expect(sonnet5?.pricing).toEqual({ inputPerMTok: 3, outputPerMTok: 15, estimated: false })
+      const sonnet = registry.byId.get('claude-sonnet-5-5')
+      expect(sonnet?.pricing).toEqual({ inputPerMTok: 2, outputPerMTok: 10, cacheReadPerMTok: 0.1, estimated: false })
 
       // A pricing override (7/70) matches neither EXACT_PRICING nor the seed's
       // own hardcoded field, so only repriceModel() actually invoking
       // resolvePricing() (rather than e.g. a dropped `return model`) can
       // produce it here.
-      getServerSetting.mockResolvedValue(JSON.stringify({ 'claude-sonnet-5': { inputPerMTok: 7, outputPerMTok: 70 } }))
-      clearModelRegistryCache()
+      getServerSetting.mockResolvedValue(JSON.stringify({ 'claude-sonnet-5-5': { inputPerMTok: 7, outputPerMTok: 70 } }))
+      clearModelRegistryCache({ includeLastGood: true })
       const repriced = await getModelRegistry()
-      const overriddenSonnet5 = repriced.byId.get('claude-sonnet-5')
-      expect(overriddenSonnet5?.pricing).toEqual({ inputPerMTok: 7, outputPerMTok: 70, estimated: false })
+      const overridden = repriced.byId.get('claude-sonnet-5-5')
+      expect(overridden?.pricing).toEqual({ inputPerMTok: 7, outputPerMTok: 70, estimated: false })
     })
 
     it('prices a synthesized legacy pin via resolvePricing (family-tier, since it has no hardcoded field to drift from)', async () => {

@@ -36,7 +36,7 @@ export async function POST(req: Request) {
 
     let bytes: Buffer, mediaType: string, ext: string
     try {
-      ;({ bytes, mediaType, ext } = await generateImageBytes(prompt, aspectRatio))
+      ;({ bytes, mediaType, ext } = await generateImageBytes(prompt, aspectRatio, { chatId: null, projectId: projectId ?? null }))
     } catch (e) {
       return apiError(e, 'Image generation failed', 502)
     }

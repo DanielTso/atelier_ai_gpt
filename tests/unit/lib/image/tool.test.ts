@@ -6,6 +6,7 @@ const mockSigned = vi.fn()
 const mockGetKey = vi.fn()
 const mockIsConfigured = vi.fn(() => true)
 const mockGoogle = vi.fn((m: string) => ({ modelId: m }))
+const mockRecordUsage = vi.fn<(...a: unknown[]) => Promise<undefined>>(async () => undefined)
 
 async function load() {
   vi.resetModules()
@@ -13,6 +14,7 @@ async function load() {
   vi.doMock('ai', () => ({ tool: (def: unknown) => def, generateText: mockGenerateText }))
   vi.doMock('@ai-sdk/google', () => ({ createGoogleGenerativeAI: () => mockGoogle }))
   vi.doMock('@/lib/settings', () => ({ getGeminiApiKey: mockGetKey }))
+  vi.doMock('@/lib/usage', () => ({ recordUsage: mockRecordUsage }))
   vi.doMock('@/lib/storage', () => ({
     isStorageConfigured: mockIsConfigured,
     uploadBuffer: mockUpload,
@@ -30,6 +32,15 @@ describe('generate_image tool', () => {
     mockUpload.mockResolvedValue(undefined)
     mockSigned.mockResolvedValue('signed:url')
     mockGenerateText.mockResolvedValue({ files: [{ mediaType: 'image/png', uint8Array: new Uint8Array([1, 2, 3]) }], text: '' })
+  })
+
+  it('records the image generation against the chat it ran in', async () => {
+    mockRecordUsage.mockClear()
+    const make = await load()
+    await make({ chatId: 7, projectId: 3 }).execute!({ prompt: 'a red barn at dusk' }, {} as never)
+    expect(mockRecordUsage).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      chatId: 7, projectId: 3, purpose: 'image-generate', model: 'gemini-3.1-flash-image',
+    }))
   })
 
   it('generates, uploads, and returns a small descriptor (no base64)', async () => {

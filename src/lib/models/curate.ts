@@ -8,9 +8,14 @@ export const DATED_SNAPSHOT_RE = /-\d{8}$/
 // Picker ordering for known families; anything else sorts after all of these.
 export const FAMILY_DISPLAY_ORDER = ['opus', 'fable', 'sonnet', 'haiku'] as const
 
-/** Lowercase family segment after `claude-`, e.g. `claude-opus-4-8` -> `opus`. Non-Claude / unrecognized ids -> `'other'`. */
+/**
+ * Lowercase family segment of a Claude id: `claude-opus-4-8` -> `opus`, and the
+ * legacy version-first form `claude-3-7-sonnet-20250219` -> `sonnet` (prior
+ * audit C6: those used to collapse into `'other'`, surface as an extra picker
+ * row and price at the Opus tier). Non-Claude / unrecognized ids -> `'other'`.
+ */
 export function parseFamily(modelId: string): string {
-  const match = /^claude-([a-z]+)/.exec(modelId.toLowerCase())
+  const match = /^claude-(?:\d+(?:-\d+)*-)?([a-z]+)/.exec(modelId.toLowerCase())
   return match?.[1] ?? 'other'
 }
 

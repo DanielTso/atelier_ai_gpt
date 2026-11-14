@@ -4,6 +4,7 @@ const generateTextMock = vi.fn()
 vi.mock('ai', () => ({ generateText: (...a: unknown[]) => generateTextMock(...a) }))
 vi.mock('@ai-sdk/google', () => ({ createGoogleGenerativeAI: () => () => 'model' }))
 vi.mock('@/lib/settings', () => ({ getGeminiApiKey: async () => 'key' }))
+vi.mock('@/lib/usage', () => ({ recordUsage: async () => undefined }))
 vi.mock('@/lib/pdfSegments', () => ({
   splitPdfIntoSegments: async () => ({
     segments: [

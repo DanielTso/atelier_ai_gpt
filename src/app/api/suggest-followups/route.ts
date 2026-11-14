@@ -2,6 +2,9 @@ import { generateText } from 'ai';
 import { createProvider } from '@/lib/providers';
 import { apiError } from '@/lib/errors';
 import { suggestFollowupsRequestSchema } from '@/lib/validation';
+import { recordUsage } from '@/lib/usage';
+
+const FOLLOWUP_MODEL = 'gemini-3.5-flash';
 
 const FOLLOWUP_PROMPT =
   'Given the last exchange of a conversation, suggest 3 follow-ups the user might click next. ' +
@@ -23,7 +26,7 @@ export async function POST(req: Request) {
       .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
       .join('\n\n');
 
-    const { model } = await createProvider('gemini-3.5-flash');
+    const { model } = await createProvider(FOLLOWUP_MODEL);
     const result = await generateText({
       model,
       messages: [
@@ -32,6 +35,8 @@ export async function POST(req: Request) {
       ],
       maxOutputTokens: 512,
     });
+    // The request carries no chat id, so the row is unattributed.
+    void recordUsage({ chatId: null, projectId: null, purpose: 'suggest-followups', model: FOLLOWUP_MODEL, usage: result.totalUsage }).catch(() => {});
 
     let suggestions: string[] = [];
     const match = result.text.match(/\[[\s\S]*\]/);

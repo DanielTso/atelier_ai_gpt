@@ -17,9 +17,50 @@ describe('resolvePricing', () => {
   })
 
   it('uses the exact-id table when there is no override', () => {
-    // Claude Sonnet 5 standing rate: 3/15 (the 2/10 introductory window ended 2026-08-31).
+    // Claude Sonnet 5: $2/$10 is the standard price (the scheduled 2026-09-01
+    // increase to $3/$15 was cancelled; Anthropic pricing page, 2026-11-14).
     expect(resolvePricing('claude-sonnet-5', 'sonnet', {})).toEqual({
-      inputPerMTok: 3, outputPerMTok: 15, estimated: false,
+      inputPerMTok: 2, outputPerMTok: 10, estimated: false,
+    })
+  })
+
+  it('lists the current newest model per family at the published rates, with the non-standard cache-hit rate where one applies', () => {
+    expect(resolvePricing('claude-opus-5-5', 'opus', {})).toEqual({ inputPerMTok: 4, outputPerMTok: 20, cacheReadPerMTok: 0.2, estimated: false })
+    expect(resolvePricing('claude-fable-5-2', 'fable', {})).toEqual({ inputPerMTok: 8, outputPerMTok: 40, cacheReadPerMTok: 0.2, estimated: false })
+    expect(resolvePricing('claude-sonnet-5-5', 'sonnet', {})).toEqual({ inputPerMTok: 2, outputPerMTok: 10, cacheReadPerMTok: 0.1, estimated: false })
+    expect(resolvePricing('claude-haiku-5-5', 'haiku', {})).toEqual({ inputPerMTok: 0.1, outputPerMTok: 0.5, estimated: false })
+    // Contract Abstract is pinned to the exact claude-fable-5 — it must stay exactly priced.
+    expect(resolvePricing('claude-fable-5', 'fable', {})).toEqual({ inputPerMTok: 10, outputPerMTok: 50, estimated: false })
+  })
+
+  // Audit B19: the live catalog can ship a family only as a dated snapshot id.
+  it('prices a dated-only id from its bare-alias row, not as an estimate', () => {
+    expect(resolvePricing('claude-haiku-4-5-20251001', 'haiku', {})).toEqual({
+      inputPerMTok: 1, outputPerMTok: 5, estimated: false,
+    })
+  })
+
+  it('applies an override keyed by the bare alias to the dated id', () => {
+    const overrides = { 'claude-haiku-4-5': { inputPerMTok: 0.8, outputPerMTok: 4 } }
+    expect(resolvePricing('claude-haiku-4-5-20251001', 'haiku', overrides)).toEqual({
+      inputPerMTok: 0.8, outputPerMTok: 4, estimated: false,
+    })
+  })
+
+  it('an override keyed by the exact dated id wins over one keyed by its alias', () => {
+    const overrides = {
+      'claude-haiku-4-5': { inputPerMTok: 0.8, outputPerMTok: 4 },
+      'claude-haiku-4-5-20251001': { inputPerMTok: 0.7, outputPerMTok: 3 },
+    }
+    expect(resolvePricing('claude-haiku-4-5-20251001', 'haiku', overrides)).toEqual({
+      inputPerMTok: 0.7, outputPerMTok: 3, estimated: false,
+    })
+  })
+
+  it('carries the optional cache-hit rate of an override', () => {
+    const overrides = { 'claude-opus-5-5': { inputPerMTok: 4, outputPerMTok: 20, cacheReadPerMTok: 0.2 } }
+    expect(resolvePricing('claude-opus-5-5', 'opus', overrides)).toEqual({
+      inputPerMTok: 4, outputPerMTok: 20, cacheReadPerMTok: 0.2, estimated: false,
     })
   })
 
@@ -101,6 +142,18 @@ describe('loadPricingOverrides', () => {
       inputPerMTok: 5, outputPerMTok: 25, estimated: false,
     })
     warn.mockRestore()
+  })
+
+  it('keeps a finite cacheReadPerMTok on an override entry and drops a non-finite one (the entry itself survives)', async () => {
+    getSetting.mockResolvedValue(JSON.stringify({
+      'claude-opus-5-5': { inputPerMTok: 4, outputPerMTok: 20, cacheReadPerMTok: 0.2 },
+      'claude-sonnet-5-5': { inputPerMTok: 2, outputPerMTok: 10, cacheReadPerMTok: 'cheap' },
+    }))
+
+    expect(await loadPricingOverrides()).toEqual({
+      'claude-opus-5-5': { inputPerMTok: 4, outputPerMTok: 20, cacheReadPerMTok: 0.2 },
+      'claude-sonnet-5-5': { inputPerMTok: 2, outputPerMTok: 10 },
+    })
   })
 
   it('a valid override entry still wins over exact-id pricing once resolved', async () => {

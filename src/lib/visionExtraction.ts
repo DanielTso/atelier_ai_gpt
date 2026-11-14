@@ -6,6 +6,7 @@ import type { PdfSegment } from './pdfSegments'
 import { mapWithConcurrency } from './concurrency'
 import type { ExtractionResult } from './fileExtraction'
 import { visionRunHeader, visionRunText } from './pageMap'
+import { recordUsage } from './usage'
 
 // The header now lives with the other page-anchor helpers (pageMap.ts, which
 // pure modules and tests can import without the provider/DB chain); re-exported
@@ -45,6 +46,13 @@ function cfg() {
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
+// One best-effort usage row per completed vision call (audit C5). The
+// extraction functions run below the document route and carry no chat or
+// project, so the rows are unattributed.
+function recordVisionUsage(model: string, usage: Parameters<typeof recordUsage>[0]['usage']) {
+  void recordUsage({ chatId: null, projectId: null, purpose: 'vision-extract', model, usage }).catch(() => {})
+}
+
 const segPages = (seg: { firstPage: number; lastPage: number }) =>
   Array.from({ length: seg.lastPage - seg.firstPage + 1 }, (_, i) => seg.firstPage + i)
 
@@ -63,7 +71,7 @@ async function extractSegments(
   const results = await mapWithConcurrency(segments, c.segmentConcurrency, async seg => {
     for (let attempt = 0; attempt <= c.retries; attempt++) {
       try {
-        const { text, finishReason } = await generateText({
+        const { text, finishReason, totalUsage } = await generateText({
           model: google(c.model),
           messages: [{
             role: 'user',
@@ -77,6 +85,7 @@ async function extractSegments(
           // sheet transcribes differently run to run (seen live on SHX notes sheets).
           temperature: 0,
         })
+        recordVisionUsage(c.model, totalUsage)
         if (finishReason === 'length') {
           console.warn(`[visionExtraction] segment ${seg.firstPage}-${seg.lastPage} hit the output cap`)
           truncated = true
@@ -97,12 +106,13 @@ async function extractSegments(
 
 async function extractImage(image: Uint8Array, model: string, maxOutputTokens: number, apiKey: string): Promise<string> {
   const google = createGoogleGenerativeAI({ apiKey })
-  const { text } = await generateText({
+  const { text, totalUsage } = await generateText({
     model: google(model),
     messages: [{ role: 'user', content: [{ type: 'text', text: IMAGE_PROMPT }, { type: 'image', image }] }],
     maxOutputTokens,
     temperature: 0,
   })
+  recordVisionUsage(model, totalUsage)
   return text.trim()
 }
 

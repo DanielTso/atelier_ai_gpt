@@ -69,8 +69,9 @@ describe('updateProjectDefaults - model validation', () => {
 
   // Stub the registry so the test never hits the network — resolveRequestedModel's
   // real implementation calls out to Anthropic when there's no cached registry.
-  function mockRegistry(knownIds: string[]) {
+  function mockRegistry(knownIds: string[], source: 'live' | 'stale' | 'seed' = 'live') {
     vi.doMock('@/lib/models/registry', () => ({
+      getModelRegistry: async () => ({ curated: [], byId: new Map(), source }),
       resolveRequestedModel: async (requested?: string) => {
         if (!requested) return { modelId: 'claude-opus-4-8', usedFallback: false }
         if (knownIds.includes(requested)) return { modelId: requested, usedFallback: false }
@@ -86,6 +87,17 @@ describe('updateProjectDefaults - model validation', () => {
     await updateProjectDefaults(project.id, { defaultModel: 'claude-bogus-9' })
     const defaults = await getProjectDefaults(project.id)
     expect(defaults.defaultModel).toBeNull()
+  })
+
+  // Audit B12: a model missing from a stale or seed catalog is not proof it is
+  // gone — only the live catalog may null a project default.
+  it.each(['stale', 'seed'] as const)('keeps an unrecognized defaultModel while the registry is %s', async (source) => {
+    mockRegistry(['claude-opus-4-8'], source)
+    const { createProject, updateProjectDefaults, getProjectDefaults } = await import('@/app/actions')
+    const [project] = await createProject('Degraded Registry')
+    await updateProjectDefaults(project.id, { defaultModel: 'claude-opus-5' })
+    const defaults = await getProjectDefaults(project.id)
+    expect(defaults.defaultModel).toBe('claude-opus-5')
   })
 
   it('persists a valid defaultModel unchanged', async () => {

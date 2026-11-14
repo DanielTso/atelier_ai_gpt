@@ -65,11 +65,13 @@ export async function retrieveContext(
     // bounded by RAG_STAGE_TIMEOUT_MS; a stage that fails or times out degrades to
     // the stage before it (audit B11).
     const timeoutMs = cfg.stageTimeoutMs
+    // The rewrite and rerank Flash calls are billed to this chat (audit C5).
+    const usage = { chatId: scope.chatId, projectId: scope.projectId }
 
     // Skip query-rewrite on the first turn — there's no prior context to resolve,
     // so it's a pure Flash round-trip of overhead.
     const query = (cfg.rewriteEnabled && turns.length > 1)
-      ? await withStageTimeout(timeoutMs, signal => rewriteQuery(turns, { abortSignal: signal })).catch(e => {
+      ? await withStageTimeout(timeoutMs, signal => rewriteQuery(turns, { abortSignal: signal, usage })).catch(e => {
           console.warn('[retrieval] query rewrite failed:', e instanceof Error ? e.message : e)
           return lastUserText
         })
@@ -86,7 +88,7 @@ export async function retrieveContext(
     })
 
     const rerank = <T extends { content: string }>(cands: T[], topK: number): Promise<T[]> =>
-      withStageTimeout(timeoutMs, signal => rerankCandidates(query, cands, topK, { abortSignal: signal })).catch(e => {
+      withStageTimeout(timeoutMs, signal => rerankCandidates(query, cands, topK, { abortSignal: signal, usage })).catch(e => {
         console.warn('[retrieval] rerank failed:', e instanceof Error ? e.message : e)
         return cands.slice(0, topK)
       })

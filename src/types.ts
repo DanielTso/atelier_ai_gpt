@@ -25,6 +25,9 @@ export interface ModelCapabilities {
 export interface ModelPricing {
   inputPerMTok: number
   outputPerMTok: number
+  /** Cache-hit rate, set only where it is not the standard 0.1x of input
+   * (Opus 5.5 / Sonnet 5.5 are 0.05x, Fable 5.1 / 5.2 are 0.025x). */
+  cacheReadPerMTok?: number
   estimated: boolean
 }
 

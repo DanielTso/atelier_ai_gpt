@@ -28,9 +28,18 @@ describe('parseFamily', () => {
     expect(parseFamily('CLAUDE-SONNET-5')).toBe('sonnet')
   })
 
+  // Prior audit C6: legacy ids put the version BEFORE the family.
+  it('parses legacy claude-3-x-<family> ids into their real family', () => {
+    expect(parseFamily('claude-3-7-sonnet-20250219')).toBe('sonnet')
+    expect(parseFamily('claude-3-5-haiku-20241022')).toBe('haiku')
+    expect(parseFamily('claude-3-opus-20240229')).toBe('opus')
+    expect(parseFamily('claude-3-5-sonnet-latest')).toBe('sonnet')
+  })
+
   it('returns "other" for non-claude / unrecognized ids', () => {
     expect(parseFamily('gemini-3.1-flash-image')).toBe('other')
     expect(parseFamily('mystery-model')).toBe('other')
+    expect(parseFamily('claude-3-7')).toBe('other')
   })
 })
 

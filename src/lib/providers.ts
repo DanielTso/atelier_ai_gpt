@@ -17,15 +17,16 @@ export type { Effort } from '@/types';
 import type { Effort } from '@/types';
 
 export async function createProvider(modelName: string, effort?: Effort): Promise<ProviderResult> {
-  // Claude (Anthropic) — the primary chat brain. Web search enabled. Adaptive
-  // thinking is on for all Claude models; `effort` (low|medium|high|xhigh|max)
-  // is applied via providerOptions only when the model's registry capabilities
-  // report the REQUESTED LEVEL in `effortLevels` — derived from the live/cached
-  // catalog rather than a name-prefix guess, so it stays correct as new models
-  // ship. This is a per-LEVEL check, not just per-model: `effortLevels` is
-  // genuinely non-uniform across Claude models (e.g. legacy pins like
-  // claude-sonnet-4-6 predate `xhigh` and only ever report
-  // ['low','medium','high','max'] — sending them 'xhigh' 400s).
+  // Claude (Anthropic) — the primary chat brain. Web search enabled. Both
+  // provider options are gated on the model's registry capabilities (derived
+  // from the live/cached catalog rather than a name-prefix guess, so they stay
+  // correct as new models ship):
+  // - adaptive thinking only when `supportsThinking` (audit C7) — Haiku 4.5
+  //   and an unknown id (safe all-false default) get none;
+  // - `effort` (low|medium|high|xhigh|max) only when `effortLevels` reports
+  //   the REQUESTED LEVEL. This is a per-LEVEL check, not just per-model:
+  //   legacy pins like claude-sonnet-4-6 predate `xhigh` and only ever report
+  //   ['low','medium','high','max'] — sending them 'xhigh' 400s.
   if (modelName.startsWith('claude')) {
     const apiKey = await getAnthropicApiKey();
     if (!apiKey) {
@@ -38,15 +39,16 @@ export async function createProvider(modelName: string, effort?: Effort): Promis
       web_search: anthropic.tools.webSearch_20250305({ maxUses: 5 }),
     };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const anthropicOptions: Record<string, any> = { thinking: { type: 'adaptive' } };
-    // Short-circuit before the registry lookup: with no effort requested, the
-    // cold-start cost of getModelCapabilities() (a registry build on a cold
-    // cache) is provably zero.
-    if (effort) {
-      const caps = await getModelCapabilities(modelName);
-      if (caps.effortLevels.includes(effort)) {
-        anthropicOptions.effort = effort;
-      }
+    const anthropicOptions: Record<string, any> = {};
+    // getModelCapabilities() never throws (unknown id -> safe all-false
+    // default) and reads the cached registry the chat route just resolved
+    // the model against.
+    const caps = await getModelCapabilities(modelName);
+    if (caps.supportsThinking) {
+      anthropicOptions.thinking = { type: 'adaptive' };
+    }
+    if (effort && caps.effortLevels.includes(effort)) {
+      anthropicOptions.effort = effort;
     }
     return { model, tools, providerOptions: { anthropic: anthropicOptions } };
   }

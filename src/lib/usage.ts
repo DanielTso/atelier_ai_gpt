@@ -10,6 +10,8 @@ import type { ModelPricing } from '@/lib/models/types'
 // cost computed and FROZEN at write time. Everything here is best-effort — a
 // usage-write failure must never fail the request that generated the tokens.
 
+// Keep in sync with usage_events_purpose_chk (src/db/schema.ts, migration
+// 0023). 'classify' stays allowed for the rows already stored under it.
 export type UsagePurpose =
   | 'chat'
   | 'artifact-regenerate'
@@ -17,9 +19,16 @@ export type UsagePurpose =
   | 'generate-title'
   | 'classify'
   | 'memory-suggest'
+  | 'suggest-followups'
+  | 'query-rewrite'
+  | 'rerank'
+  | 'image-generate'
+  | 'vision-extract'
 
 // Prompt-cache pricing multipliers relative to the fresh-input rate
-// (Anthropic: cache read ~0.1x, cache write ~1.25x).
+// (Anthropic: cache read 0.1x, 5-minute cache write 1.25x). CACHE_READ_RATE
+// is the standard rate only — a model whose pricing carries its own
+// `cacheReadPerMTok` (Opus 5.5, Sonnet 5.5, Fable 5.1/5.2) is billed at that.
 export const CACHE_READ_RATE = 0.1
 export const CACHE_WRITE_RATE = 1.25
 
@@ -114,15 +123,16 @@ export function sumUsage(usages: Array<LanguageModelUsage | undefined>): Languag
  * Frozen-at-write-time cost in USD. Rates are per million tokens:
  *
  *   cost = fresh      x inputRate
- *        + cacheRead  x inputRate x 0.10
+ *        + cacheRead  x (cacheReadRate ?? inputRate x 0.10)
  *        + cacheWrite x inputRate x 1.25
  *        + output     x outputRate
  */
 export function estimateCost(modelId: string, usage: LanguageModelUsage | undefined, pricing: ModelPricing): number {
   const t = usageTokens(usage)
+  const cacheReadRate = pricing.cacheReadPerMTok ?? pricing.inputPerMTok * CACHE_READ_RATE
   const cost =
     (t.inputTokens * pricing.inputPerMTok +
-      t.cacheReadTokens * pricing.inputPerMTok * CACHE_READ_RATE +
+      t.cacheReadTokens * cacheReadRate +
       t.cacheCreationTokens * pricing.inputPerMTok * CACHE_WRITE_RATE +
       t.outputTokens * pricing.outputPerMTok) / 1_000_000
   if (!Number.isFinite(cost) || cost < 0) {

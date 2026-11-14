@@ -52,6 +52,9 @@ describe('retrieveContext', () => {
     const { retrieveContext } = await import('@/lib/retrieval')
     const out = await retrieveContext(multiTurn as never, { chatId: 1, projectId: 7 })
     expect(m.rewriteQuery).toHaveBeenCalled()
+    // Audit C5: the Flash calls are billed to the chat they ran for.
+    expect(m.rewriteQuery).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ usage: { chatId: 1, projectId: 7 } }))
+    expect(m.rerankCandidates).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything(), expect.objectContaining({ usage: { chatId: 1, projectId: 7 } }))
     expect(m.generateEmbedding).toHaveBeenCalledWith('standalone foundation query', 'query', expect.objectContaining({ maxRetries: 0 }))
     expect(out.documentContext).toContain('spec.pdf')
     expect(out.documentContext).toContain('4000psi')

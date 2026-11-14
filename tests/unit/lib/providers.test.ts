@@ -36,11 +36,11 @@ function mockRegistry(supportsEffort: boolean) {
 // For asserting per-LEVEL gating (not just per-model): a model can report
 // supportsEffort:true while still excluding a specific level, e.g. a legacy
 // pin (claude-sonnet-4-6) that predates `xhigh`.
-function mockRegistryLevels(effortLevels: string[]) {
+function mockRegistryLevels(effortLevels: string[], supportsThinking = true) {
   const getModelCapabilities = vi.fn().mockResolvedValue({
     supportsEffort: effortLevels.length > 0,
     effortLevels,
-    supportsThinking: true,
+    supportsThinking,
     supportsImageInput: false,
     supportsStructuredOutputs: true,
   })
@@ -81,7 +81,7 @@ describe('createProvider', () => {
     expect(result.providerOptions?.anthropic?.effort).toBe('high')
   })
 
-  it('a model whose registry capabilities report supportsEffort:false OMITS effort but keeps adaptive thinking (e.g. Haiku 4.5)', async () => {
+  it('a model whose registry capabilities report supportsEffort:false OMITS effort but keeps adaptive thinking when it reports thinking', async () => {
     mockProviders()
     mockRegistry(false)
     vi.doMock('@/lib/settings', () => ({
@@ -89,7 +89,7 @@ describe('createProvider', () => {
       getGeminiApiKey: () => Promise.resolve(null),
     }))
     const { createProvider } = await import('@/lib/providers')
-    const result = await createProvider('claude-haiku-4-5', 'high')
+    const result = await createProvider('claude-no-effort-model', 'high')
     expect(result.providerOptions?.anthropic?.thinking).toEqual({ type: 'adaptive' })
     expect(result.providerOptions?.anthropic?.effort).toBeUndefined()
   })
@@ -106,18 +106,18 @@ describe('createProvider', () => {
     expect(result.providerOptions?.anthropic?.effort).toBe('xhigh')
   })
 
-  it('an UNKNOWN model (registry returns the safe default) omits effort rather than throwing', async () => {
+  it('an UNKNOWN model (registry returns the safe default) omits effort and thinking rather than throwing', async () => {
     mockProviders()
     // Mirrors registry.ts's SAFE_DEFAULT_CAPABILITIES for an unrecognized id —
     // getModelCapabilities() never throws, it degrades to all-false.
-    mockRegistry(false)
+    mockRegistryLevels([], false)
     vi.doMock('@/lib/settings', () => ({
       getAnthropicApiKey: () => Promise.resolve('anthropic-key'),
       getGeminiApiKey: () => Promise.resolve(null),
     }))
     const { createProvider } = await import('@/lib/providers')
     const result = await createProvider('claude-unknown-model-9', 'high')
-    expect(result.providerOptions?.anthropic?.thinking).toEqual({ type: 'adaptive' })
+    expect(result.providerOptions?.anthropic?.thinking).toBeUndefined()
     expect(result.providerOptions?.anthropic?.effort).toBeUndefined()
   })
 
@@ -152,7 +152,24 @@ describe('createProvider', () => {
     expect(highResult.providerOptions?.anthropic?.effort).toBe('high')
   })
 
-  it('short-circuits before calling getModelCapabilities when no effort is requested', async () => {
+  // Audit C7: thinking is gated on capabilities exactly like effort.
+  it('omits adaptive thinking (and effort) when the model capabilities report no thinking support', async () => {
+    mockProviders()
+    const getModelCapabilities = mockRegistryLevels([], false)
+    vi.doMock('@/lib/settings', () => ({
+      getAnthropicApiKey: () => Promise.resolve('anthropic-key'),
+      getGeminiApiKey: () => Promise.resolve(null),
+    }))
+    const { createProvider } = await import('@/lib/providers')
+
+    const withEffort = await createProvider('claude-haiku-4-5-20251001', 'high')
+    expect(withEffort.providerOptions?.anthropic).toEqual({})
+    const noEffort = await createProvider('claude-haiku-4-5-20251001')
+    expect(noEffort.providerOptions?.anthropic).toEqual({})
+    expect(getModelCapabilities).toHaveBeenCalledWith('claude-haiku-4-5-20251001')
+  })
+
+  it('looks capabilities up once even when no effort is requested (thinking needs them)', async () => {
     mockProviders()
     const getModelCapabilities = mockRegistryLevels(['low', 'medium', 'high', 'xhigh', 'max'])
     vi.doMock('@/lib/settings', () => ({
@@ -160,8 +177,9 @@ describe('createProvider', () => {
       getGeminiApiKey: () => Promise.resolve(null),
     }))
     const { createProvider } = await import('@/lib/providers')
-    await createProvider('claude-opus-4-8')
-    expect(getModelCapabilities).not.toHaveBeenCalled()
+    const result = await createProvider('claude-opus-4-8')
+    expect(getModelCapabilities).toHaveBeenCalledTimes(1)
+    expect(result.providerOptions?.anthropic).toEqual({ thinking: { type: 'adaptive' } })
   })
 
   it('throws when claude selected but no Anthropic key', async () => {

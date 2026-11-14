@@ -1,9 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const mockGenerateText = vi.fn()
+const mockRecordUsage = vi.fn<(...a: unknown[]) => Promise<undefined>>(async () => undefined)
 function setup(key: string | null = 'k') {
   vi.resetModules()
   vi.doMock('ai', () => ({ generateText: (...a: unknown[]) => mockGenerateText(...a) }))
+  vi.doMock('@/lib/usage', () => ({ recordUsage: (...a: unknown[]) => mockRecordUsage(...a) }))
   vi.doMock('@ai-sdk/google', () => ({ createGoogleGenerativeAI: () => (m: string) => ({ modelId: m }) }))
   vi.doMock('@/lib/settings', () => ({ getGeminiApiKey: () => Promise.resolve(key) }))
 }
@@ -15,7 +17,27 @@ const cands = [
 ]
 
 describe('rerankCandidates', () => {
-  beforeEach(() => mockGenerateText.mockReset())
+  beforeEach(() => { mockGenerateText.mockReset(); mockRecordUsage.mockClear() })
+
+  // Audit C5: every LLM call writes one usage_events row, tied to the chat.
+  it('records one usage row with purpose rerank, attributed to the chat — even when the output is unparseable', async () => {
+    setup()
+    const usage = { inputTokens: 120, inputTokenDetails: { noCacheTokens: 120, cacheReadTokens: 0, cacheWriteTokens: 0 }, outputTokens: 30, outputTokenDetails: { textTokens: 30, reasoningTokens: 0 }, totalTokens: 150 }
+    mockGenerateText.mockResolvedValue({ text: 'no json here', totalUsage: usage })
+    const { rerankCandidates } = await import('@/lib/rerank')
+    await rerankCandidates('q', cands, 2, { usage: { chatId: 5, projectId: null } })
+    expect(mockRecordUsage).toHaveBeenCalledExactlyOnceWith({
+      chatId: 5, projectId: null, purpose: 'rerank', model: 'gemini-3.5-flash', usage,
+    })
+  })
+
+  it('records nothing when no model call is made (one candidate, or no key)', async () => {
+    setup(null)
+    const { rerankCandidates } = await import('@/lib/rerank')
+    await rerankCandidates('q', cands, 2)
+    await rerankCandidates('q', cands.slice(0, 1), 2)
+    expect(mockRecordUsage).not.toHaveBeenCalled()
+  })
 
   it('reorders by model score and respects topK', async () => {
     setup()
