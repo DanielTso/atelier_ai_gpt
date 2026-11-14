@@ -70,6 +70,10 @@ function installFetch() {
     if (url === '/api/chat') {
       let controller!: ReadableStreamDefaultController<Uint8Array>
       const stream = new ReadableStream<Uint8Array>({ start(c) { controller = c } })
+      // Like a real fetch: aborting the request (Stop) errors the response body.
+      init?.signal?.addEventListener('abort', () => {
+        try { controller.error(new DOMException('The operation was aborted.', 'AbortError')) } catch { /* already closed */ }
+      })
       chatCalls.push({
         body: JSON.parse(String(init?.body)),
         send: (...chunks) => { for (const c of chunks) controller.enqueue(encoder.encode(`data: ${JSON.stringify(c)}\n\n`)) },
@@ -248,6 +252,48 @@ describe('Home — a regenerate that produces no new reply puts the old one back
     expect(await screen.findByText('Loaded answer')).toBeTruthy()
     // Only one copy, still the last message.
     expect(screen.getAllByText('Loaded answer')).toHaveLength(1)
+  })
+
+  it('after a stream that only reasoned before its error (no content-less bubble left)', async () => {
+    await regenerateLoaded()
+    await waitFor(() => expect(chatCalls).toHaveLength(1))
+    await act(async () => {
+      chatCalls[0].send(
+        { type: 'start', messageMetadata: { chatId: 5, projectId: null, userMessageDbId: 11, assistantMessageDbId: null } },
+        { type: 'start-step' },
+        { type: 'reasoning-start', id: 'r1' },
+        { type: 'reasoning-delta', id: 'r1', delta: 'Weighing the options' },
+        { type: 'reasoning-end', id: 'r1' },
+      )
+    })
+    // The reasoning-only reply is on screen while the turn runs.
+    await waitFor(() => expect(screen.queryByText('Loaded answer')).toBeNull())
+    await act(async () => {
+      chatCalls[0].send({ type: 'error', errorText: 'The AI provider is overloaded or unavailable right now. Try again in a moment.' })
+      chatCalls[0].close()
+    })
+
+    expect(await screen.findByText('Loaded answer')).toBeTruthy()
+    expect(screen.getAllByText('Loaded answer')).toHaveLength(1)
+    await waitFor(() => expect(screen.queryByText(/Thought process|Thinking…|Weighing the options/)).toBeNull())
+    expect(screen.getAllByRole('button', { name: 'Message actions' })).toHaveLength(2)
+  })
+
+  it('after a Stop while only a non-media tool call (web search) had streamed', async () => {
+    await regenerateLoaded()
+    await waitFor(() => expect(chatCalls).toHaveLength(1))
+    await act(async () => {
+      chatCalls[0].send(
+        { type: 'start', messageMetadata: { chatId: 5, projectId: null, userMessageDbId: 11, assistantMessageDbId: null } },
+        { type: 'start-step' },
+        { type: 'tool-input-available', toolCallId: 'call_1', toolName: 'web_search', input: { query: 'retainage' }, providerExecuted: true },
+      )
+    })
+    await act(async () => { fireEvent.click(await screen.findByRole('button', { name: 'Stop response' })) })
+
+    expect(await screen.findByText('Loaded answer')).toBeTruthy()
+    expect(screen.getAllByText('Loaded answer')).toHaveLength(1)
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Message actions' })).toHaveLength(2))
   })
 
   it('but keeps the new reply when the regenerate produced one', async () => {

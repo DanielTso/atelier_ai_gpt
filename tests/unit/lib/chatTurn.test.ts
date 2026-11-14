@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import type { UIMessage } from 'ai'
-import { createAssistantTurnRecorder, isDbMessageId, readTurnMetadata, resolveMessageDbId } from '@/lib/chatTurn'
+import { createAssistantTurnRecorder, isDbMessageId, readTurnMetadata, replyHasSavedContent, resolveMessageDbId } from '@/lib/chatTurn'
 
 // Stream parts as streamText hands them to an `experimental_transform` (verified
 // against ai@6.0.230: text deltas carry `.text`, tool results `.toolName`/`.output`).
@@ -69,6 +69,26 @@ describe('readTurnMetadata', () => {
     expect(readTurnMetadata({ metadata: 'nope' })).toBeNull()
     expect(readTurnMetadata({ metadata: { projectId: 5 } })).toBeNull()
     expect(readTurnMetadata({ metadata: { chatId: '3' } })).toBeNull()
+  })
+})
+
+describe('replyHasSavedContent (client mirror of the recorder\'s persist rule)', () => {
+  it('is true for non-blank text, a file part, a generated image or an artifact result', () => {
+    expect(replyHasSavedContent([{ type: 'text', text: 'Answer' }])).toBe(true)
+    expect(replyHasSavedContent([{ type: 'file', mediaType: 'image/png', url: 'u' }])).toBe(true)
+    expect(replyHasSavedContent([{ type: 'tool-generate_image', state: 'output-available', output: { storagePath: 'images/a.png' } }])).toBe(true)
+    expect(replyHasSavedContent([{ type: 'tool-generate_artifact', state: 'output-available', output: { artifactId: 3 } }])).toBe(true)
+    expect(replyHasSavedContent([{ type: 'dynamic-tool', toolName: 'generate_artifact', state: 'output-available', output: {} }])).toBe(true)
+  })
+
+  it('is false for reasoning, blank text, step markers and non-media or unfinished tool parts', () => {
+    expect(replyHasSavedContent([])).toBe(false)
+    expect(replyHasSavedContent([{ type: 'step-start' }, { type: 'reasoning', text: 'Thinking it over' }])).toBe(false)
+    expect(replyHasSavedContent([{ type: 'text', text: '  ' }, { type: 'text', text: '\n' }])).toBe(false)
+    expect(replyHasSavedContent([{ type: 'tool-web_search', state: 'output-available', output: [] }])).toBe(false)
+    expect(replyHasSavedContent([{ type: 'tool-generate_image', state: 'input-available', input: { prompt: 'crane' } }])).toBe(false)
+    // The image tool reports its failures in-band as { error }.
+    expect(replyHasSavedContent([{ type: 'tool-generate_image', state: 'output-available', output: { error: 'quota' } }])).toBe(false)
   })
 })
 

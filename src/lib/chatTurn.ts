@@ -95,6 +95,30 @@ function isMediaToolResult(toolName: string, output: unknown): boolean {
 }
 
 /**
+ * Client mirror of the recorder's persist rule (`persist` below): would the
+ * server have saved a row for a reply with these UI parts? Non-blank text (all
+ * text parts joined, like the recorder's concatenated deltas), a model-emitted
+ * file part, or a finished media tool result (`isMediaToolResult`). Reasoning,
+ * step markers and other tool calls (web search) do not count. A regenerate
+ * that ends on such a reply saved nothing, so the old reply is still the one in
+ * the DB (see `handleRegenerate` in page.tsx).
+ */
+export function replyHasSavedContent(parts: ReadonlyArray<{ type: string; [key: string]: unknown }>): boolean {
+  let text = ''
+  for (const part of parts) {
+    if (part.type === 'text' && typeof part.text === 'string') text += part.text
+    else if (part.type === 'file') return true
+    else if (part.state === 'output-available') {
+      const toolName = part.type === 'dynamic-tool'
+        ? (typeof part.toolName === 'string' ? part.toolName : '')
+        : part.type.startsWith('tool-') ? part.type.slice('tool-'.length) : ''
+      if (toolName && isMediaToolResult(toolName, part.output)) return true
+    }
+  }
+  return text.trim().length > 0
+}
+
+/**
  * Records one assistant turn from the model stream and saves it exactly once.
  *
  * Wired into `streamText` as an `experimental_transform`, which sits on the base

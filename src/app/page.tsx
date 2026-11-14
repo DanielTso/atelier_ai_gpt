@@ -9,7 +9,7 @@ import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { extractText } from "@/lib/messageParts"
 import { getProjects, getProjectFileCounts, createProject, getAllProjectChats, createChat, getChatMessages, deleteProject, updateProjectName, updateProjectContext, updateChatTitle, getStandaloneChats, createStandaloneChat, deleteChat, moveChatToProject, archiveChat, restoreChat, getArchivedChats, getChatWithContext, updateChatSystemPrompt, getProjectDefaults, recordPersonaUsage, getProjectChatPreviews, getChatAttachments, getSetting, setSetting, deleteMessage } from "./actions"
-import { resolveMessageDbId } from "@/lib/chatTurn"
+import { replyHasSavedContent, resolveMessageDbId } from "@/lib/chatTurn"
 import { Sidebar } from "@/components/chat/sidebar"
 import type { SidebarActions, AppView } from "@/components/chat/sidebar"
 import { HomeGreeting } from "@/components/chat/HomeGreeting"
@@ -1426,16 +1426,23 @@ export default function Home() {
     clearFollowUps()
     // The SDK drops the reply from the store before posting. The server only
     // writes over it once a new reply exists, so when the turn ends with nothing
-    // (an HTTP refusal or error before the stream, an error or Stop before the
-    // first token) the old reply is still the saved one: put the kept copy back
-    // where it was — right after the user message it answers.
+    // the server would save (an HTTP refusal or error before the stream, an error
+    // or Stop before any text or media — possibly after reasoning or a web search
+    // call) the old reply is still the saved one: put the kept copy back right
+    // after the user message it answers, in place of any content-less reply.
     const replaced = messages[index]
     const answered = messages[index - 1]
     regenerateInChat(chatId, messageId, { regenerate: true, replaceMessageDbId })
       .then(() => {
         updateChatMessages(chatId, prev => {
+          if (!answered) return prev
           const last = prev[prev.length - 1]
-          return last && answered && last.id === answered.id ? [...prev, replaced] : prev
+          if (last?.id === answered.id) return [...prev, replaced]
+          const beforeLast = prev[prev.length - 2]
+          if (last?.role === 'assistant' && beforeLast?.id === answered.id && !replyHasSavedContent(last.parts)) {
+            return [...prev.slice(0, -1), replaced]
+          }
+          return prev
         })
       })
       .catch(err => console.error('[chat] regenerate failed:', err))

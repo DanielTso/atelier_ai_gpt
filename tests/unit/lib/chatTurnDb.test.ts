@@ -86,10 +86,15 @@ describe('replaceAssistantReply (regenerate, audit D2)', () => {
     expect(id).not.toBe(reply.id)
   })
 
-  it('never rewrites a row of another chat or a user row — it inserts instead', async () => {
+  it('never rewrites a row of another chat or a user row, nor touches their children — it inserts instead', async () => {
     const [user] = await saveMessage(chatId, 'user', 'Question')
     const [other] = await createStandaloneChat('Other')
     const [foreign] = await saveMessage(other.id, 'assistant', 'Foreign answer')
+    // Both rows carry attachments and an embedding that must survive.
+    await saveGeneratedImage(user.id, chatId, [{ storagePath: 'images/user.png', mediaType: 'image/png', filename: 'user.png' }])
+    await saveMessageEmbedding(user.id, chatId, null, 'Question', Array(768).fill(0.01))
+    await saveGeneratedImage(foreign.id, other.id, [{ storagePath: 'images/foreign.png', mediaType: 'image/png', filename: 'foreign.png' }])
+    await saveMessageEmbedding(foreign.id, other.id, null, 'Foreign answer', Array(768).fill(0.02))
 
     await replaceAssistantReply(chatId, user.id, 'X')
     await replaceAssistantReply(chatId, foreign.id, 'Y')
@@ -97,5 +102,10 @@ describe('replaceAssistantReply (regenerate, audit D2)', () => {
     expect((await rows()).map(r => [r.role, r.content])).toEqual([['user', 'Question'], ['assistant', 'X'], ['assistant', 'Y']])
     const [stillForeign] = await testDb.select().from(messages).where(eq(messages.id, foreign.id))
     expect(stillForeign.content).toBe('Foreign answer')
+    for (const [id, path] of [[user.id, 'images/user.png'], [foreign.id, 'images/foreign.png']] as const) {
+      expect((await testDb.select().from(messageAttachments).where(eq(messageAttachments.messageId, id))).map(a => a.storagePath)).toEqual([path])
+      expect(await testDb.select().from(messageEmbeddings).where(eq(messageEmbeddings.messageId, id))).toHaveLength(1)
+    }
+    expect(mockRemoveObjects).not.toHaveBeenCalled()
   })
 })
