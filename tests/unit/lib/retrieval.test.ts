@@ -315,16 +315,39 @@ describe('retrieveContext', () => {
     )
   })
 
-  it('skips message retrieval for a standalone chat whose whole history is in the prompt', async () => {
+  it('skips all retrieval work for a standalone chat whose whole history is in the prompt', async () => {
     setup()
+    m.rewriteQuery.mockResolvedValue('rewritten')
     m.generateEmbedding.mockResolvedValue([1, 0, 0])
     m.findSimilarMessages.mockResolvedValue([
       { content: 'a turn of this same chat', similarity: 0.9, chatId: 3, messageId: 5, embedding: [1, 0, 0] },
     ])
+    const multiTurn = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'tell me about the project' }] },
+      { id: 'a1', role: 'assistant', parts: [{ type: 'text', text: 'sure' }] },
+      { id: 'u2', role: 'user', parts: [{ type: 'text', text: 'foundation spec?' }] },
+    ]
     const { retrieveContext } = await import('@/lib/retrieval')
-    const out = await retrieveContext(msgs as never, { chatId: 3, projectId: null, excludeChatId: 3 })
+    const out = await retrieveContext(multiTurn as never, { chatId: 3, projectId: null, excludeChatId: 3 })
+    expect(out).toEqual({ semanticContext: null, documentContext: null })
+    expect(m.rewriteQuery).not.toHaveBeenCalled()
+    expect(m.generateEmbedding).not.toHaveBeenCalled()
     expect(m.findSimilarMessages).not.toHaveBeenCalled()
-    expect(out.semanticContext).toBeNull()
+  })
+
+  // Review of C1: a rejected vector query must not throw away the keyword hits.
+  it('keeps the keyword hits when the vector query rejects', async () => {
+    setup()
+    m.generateEmbedding.mockResolvedValue([1, 0, 0])
+    m.findSimilarMessages.mockResolvedValue([])
+    m.findSimilarDocumentChunks.mockRejectedValue(new Error('statement timeout'))
+    m.findChunksByKeyword.mockResolvedValue([
+      { content: 'SW-101 keyword hit', chunkId: 4, documentId: 2, filename: 'plans.pdf', pageStart: null, pageEnd: null, embedding: null },
+    ])
+    m.rerankCandidates.mockImplementation((_q: unknown, c: unknown) => Promise.resolve(c))
+    const { retrieveContext } = await import('@/lib/retrieval')
+    const out = await retrieveContext(msgs as never, { chatId: 1, projectId: 7 })
+    expect(out.documentContext).toContain('SW-101 keyword hit')
   })
 
   // Phase B follow-up: the exclusion set is the ids actually SENT (the route's

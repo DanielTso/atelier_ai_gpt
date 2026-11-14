@@ -56,6 +56,10 @@ export async function retrieveContext(
     const turns: Turn[] = messages.map(msg => ({ role: msg.role, text: extractText(msg.parts) })).filter(t => t.text)
     const lastUserText = [...turns].reverse().find(t => t.role === 'user')?.text ?? ''
     if (!lastUserText) return empty
+    // A standalone chat has no documents and searches only its own rows; with its
+    // whole history in the prompt there is nothing left to find, so skip the
+    // rewrite and the embedding too.
+    if (!scope.projectId && scope.excludeChatId === scope.chatId) return empty
 
     // Every Gemini stage below is best-effort, fails fast (maxRetries 0) and is
     // bounded by RAG_STAGE_TIMEOUT_MS; a stage that fails or times out degrades to
@@ -91,9 +95,6 @@ export async function retrieveContext(
     // their rerank Flash calls overlap instead of running back-to-back on the chat
     // critical path.
     const messagesP = (async (): Promise<string | null> => {
-      // A standalone chat searches only its own rows; with its whole history in
-      // the prompt there is nothing left to find.
-      if (!scope.projectId && scope.excludeChatId === scope.chatId) return null
       try {
         const queryEmbedding = await embeddingP
         if (!queryEmbedding) return null
@@ -131,9 +132,16 @@ export async function retrieveContext(
               return []
             })
           : Promise.resolve([])
-        const vecP: Promise<DocCand[]> = embeddingP.then(queryEmbedding => queryEmbedding
-          ? findSimilarDocumentChunks(queryEmbedding, projectId, cfg.topN, cfg.docThreshold, cfg.mmrEnabled, scope.excludeDocumentIds)
-          : [])
+        const vecP: Promise<DocCand[]> = embeddingP
+          .then(queryEmbedding => queryEmbedding
+            ? findSimilarDocumentChunks(queryEmbedding, projectId, cfg.topN, cfg.docThreshold, cfg.mmrEnabled, scope.excludeDocumentIds)
+            : [])
+          .catch(e => {
+            // Vector leg is best-effort too: a failed query (statement timeout, a
+            // dropped pooler connection) degrades to keyword-only.
+            console.warn('[retrieval] vector search failed:', e instanceof Error ? e.message : e)
+            return []
+          })
         const [vecCands, kwCands] = await Promise.all([vecP, kwP])
         // Vector list FIRST so shared ids keep their embedding (and similarity) for MMR.
         let docCands: Fused[] = rrfFuse<DocCand>([vecCands, kwCands], cfg.rrfK)

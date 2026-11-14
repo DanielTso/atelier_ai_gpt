@@ -44,7 +44,9 @@ const MAX_FTS_TERMS = 32
 
 export function ftsOrQuery(query: string): string {
   const terms: string[] = []
-  for (const w of query.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []) {
+  // NFC first: a decomposed accent (e + U+0301) is a combining mark, not a
+  // letter, and would split the word in two.
+  for (const w of query.normalize('NFC').toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []) {
     if (w === 'or' || terms.includes(w)) continue
     terms.push(w)
     if (terms.length >= MAX_FTS_TERMS) break
@@ -91,9 +93,15 @@ export async function findChunksByKeyword(
       LIMIT ${topN}`))
   }
 
+  // Exact identifier hits go FIRST, up to half the slots: with OR-joined FTS a
+  // common question word ("show") can fill every slot on its own, and appending
+  // the identifier hits after it dropped the SW-101 chunk entirely. The cap keeps
+  // a broad identifier from crowding out FTS in turn; leftover identifier hits
+  // fill whatever FTS leaves free.
+  const idSlots = Math.ceil(topN / 2)
   const seen = new Set<number>()
   const out: KeywordChunk[] = []
-  for (const r of [...fts, ...trg]) {
+  for (const r of [...trg.slice(0, idSlots), ...fts, ...trg.slice(idSlots)]) {
     if (seen.has(r.chunk_id)) continue
     seen.add(r.chunk_id)
     out.push({

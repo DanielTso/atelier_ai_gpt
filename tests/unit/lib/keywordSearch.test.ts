@@ -51,6 +51,10 @@ describe('ftsOrQuery', () => {
     expect(ftsOrQuery('?! --')).toBe('')
   })
 
+  it('composes decomposed (NFD) letters before splitting into words', () => {
+    expect(ftsOrQuery('cafe\u0301 menu')).toBe('caf\u00e9 or menu')
+  })
+
   it('caps the number of terms', () => {
     const many = Array.from({ length: 50 }, (_, i) => `w${i}`).join(' ')
     expect(ftsOrQuery(many).split(' or ')).toHaveLength(32)
@@ -129,6 +133,30 @@ describe('findChunksByKeyword', () => {
     const filtered = await findChunksByKeyword('what is on SW-101', projectId, 10, [skipId])
     expect(filtered.length).toBeGreaterThan(0)
     expect(filtered.every(c => c.filename === 'keep.pdf')).toBe(true)
+  })
+})
+
+// Review of C1: with OR-joined FTS a common question word can fill every slot, so
+// the exact identifier (ILIKE) hits must not be appended after the FTS rows.
+describe('findChunksByKeyword identifier hits vs a crowded FTS list', () => {
+  beforeEach(async () => { await createTestDb() })
+
+  it('keeps the identifier chunk when more than topN chunks match a common word', async () => {
+    const { projects, documents, documentChunks } = await import('@/db/schema')
+    const [p] = await testDb.insert(projects).values({ name: 'p' }).returning()
+    const [d] = await testDb.insert(documents).values({
+      projectId: p.id, filename: 'plans.pdf', mimeType: 'application/pdf', fileSize: 1, charCount: 1,
+    }).returning()
+    // 30 fillers that out-rank the identifier chunk on the OR'd FTS query.
+    await testDb.insert(documentChunks).values(Array.from({ length: 30 }, (_, i) => ({
+      documentId: d.id, projectId: p.id, chunkIndex: i, content: `show sw show sw show filler ${i}`,
+    })))
+    await testDb.insert(documentChunks).values({
+      documentId: d.id, projectId: p.id, chunkIndex: 30, content: 'Storm drain profile SW-101 notes',
+    })
+    const r = await findChunksByKeyword('what does SW-101 show', p.id, 20)
+    expect(r).toHaveLength(20)
+    expect(r.some(c => c.content.includes('SW-101'))).toBe(true)
   })
 })
 

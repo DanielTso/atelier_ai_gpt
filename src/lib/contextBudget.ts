@@ -140,6 +140,10 @@ export function recentTail<M extends UIMessage>(
  * after it carries it in its turn metadata, so it is taken from there, and only
  * when that user message was sent too. Messages trimmed off the front are NOT
  * listed: they are in no other layer, so retrieval may still surface them.
+ *
+ * Known edge: a stopped or failed reply never gets `assistantMessageDbId` in the
+ * client's metadata (no `finish` chunk), so its saved row is not listed here and
+ * can be sent and also retrieved once it is embedded.
  */
 export function sentMessageDbIds(sent: UIMessage[], currentUserMessageDbId: number | null): number[] {
   const ids = new Set<number>()

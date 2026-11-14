@@ -212,7 +212,11 @@ export async function POST(req: Request) {
           excludeDocumentIds: excludedDocumentIds,
           // Semantic retrieval leaves out what the model already sees (audit B9):
           // the whole chat when nothing was trimmed, otherwise exactly the sent
-          // rows, so messages trimmed off the front stay retrievable.
+          // rows, so messages trimmed off the front stay retrievable. Known edges:
+          // excludeChatId assumes the client's store holds the whole chat, which
+          // is false if its list load failed or another tab added rows (those rows
+          // are then excluded though not sent); see sentMessageDbIds for the
+          // stopped-reply edge of the id path.
           ...(sentTail.length === messages.length
             ? { excludeChatId: chatId }
             : { excludeMessageIds: sentMessageDbIds(sentTail, userMessageDbId) }),
