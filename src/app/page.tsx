@@ -785,14 +785,6 @@ export default function Home() {
     if (!composePersonaPickedRef.current) setCurrentSystemPrompt(promptToApply)
   }, [getPersonaById, resetGroundedPick, applyGroundedDefault, defaultPersona.grounded, models])
 
-  const handleCreateChat = useCallback(async () => {
-    if (!activeProjectId) {
-      toast.error("Select a project first")
-      return
-    }
-    await createChatForProject(activeProjectId)
-  }, [activeProjectId, createChatForProject])
-
   const handleCreateChatInProject = useCallback(
     (projectId: number) => createChatForProject(projectId),
     [createChatForProject],
@@ -1202,6 +1194,9 @@ export default function Home() {
     }
   }, [activeChatId, applyGroundedDefault, getPersonaByPrompt])
 
+  // Kept on purpose: the per-project defaults dialog is reopened through a page
+  // prop in audit task C8 (its old sidebar entry point was dead).
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleOpenProjectSettings = useCallback((projectId: number) => {
     const project = projects.find(p => p.id === projectId)
     if (project) {
@@ -1242,16 +1237,8 @@ export default function Home() {
   }, [])
 
   const sidebarActions = useMemo<SidebarActions>(() => ({
-    createProject: handleCreateProject,
-    renameProject: handleRenameProject,
-    deleteProject: handleRequestDeleteProject,
-    selectProject: openProject,
-    openProjectDocuments: handleOpenProjectDocuments,
-    openProjectSettings: handleOpenProjectSettings,
-    createChat: handleCreateChat,
     createStandaloneChat: handleCreateStandaloneChat,
     createChatInProject: handleCreateChatInProject,
-    selectChat: (id: number) => { setActiveView('home'); setActiveChatId(id); },
     selectStandaloneChat: openStandaloneChat,
     openChat,
     moveChat: handleMoveChat,
@@ -1265,7 +1252,7 @@ export default function Home() {
     selectView: (view: AppView) => { setActiveView(view); setActiveChatId(null); },
     activeView,
     titlePendingIds,
-  }), [handleCreateProject, handleRenameProject, handleRequestDeleteProject, openProject, handleOpenProjectDocuments, handleOpenProjectSettings, handleCreateChat, handleCreateStandaloneChat, handleCreateChatInProject, setActiveChatId, openStandaloneChat, openChat, handleMoveChat, handleRequestRename, handleArchiveChat, handleRestoreChat, handleRequestDelete, theme, activeView, dialogs.settings, titlePendingIds])
+  }), [handleCreateStandaloneChat, handleCreateChatInProject, setActiveChatId, openStandaloneChat, openChat, handleMoveChat, handleRequestRename, handleArchiveChat, handleRestoreChat, handleRequestDelete, theme, activeView, dialogs.settings, titlePendingIds])
 
   // One key per distinct main-pane surface: tab views, individual chats, and
   // project landings each get their own crossfade (soft fade + rise, no pop-in).
@@ -1289,7 +1276,6 @@ export default function Home() {
       )}>
         <Sidebar
           projects={projects}
-          activeProjectId={activeProjectId}
           chats={chats}
           activeChatId={activeChatId}
           standaloneChats={standaloneChats}

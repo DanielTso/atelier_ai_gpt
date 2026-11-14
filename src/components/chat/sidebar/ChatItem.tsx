@@ -12,7 +12,7 @@ interface ChatItemProps {
   chat: Chat
   isActive: boolean
   projects: Project[]
-  variant: 'standalone' | 'project' | 'archived'
+  variant: 'standalone' | 'archived'
   currentProjectId?: number | null
 }
 
@@ -25,16 +25,17 @@ export const ChatItem = memo(function ChatItem({
 }: ChatItemProps) {
   const actions = useSidebarActions()
 
+  const isArchived = variant === 'archived'
+
+  // An archived chat may belong to a project: open it under its OWN project.
   const handleClick = () => {
-    if (variant === 'project') {
-      actions.selectChat(chat.id)
+    if (isArchived) {
+      actions.openChat(chat.id, chat.projectId)
     } else {
       actions.selectStandaloneChat(chat.id)
     }
   }
 
-  const isArchived = variant === 'archived'
-  const isProjectChat = variant === 'project'
   // While the auto-title generates, the placeholder shimmers; the real title
   // then fades in via the keyed span instead of snapping.
   const titlePending = actions.titlePendingIds instanceof Set && actions.titlePendingIds.has(chat.id)
@@ -55,30 +56,17 @@ export const ChatItem = memo(function ChatItem({
 
   return (
     <div
-      onClick={isProjectChat ? undefined : handleClick}
+      onClick={handleClick}
       className={cn(
-        "flex items-center gap-2 cursor-pointer text-sm transition-colors group",
-        isProjectChat ? "p-1.5 rounded" : "px-2 py-1.5 rounded-lg",
+        "flex items-center gap-2 cursor-pointer text-sm transition-colors group px-2 py-1.5 rounded-lg",
         isArchived && "opacity-60 hover:opacity-100",
         isActive
-          ? cn("text-primary font-medium", isProjectChat ? "bg-primary/5" : "bg-primary/10")
-          : cn("text-muted-foreground hover:text-foreground", !isProjectChat && "hover:bg-accent"),
+          ? "text-primary font-medium bg-primary/10"
+          : "text-muted-foreground hover:text-foreground hover:bg-accent",
       )}
     >
-      {isProjectChat ? (
-        <div
-          className="flex items-center gap-2 flex-1 truncate"
-          onClick={handleClick}
-        >
-          <MessageSquare className="h-3.5 w-3.5 shrink-0" />
-          {titleSpan()}
-        </div>
-      ) : (
-        <>
-          <MessageSquare className="h-3.5 w-3.5 shrink-0" />
-          {titleSpan('flex-1')}
-        </>
-      )}
+      <MessageSquare className="h-3.5 w-3.5 shrink-0" />
+      {titleSpan('flex-1')}
       <ChatContextMenu
         chatId={chat.id}
         currentProjectId={currentProjectId ?? chat.projectId}

@@ -17,18 +17,9 @@ export type AppView = 'home' | 'projects' | 'artifacts' | 'images'
 // moveChat/renameChat/archiveChat/deleteChat come from ChatRowActions (shared
 // with the project landing page's chat rows).
 export interface SidebarActions extends ChatRowActions {
-  // Project actions
-  createProject: () => void
-  renameProject: (id: number, name: string) => void
-  deleteProject: (id: number) => void
-  selectProject: (id: number) => void
-  openProjectDocuments?: (projectId: number) => void
-  openProjectSettings?: (projectId: number) => void
   // Chat actions
-  createChat: () => void
   createStandaloneChat: () => void
   createChatInProject: (projectId: number) => void
-  selectChat: (id: number) => void
   selectStandaloneChat: (id: number) => void
   // Opens any chat (project, quick or archived) under its OWN project, from any view
   openChat: (id: number, projectId: number | null) => void

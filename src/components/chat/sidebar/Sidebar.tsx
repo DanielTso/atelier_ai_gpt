@@ -6,12 +6,12 @@ import { CollapsedSidebar } from './CollapsedSidebar'
 import { SidebarHeader } from './SidebarHeader'
 import { SidebarNav } from './SidebarNav'
 import { RecentsSection } from './RecentsSection'
+import { ArchivedChatsSection } from './ArchivedChatsSection'
 import { SidebarFooter } from './SidebarFooter'
 import type { SidebarActions, Project, Chat } from './types'
 
 export interface SidebarProps {
   projects: Project[]
-  activeProjectId: number | null
   chats: Chat[]
   activeChatId: number | null
   standaloneChats: Chat[]
@@ -25,6 +25,7 @@ export const Sidebar = memo(function Sidebar({
   chats,
   activeChatId,
   standaloneChats,
+  archivedChats,
   collapsed,
   actions,
 }: SidebarProps) {
@@ -55,6 +56,7 @@ export const Sidebar = memo(function Sidebar({
           <div className="h-px bg-border mx-4 my-3" />
           <div className="flex-1 overflow-y-auto px-2">
             <RecentsSection chats={recents} activeChatId={activeChatId} projects={projects} />
+            <ArchivedChatsSection chats={archivedChats} activeChatId={activeChatId} projects={projects} />
           </div>
           <SidebarFooter />
         </aside>

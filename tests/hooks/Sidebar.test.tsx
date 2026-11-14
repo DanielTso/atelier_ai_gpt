@@ -10,7 +10,7 @@ const actions = new Proxy({ activeView: 'home' }, { get: (t, k) => (k in t ? (t 
 describe('Sidebar', () => {
   it('renders the Claude.ai nav and Recents, not Quick Chats', () => {
     render(
-      <Sidebar projects={[]} activeProjectId={null} chats={[{ id: 1, projectId: null, title: 'Recent one' }]}
+      <Sidebar projects={[]} chats={[{ id: 1, projectId: null, title: 'Recent one' }]}
         activeChatId={null} standaloneChats={[]} archivedChats={[]} collapsed={false} actions={actions} />
     )
     expect(screen.getByRole('button', { name: /new chat/i })).toBeTruthy()
@@ -18,5 +18,21 @@ describe('Sidebar', () => {
     expect(screen.getByText('Recents')).toBeTruthy()
     expect(screen.getByText('Recent one')).toBeTruthy()
     expect(screen.queryByText('Quick Chats')).toBeNull()
+  })
+
+  it('renders an archived toggle when there are archived chats', () => {
+    render(
+      <Sidebar projects={[]} chats={[]} activeChatId={null} standaloneChats={[]}
+        archivedChats={[{ id: 3, projectId: null, title: 'Old one' }]} collapsed={false} actions={actions} />
+    )
+    expect(screen.getByRole('button', { name: /archived/i })).toBeTruthy()
+  })
+
+  it('renders no archived toggle when there are no archived chats', () => {
+    render(
+      <Sidebar projects={[]} chats={[]} activeChatId={null} standaloneChats={[]}
+        archivedChats={[]} collapsed={false} actions={actions} />
+    )
+    expect(screen.queryByRole('button', { name: /archived/i })).toBeNull()
   })
 })

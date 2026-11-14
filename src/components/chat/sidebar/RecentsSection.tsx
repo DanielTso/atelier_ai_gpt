@@ -25,7 +25,7 @@ export function RecentsSection({ chats, activeChatId, projects }: RecentsSection
               chat={c}
               isActive={activeChatId === c.id}
               projects={projects}
-              variant={c.projectId === null ? 'standalone' : 'project'}
+              variant="standalone"
               currentProjectId={c.projectId}
             />
           ))
