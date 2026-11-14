@@ -34,13 +34,18 @@ const LEADING_ANCHOR_RE = /^# Page (\d+)[ \t]*(?:\r?\n|$)/
 /** A vision run as it goes into the document text: its page anchor first, then
  * the provenance header, then the transcription. The model is prompted to open
  * each page with "# Page <n>"; that leading heading is moved above the header,
- * and a run that came back without one gets "# Page <first>" (audit X1). With
- * the anchor first, the header belongs to its own page for pageMap and for
- * read_document windows, which start and end on anchors. */
+ * and a run with no "# Page <first>" heading line anywhere gets one (audit X1).
+ * A run whose heading follows a preamble line keeps its own heading, and the
+ * header leads, so no page is anchored twice (a duplicate would inflate
+ * read_document's anchor count). With the anchor first, the header belongs to
+ * its own page for pageMap and for read_document windows, which start and end
+ * on anchors. */
 export function visionRunText(first: number, last: number, text: string): string {
   const header = visionRunHeader(first, last)
   const lead = LEADING_ANCHOR_RE.exec(text)
   if (lead) return `# Page ${lead[1]}\n${header}\n${text.slice(lead[0].length)}`
+  // Same line shape as PAGE_ANCHOR_RE, so "# Page 4" never matches "# Page 40".
+  if (new RegExp(`^# Page ${first}\\s*$`, 'm').test(text)) return `${header}\n${text}`
   return `# Page ${first}\n${header}\n${text}`
 }
 

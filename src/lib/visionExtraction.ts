@@ -125,7 +125,7 @@ export async function extractViaVision(buffer: Buffer): Promise<ExtractionResult
   const { results, truncated } = await extractSegments(segments, c, apiKey)
 
   const ok = results.filter(r => r.text)
-  // Every page with no text in the result: failed segments, oversize pages the
+  // Every page vision did not extract: failed segments, oversize pages the
   // splitter skipped, and pages past the page cap (audit X9).
   const failedPages = sortedUnique([
     ...results.filter(r => !r.text).flatMap(r => segPages(r.seg)), ...skippedPages, ...cappedPages,

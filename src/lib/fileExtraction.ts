@@ -18,7 +18,7 @@ export interface ExtractionResult {
   pagesExtracted: number | null
   partial: boolean
   pageTexts?: string[] // raw per-page text, index 0 = page 1; PDF text path only, set before char-cap truncation
-  failedPages?: number[] // absolute page numbers left without text: a vision segment that failed after retries, an oversize page skipped, or a page past the page cap
+  failedPages?: number[] // absolute page numbers vision did not extract: a vision segment that failed after retries, an oversize page skipped, or a page past the page cap
 }
 
 export const SUPPORTED_EXTENSIONS = new Set([

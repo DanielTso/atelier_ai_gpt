@@ -99,4 +99,9 @@ describe('visionRunText', () => {
   it('adds the first page anchor when the model omitted it', () => {
     expect(visionRunText(7, 7, 'body')).toBe('# Page 7\n[page 7 · vision]\nbody')
   })
+  it('does not duplicate the first page anchor when a preamble line precedes it', () => {
+    const out = visionRunText(4, 5, 'Intro\n# Page 4\nbody\n# Page 5\nmore')
+    expect(out).toBe('[pages 4–5 · vision]\nIntro\n# Page 4\nbody\n# Page 5\nmore')
+    expect(buildPageMap(out).map(a => a.page)).toEqual([4, 5])
+  })
 })
