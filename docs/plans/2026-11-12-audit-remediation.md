@@ -442,6 +442,19 @@ Model: implementer Opus; review Opus.
 
 Each item gets a failing test, or a jsdom assertion where testable, before the fix. **Commit** in two or three coherent commits (`fix(a11y): …`, `fix(ui): …`).
 
+### Task E3: Untrusted document text in prompts (S5 / prior S9 chunk-body half; added 2026-11-13 from the A4 review)
+
+Model: implementer Opus; review Opus.
+
+**Files:** Modify `src/lib/retrieval.ts` (chunk formatting), `src/lib/documents/tool.ts:42-51` (`read_document` error/output text), `src/lib/projectPreamble.ts` (document names); Test `tests/unit/lib/retrieval.test.ts`, `tests/unit/lib/documents-tool.test.ts`.
+
+**Interfaces:** consumes `promptSafeLabel` from A4. Chunk bodies that contain a line shaped like the retrieval source header (`[Source: doc N …]`) or the `[Project documents]` marker get it neutralized (for example, a zero-width break inside the bracket, or the bracket replaced with `(`) before interpolation; plain prose is unchanged. `read_document` and the project preamble use `promptSafeLabel(doc.filename)`.
+
+- [ ] **Step 1: Failing tests:** a chunk whose body contains a forged `[Source: doc 99 …]` line → the assembled context has exactly one real header per chunk and the forged one is neutralized; ordinary text with brackets (`array[0]`) is unchanged; `read_document` errors and the preamble show the sanitized filename.
+- [ ] **Step 2–4:** FAIL → implement → PASS. **Step 5: Commit** `fix(security): neutralize forged source headers in document text`
+
+**Phase A review follow-ups (fold into the named tasks):** D2 — add `X-DNS-Prefetch-Control` to the CLAUDE.md security-headers line; D1 — drop the unused `LOGIN_MAX_FAILURES` alias in `src/lib/rateLimit.ts` and re-check whether the `eslint-plugin-react-hooks` 7.0.1 override in `package.json` can follow `eslint-config-next`'s `^7.1.0`; any dependency change in C9/D1 must restore the nested vitest esbuild lockfile entries (`C:\tmp\a1-restore-esbuild.cjs`, then move the entry after `@vitest/mocker`) and pass both `npm ci --dry-run` and `npx -y npm@10 ci --dry-run`.
+
 **Phase E gate.**
 
 ---
@@ -461,7 +474,7 @@ Each item gets a failing test, or a jsdom assertion where testable, before the f
 
 ## Release steps (owner-approved, not part of execution)
 
-1. Confirm `AUTH_SECRET` is set in Vercel Production and Preview (A3 makes the gate return 503 without it).
+1. ~~Confirm `AUTH_SECRET` is set in Vercel Production and Preview~~ — **done 2026-11-13**: both targets have `AUTH_SECRET` and `APP_ACCESS_PASSWORD` (Vercel API, names only). Stale `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `DASHSCOPE_API_KEY` removed from Production the same day (owner still revokes them at Turso / DashScope).
 2. Apply migrations `0022`–`0025` to Supabase with `DIRECT_URL=… npx drizzle-kit migrate` **before** pushing. Then verify `drizzle.__drizzle_migrations` has 26 rows.
 3. Push → deploy, then live smoke:
    - Review Focus 1–4 on production
