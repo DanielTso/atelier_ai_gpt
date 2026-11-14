@@ -74,10 +74,13 @@ export async function POST(request: NextRequest) {
 
     // Claim the document (audit D2): only one call processes it at a time, so a
     // re-click or a retry while the first call is still running is refused here
-    // instead of extracting again and writing a second chunk set.
-    if (!(await claimDocumentForProcessing(doc.id))) {
-      return NextResponse.json({ error: 'This document is already being processed.' }, { status: 409 })
-    }
+    // instead of extracting again and writing a second chunk set. The claim only
+    // succeeds if the row still has the status and revision read above, so the
+    // rev<N+1> paths derived from `doc` can't belong to a replace that committed
+    // in between.
+    const busy = () => NextResponse.json({ error: 'This document is already being processed.' }, { status: 409 })
+    if (doc.status === 'processing') return busy()
+    if (!(await claimDocumentForProcessing(doc.id, { status: doc.status, revision: doc.revision }))) return busy()
 
     // From here on every exit, including a throw, must leave a settled status
     // (audit B8, X8): a failed replace keeps the previous revision's status, a

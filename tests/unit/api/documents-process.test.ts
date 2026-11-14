@@ -567,4 +567,23 @@ describe('POST /api/documents/process', () => {
     expect(m.updateDocumentStatus).not.toHaveBeenCalled()
     expect(m.removeObjects).not.toHaveBeenCalled()
   })
+
+  it('claims against the status and revision it read', async () => {
+    m.getDocumentById.mockResolvedValue(readyDoc())
+    m.extractTextFromBuffer.mockResolvedValue(extRes('A'.repeat(300)))
+    m.createDocumentRevision.mockResolvedValue([{ id: 1 }])
+    const POST = await importRoute()
+    await POST(replaceReq(50) as never)
+    expect(m.claimDocumentForProcessing).toHaveBeenCalledWith(50, { status: 'ready', revision: 2 })
+  })
+
+  it('409 without claiming when the document is read as processing', async () => {
+    m.getDocumentById.mockResolvedValue(readyDoc({ status: 'processing' }))
+    const POST = await importRoute()
+    const res = await POST(replaceReq(50) as never)
+    expect(res.status).toBe(409)
+    expect(m.claimDocumentForProcessing).not.toHaveBeenCalled()
+    expect(m.updateDocumentStatus).not.toHaveBeenCalled()
+    expect(m.downloadToBuffer).not.toHaveBeenCalled()
+  })
 })

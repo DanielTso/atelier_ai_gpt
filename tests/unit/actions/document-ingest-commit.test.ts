@@ -20,29 +20,47 @@ const chunkRows = (projectId: number, n: number) => Array.from({ length: n }, (_
 }))
 
 // Audit D2: /process claims the document before doing any work, so a second
-// concurrent call (re-click, retry) is refused instead of ingesting twice.
+// concurrent call (re-click, retry) is refused instead of ingesting twice. The
+// claim is a compare-and-set against the row the route read: if the status or
+// revision moved in between (another replace committed), the claim is refused.
 describe('claimDocumentForProcessing', () => {
   beforeEach(async () => { await createTestDb() })
 
   it.each(['uploading', 'ready', 'error'])('claims a %s document and marks it processing', async (status) => {
     const d = await insertDoc({ status })
-    expect(await claimDocumentForProcessing(d.id)).toBe(true)
+    expect(await claimDocumentForProcessing(d.id, { status, revision: 1 })).toBe(true)
     expect((await getDocumentById(d.id))?.status).toBe('processing')
   })
 
   it('refuses a document that is already processing', async () => {
     const d = await insertDoc({ status: 'processing' })
-    expect(await claimDocumentForProcessing(d.id)).toBe(false)
+    expect(await claimDocumentForProcessing(d.id, { status: 'processing', revision: 1 })).toBe(false)
+    expect(await claimDocumentForProcessing(d.id, { status: 'ready', revision: 1 })).toBe(false)
+  })
+
+  it('refuses when the revision moved since the route read the document', async () => {
+    const d = await insertDoc({ status: 'ready', revision: 3 })
+    expect(await claimDocumentForProcessing(d.id, { status: 'ready', revision: 2 })).toBe(false)
+    const after = await getDocumentById(d.id)
+    expect(after?.status).toBe('ready')
+    expect(after?.revision).toBe(3)
+  })
+
+  it('refuses when the status moved since the route read the document', async () => {
+    const d = await insertDoc({ status: 'ready' })
+    expect(await claimDocumentForProcessing(d.id, { status: 'uploading', revision: 1 })).toBe(false)
+    expect((await getDocumentById(d.id))?.status).toBe('ready')
   })
 
   it('lets exactly one of two concurrent claims win', async () => {
     const d = await insertDoc({ status: 'uploading' })
-    const results = await Promise.all([claimDocumentForProcessing(d.id), claimDocumentForProcessing(d.id)])
+    const expected = { status: 'uploading', revision: 1 }
+    const results = await Promise.all([claimDocumentForProcessing(d.id, expected), claimDocumentForProcessing(d.id, expected)])
     expect(results.filter(Boolean)).toHaveLength(1)
   })
 
   it('refuses a document that does not exist', async () => {
-    expect(await claimDocumentForProcessing(999)).toBe(false)
+    expect(await claimDocumentForProcessing(999, { status: 'ready', revision: 1 })).toBe(false)
   })
 })
 

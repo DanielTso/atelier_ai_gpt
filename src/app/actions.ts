@@ -657,11 +657,24 @@ export async function updateDocumentStatus(
  * already 'processing' (or missing), so a re-click or retry is refused instead of
  * extracting and ingesting the same document twice. A row a killed function left
  * 'processing' becomes claimable again once reapStaleProcessing flips it to 'error'.
+ *
+ * It is a compare-and-set against the row the caller read (`expected`): if the
+ * status or revision changed since, e.g. another replace committed revision N+1,
+ * the claim is refused, so the caller never derives rev<N+1> paths from a stale
+ * snapshot and overwrites (or, on failure, deletes) the live revision's objects.
  */
-export async function claimDocumentForProcessing(id: number): Promise<boolean> {
+export async function claimDocumentForProcessing(
+  id: number,
+  expected: { status: string; revision: number },
+): Promise<boolean> {
   const rows = await db.update(documents)
     .set({ status: 'processing', updatedAt: new Date() })
-    .where(and(eq(documents.id, id), inArray(documents.status, ['uploading', 'ready', 'error'])))
+    .where(and(
+      eq(documents.id, id),
+      eq(documents.status, expected.status),
+      eq(documents.revision, expected.revision),
+      inArray(documents.status, ['uploading', 'ready', 'error']),
+    ))
     .returning({ id: documents.id })
   return rows.length > 0
 }
@@ -808,6 +821,9 @@ export async function commitDocumentReplacement(
   },
 ) {
   return await db.transaction(async (tx) => {
+    // Lock the document row before touching its chunks: the same order as
+    // commitDocumentIngest, so the two can never deadlock on one document.
+    await tx.select({ id: documents.id }).from(documents).where(eq(documents.id, documentId)).for('update')
     await tx.delete(documentChunks).where(eq(documentChunks.documentId, documentId))
     await insertChunkRows(tx, chunks.map(c => ({
       documentId, projectId, chunkIndex: c.chunkIndex, content: c.content, embedding: c.embedding,

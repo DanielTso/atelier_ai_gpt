@@ -2,11 +2,16 @@
 -- chunk set (probe: 12 rows, chunk_count 6). The unique index below stops that,
 -- but production may already hold such duplicates, and CREATE UNIQUE INDEX would
 -- fail on them. So, in this order (one transaction, like every migration run):
+--   0. lock document_chunks against writes,
 --   1. repair chunk_count for the documents that have duplicates,
 --   2. delete the duplicates, keeping one row per (document_id, chunk_index):
 --      a row with an embedding over one without, then the lowest id,
 --   3. create the unique index.
--- Documents without duplicates are not touched.
+-- Documents without duplicates are not touched. The SHARE ROW EXCLUSIVE lock is
+-- taken first and held to the end of the transaction: it blocks chunk writes
+-- (a concurrent ingest by the old code) between the DELETE and the index build,
+-- while reads, i.e. retrieval, carry on.
+LOCK TABLE "document_chunks" IN SHARE ROW EXCLUSIVE MODE;--> statement-breakpoint
 UPDATE "documents" d
 SET "chunk_count" = dup."distinct_chunks"
 FROM (
