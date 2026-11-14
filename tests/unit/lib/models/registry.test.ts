@@ -389,17 +389,52 @@ describe('models/registry', () => {
       expect(c).toEqual({ modelId: 'claude-opus-4-8', usedFallback: false })
     })
 
-    it('a rejected build clears the in-flight slot, so the next call retries', async () => {
-      // A synchronous throw escapes the key read's .catch(), so the build rejects.
+    // "Resolvers never throw": a build that throws (here a key reader that
+    // throws synchronously, escaping its .catch()) degrades like a failed
+    // live fetch, for the short TTL, and the next call after it rebuilds.
+    it('a build that throws degrades to the seed (never rejects) and the next call after the short TTL rebuilds to live', async () => {
+      vi.useFakeTimers()
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
       getAnthropicApiKey.mockImplementationOnce(() => { throw new Error('boom') })
       getAnthropicApiKey.mockResolvedValue('sk-test')
       const fetchMock = fetch as ReturnType<typeof vi.fn>
       fetchMock.mockResolvedValue(mockLivePage([OPUS_RAW]))
 
-      await expect(getModelRegistry()).rejects.toThrow('boom')
+      const degraded = await getModelRegistry()
+      expect(degraded.source).toBe('seed')
+      expect(degraded.curated.map(m => m.id)).toContain('claude-opus-5-5')
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('registry build threw'), expect.any(Error))
+
+      vi.setSystemTime(Date.now() + 59 * 1000)
+      expect(await getModelRegistry()).toBe(degraded) // cached for the short TTL
+      vi.setSystemTime(Date.now() + 2 * 1000)
       const registry = await getModelRegistry()
       expect(registry.source).toBe('live')
       expect(getAnthropicApiKey).toHaveBeenCalledTimes(2)
+    })
+
+    it('a build that throws after a live build serves the last live catalog as stale', async () => {
+      vi.useFakeTimers()
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      getAnthropicApiKey.mockResolvedValue('sk-test')
+      const fetchMock = fetch as ReturnType<typeof vi.fn>
+      fetchMock.mockResolvedValue(mockLivePage([OPUS5_RAW]))
+      expect((await getModelRegistry()).source).toBe('live')
+
+      getAnthropicApiKey.mockImplementation(() => { throw new Error('boom') })
+      vi.setSystemTime(Date.now() + 5 * 60 * 1000 + 1000)
+      const registry = await getModelRegistry()
+      expect(registry.source).toBe('stale')
+      expect(registry.curated.map(m => m.id)).toEqual(['claude-opus-5'])
+    })
+
+    it('resolveRequestedModel resolves (never rejects) while the build throws', async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      getAnthropicApiKey.mockImplementation(() => { throw new Error('boom') })
+
+      await expect(resolveRequestedModel('claude-fable-5')).resolves.toEqual({ modelId: 'claude-fable-5', usedFallback: false })
+      clearModelRegistryCache({ includeLastGood: true })
+      await expect(resolveRequestedModel('claude-bogus-9')).resolves.toEqual({ modelId: 'claude-opus-5-5', usedFallback: true })
     })
 
     it('a build in flight when the cache is cleared does not repopulate the cache with pre-clear state', async () => {

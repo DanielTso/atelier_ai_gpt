@@ -196,6 +196,76 @@ function buildLegacyPin(id: string, overrides: PricingOverrides): CatalogModel {
   }
 }
 
+/**
+ * The Claude models to serve when no live catalog can be built: the last
+ * successful live catalog (re-priced) as `stale`, else the seed.
+ */
+function degradedClaude(
+  overrides: PricingOverrides,
+  reason: string,
+  error: unknown,
+): { claudeModels: CatalogModel[]; source: RegistrySource } {
+  if (lastLiveClaude) {
+    console.warn(`[models] ${reason}, serving the last live catalog (stale)`, error)
+    return { claudeModels: lastLiveClaude.map(m => repriceModel(m, overrides)), source: 'stale' }
+  }
+  console.warn(`[models] ${reason} and no live catalog was ever loaded, falling back to seed`, error)
+  return { claudeModels: STATIC_SEED.map(m => repriceModel(m, overrides)), source: 'seed' }
+}
+
+/** Index the Claude models into `byId` and return the curated picker list. */
+function indexClaude(
+  byId: Map<string, CatalogModel>,
+  claudeModels: CatalogModel[],
+  source: RegistrySource,
+  overrides: PricingOverrides,
+): CatalogModel[] {
+  // byId gets the FULL normalized/seed catalog (not just curated) — dated
+  // snapshots, older family members and unrecognized families stay routable
+  // even though curateCatalog only surfaces the newest-per-family subset in
+  // the picker.
+  for (const model of claudeModels) byId.set(model.id, model)
+  // Alias pass runs AFTER all real ids are set, so a real bare entry (if
+  // Anthropic ever ships one) is already in byId and the guard inside
+  // registerDatedAliases() leaves it untouched regardless of array order.
+  registerDatedAliases(byId, claudeModels)
+
+  // Seed path only: the previous seed generation stays routable (byId, not
+  // the picker) so an id already held by a chat, persona or project default
+  // keeps its own model instead of falling back to the default.
+  if (source === 'seed') {
+    for (const model of SEED_ROUTABLE) {
+      if (!byId.has(model.id)) byId.set(model.id, repriceModel(model, overrides))
+    }
+  }
+
+  // Legacy pins stay routable even though they're not offered in the
+  // picker. Resolve each from the full (live or seed) catalog when
+  // Anthropic still serves it; otherwise construct a minimal stand-in.
+  for (const pinId of LEGACY_PINS) {
+    if (!byId.has(pinId)) {
+      byId.set(pinId, buildLegacyPin(pinId, overrides))
+    }
+  }
+  return curateCatalog(claudeModels)
+}
+
+/**
+ * The registry served when buildRegistry() itself throws (an unexpected
+ * exception, e.g. a settings reader throwing synchronously past its .catch()).
+ * "Resolvers never throw": this degrades exactly like a failed live fetch,
+ * cached for the short TTL so the next call retries. It reads nothing that
+ * could throw again: no overrides (exact/family pricing) and no keys, so it
+ * carries no Gemini entries.
+ */
+function buildFallbackRegistry(error: unknown): ModelRegistry {
+  const overrides: PricingOverrides = {}
+  const { claudeModels, source } = degradedClaude(overrides, 'registry build threw', error)
+  const byId = new Map<string, CatalogModel>()
+  const curated = indexClaude(byId, claudeModels, source, overrides)
+  return { curated, byId, source }
+}
+
 async function buildRegistry(): Promise<{ registry: ModelRegistry; liveClaude: CatalogModel[] | null }> {
   // getAnthropicApiKey()/getGeminiApiKey() are getServerSetting() -> db.select()
   // and can reject (DB outage, pool exhaustion) — unlike loadPricingOverrides(),
@@ -232,45 +302,9 @@ async function buildRegistry(): Promise<{ registry: ModelRegistry; liveClaude: C
       source = 'live'
       liveClaude = claudeModels
     } catch (error) {
-      if (lastLiveClaude) {
-        console.warn('[models] live Anthropic models fetch failed, serving the last live catalog (stale)', error)
-        claudeModels = lastLiveClaude.map(m => repriceModel(m, overrides))
-        source = 'stale'
-      } else {
-        console.warn('[models] live Anthropic models fetch failed and no live catalog was ever loaded, falling back to seed', error)
-        claudeModels = STATIC_SEED.map(m => repriceModel(m, overrides))
-        source = 'seed'
-      }
+      ;({ claudeModels, source } = degradedClaude(overrides, 'live Anthropic models fetch failed', error))
     }
-
-    // byId gets the FULL normalized/seed catalog (not just curated) — dated
-    // snapshots, older family members and unrecognized families stay routable
-    // even though curateCatalog only surfaces the newest-per-family subset in
-    // the picker.
-    for (const model of claudeModels) byId.set(model.id, model)
-    // Alias pass runs AFTER all real ids are set, so a real bare entry (if
-    // Anthropic ever ships one) is already in byId and the guard inside
-    // registerDatedAliases() leaves it untouched regardless of array order.
-    registerDatedAliases(byId, claudeModels)
-    curatedClaude = curateCatalog(claudeModels)
-
-    // Seed path only: the previous seed generation stays routable (byId, not
-    // the picker) so an id already held by a chat, persona or project default
-    // keeps its own model instead of falling back to the default.
-    if (source === 'seed') {
-      for (const model of SEED_ROUTABLE) {
-        if (!byId.has(model.id)) byId.set(model.id, repriceModel(model, overrides))
-      }
-    }
-
-    // Legacy pins stay routable even though they're not offered in the
-    // picker. Resolve each from the full (live or seed) catalog when
-    // Anthropic still serves it; otherwise construct a minimal stand-in.
-    for (const pinId of LEGACY_PINS) {
-      if (!byId.has(pinId)) {
-        byId.set(pinId, buildLegacyPin(pinId, overrides))
-      }
-    }
+    curatedClaude = indexClaude(byId, claudeModels, source, overrides)
   }
 
   let geminiModels: CatalogModel[] = []
@@ -284,7 +318,8 @@ async function buildRegistry(): Promise<{ registry: ModelRegistry; liveClaude: C
 
 /** Get the (cached) model registry, rebuilding when the TTL has expired.
  * TTL is 5 min for a confirmed live catalog, 60 s for a stale or seed one.
- * Concurrent callers that miss the cache share one in-flight build. */
+ * Concurrent callers that miss the cache share one in-flight build. Never
+ * rejects: a build that throws is served as buildFallbackRegistry(). */
 export async function getModelRegistry(): Promise<ModelRegistry> {
   if (cache && Date.now() < cache.expiresAt) {
     return cache.registry
@@ -293,6 +328,7 @@ export async function getModelRegistry(): Promise<ModelRegistry> {
 
   const startedAt = generation
   const build: Promise<ModelRegistry> = buildRegistry()
+    .catch((error: unknown) => ({ registry: buildFallbackRegistry(error), liveClaude: null }))
     .then(({ registry, liveClaude }) => {
       // A clear landed while this build ran: hand the result to the callers
       // already waiting, but never cache it or keep it as the last good one.
