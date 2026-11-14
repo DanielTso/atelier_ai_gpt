@@ -89,6 +89,49 @@ describe('useUrlNavSync', () => {
     expect(pushSpy).toHaveBeenLastCalledWith(null, '', '/?project=3&chat=9')
   })
 
+  it('a no-op popstate does not swallow the next real navigation (F8)', () => {
+    const chat: NavProps = { activeView: 'home', activeProjectId: 3, activeChatId: 5, currentChatProjectId: 3 }
+    const { rerender, pushSpy } = setup(chat, '?project=3&chat=5')
+    // Back to an older "?chat=5" entry for the same chat: nav state does not change.
+    act(() => {
+      window.history.replaceState(null, '', '/?chat=5')
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    })
+    rerender({ ...chat })
+    pushSpy.mockClear()
+    // A real navigation afterwards must push and move the address bar.
+    rerender({ activeView: 'projects', activeProjectId: null, activeChatId: null, currentChatProjectId: undefined })
+    expect(pushSpy).toHaveBeenCalledTimes(1)
+    expect(pushSpy).toHaveBeenLastCalledWith(null, '', '/?view=projects')
+    expect(window.location.search).toBe('?view=projects')
+  })
+
+  it("a ?chat=N deep link that resolves its project replaces the URL, never pushes (F9)", () => {
+    const chatUnknown: NavProps = { activeView: 'home', activeProjectId: null, activeChatId: 5, currentChatProjectId: undefined }
+    const { rerender, pushSpy, replaceSpy } = setup(chatUnknown, '?chat=5')
+    pushSpy.mockClear()
+    replaceSpy.mockClear()
+    rerender({ ...chatUnknown, currentChatProjectId: 3 })
+    expect(pushSpy).not.toHaveBeenCalled()
+    expect(replaceSpy).toHaveBeenCalledTimes(1)
+    expect(replaceSpy).toHaveBeenLastCalledWith(null, '', '/?project=3&chat=5')
+  })
+
+  it('popping to an older URL of the same chat canonicalises with replaceState, not a push', () => {
+    const chat: NavProps = { activeView: 'home', activeProjectId: 3, activeChatId: 5, currentChatProjectId: 3 }
+    const { rerender, pushSpy, replaceSpy } = setup(chat, '?project=3&chat=5')
+    act(() => {
+      window.history.replaceState(null, '', '/?chat=5')
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    })
+    pushSpy.mockClear()
+    replaceSpy.mockClear()
+    // page.tsx applies the popped state (project cleared); the chat's own project is still 3.
+    rerender({ ...chat, activeProjectId: null })
+    expect(pushSpy).not.toHaveBeenCalled()
+    expect(replaceSpy).toHaveBeenLastCalledWith(null, '', '/?project=3&chat=5')
+  })
+
   it('tab views win over a stale project id', () => {
     const { rerender, pushSpy } = setup(home)
     rerender({ activeView: 'artifacts', activeProjectId: 3, activeChatId: null, currentChatProjectId: undefined })

@@ -30,6 +30,8 @@ export interface SidebarActions extends ChatRowActions {
   createChatInProject: (projectId: number) => void
   selectChat: (id: number) => void
   selectStandaloneChat: (id: number) => void
+  // Opens any chat (project, quick or archived) under its OWN project, from any view
+  openChat: (id: number, projectId: number | null) => void
   restoreChat: (chatId: number) => void
   // UI actions
   toggleTheme: () => void

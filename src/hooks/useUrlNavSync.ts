@@ -47,6 +47,13 @@ function toNavState(
   return { kind: 'home' }
 }
 
+/** True when the previous canonical URL addressed the same chat as `next`. */
+function isSameChat(prevSearch: string | null, next: NavState): boolean {
+  if (prevSearch == null || next.kind !== 'chat') return false
+  const prev = parseNavUrl(prevSearch)
+  return prev.kind === 'chat' && prev.chatId === next.chatId
+}
+
 export function useUrlNavSync(opts: UseUrlNavSyncOpts): UrlNavSync {
   const {
     activeView, activeProjectId, activeChatId, currentChatProjectId,
@@ -54,10 +61,11 @@ export function useUrlNavSync(opts: UseUrlNavSyncOpts): UrlNavSync {
   } = opts
 
   // Last CANONICAL search string this hook accounted for — the dedupe baseline.
+  // A popstate re-seeds it with the popped URL (the browser already moved the
+  // address bar), so the state the pop applies dedupes to a no-op. There is no
+  // "applying a pop" flag on purpose: a pop that changes no state never re-runs
+  // the push effect, and a flag armed by it would swallow the next real push (F8).
   const lastUrlRef = useRef<string | null>(null)
-  // True while the next push-effect run reflects a popstate (the browser already
-  // moved the address bar — pushing again would corrupt history).
-  const isApplyingPopRef = useRef(false)
   const suppressNextPushRef = useRef(false)
 
   const suppressNextPush = useCallback(() => { suppressNextPushRef.current = true }, [])
@@ -91,8 +99,8 @@ export function useUrlNavSync(opts: UseUrlNavSyncOpts): UrlNavSync {
 
   useEffect(() => {
     const onPopState = () => {
-      isApplyingPopRef.current = true
       const state = parseNavUrl(window.location.search)
+      lastUrlRef.current = navToUrl(state)
       setActiveView(state.kind === 'tab' ? state.view : 'home')
       setActiveProjectId(state.kind === 'project' ? state.projectId : state.kind === 'chat' ? state.projectId : null)
       setActiveChatId(state.kind === 'chat' ? state.chatId : null)
@@ -105,14 +113,18 @@ export function useUrlNavSync(opts: UseUrlNavSyncOpts): UrlNavSync {
   // or input state — so a push can only happen on a discrete navigation, and
   // React's batching keeps multi-setter handlers at one push per user action.
   useEffect(() => {
-    const nextSearch = navToUrl(toNavState(activeView, activeProjectId, activeChatId, currentChatProjectId))
+    const next = toNavState(activeView, activeProjectId, activeChatId, currentChatProjectId)
+    const nextSearch = navToUrl(next)
     if (lastUrlRef.current === nextSearch) return
 
     const url = window.location.pathname + nextSearch
-    if (isApplyingPopRef.current) {
-      isApplyingPopRef.current = false // the browser already moved the bar
-    } else if (suppressNextPushRef.current) {
+    if (suppressNextPushRef.current) {
       suppressNextPushRef.current = false
+      window.history.replaceState(null, '', url)
+    } else if (isSameChat(lastUrlRef.current, next)) {
+      // Same chat, only its project segment changed: the chat's own project just
+      // resolved (a ?chat=N deep link, or a pop to an older URL of this chat) or
+      // the chat was moved. That is a correction, not a navigation — replace (F9).
       window.history.replaceState(null, '', url)
     } else {
       window.history.pushState(null, '', url)

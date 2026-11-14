@@ -51,6 +51,7 @@ import { useDialogs } from "@/hooks/useDialogs"
 import { useChatPersistence, type FinishedTurn, type StartedTurn } from "@/hooks/useChatPersistence"
 import { useChatSessions, type TurnFinish, type TurnStart } from "@/hooks/useChatSessions"
 import { useUrlNavSync } from "@/hooks/useUrlNavSync"
+import { findChatById, isStaleChatId, moveRestoredChat, removeProjectChats, type LoadedFlags } from "@/lib/chatLookup"
 
 // Types matching DB schema roughly
 type Project = { id: number; name: string; memory?: string | null; instructions?: string | null; createdAt?: Date | null; updatedAt?: Date | null }
@@ -95,6 +96,11 @@ export default function Home() {
   const [activeProjectId, setActiveProjectId] = useState<number | null>(null)
   const [chats, setChats] = useState<Chat[]>([])
   const [standaloneChats, setStandaloneChats] = useState<Chat[]>([])
+  const [archivedChats, setArchivedChats] = useState<Chat[]>([])
+  // Which chat lists have finished their first load (success or failure). The
+  // deep-link validator waits for all three: the server actions resolve one
+  // round-trip apart, so judging an id against a partial set clears valid links.
+  const [chatListsLoaded, setChatListsLoaded] = useState<LoadedFlags>({ chats: false, standalone: false, archived: false })
   const [activeChatId, setActiveChatId] = useState<number | null>(null)
   // "New chat" started inside a project: show a compose surface (not the project
   // landing) WITHOUT persisting a chat row. The chat is created only when the first
@@ -126,11 +132,11 @@ export default function Home() {
   chatsRef.current = chats
   const standaloneChatsRef = useRef(standaloneChats)
   standaloneChatsRef.current = standaloneChats
+  const archivedChatsRef = useRef(archivedChats)
+  archivedChatsRef.current = archivedChats
 
-  // Get the current chat (and its project) from either chats or standaloneChats
-  const currentChat = activeChatId
-    ? chats.find(c => c.id === activeChatId) ?? standaloneChats.find(c => c.id === activeChatId)
-    : undefined
+  // Get the current chat (and its project) from project, quick or archived chats
+  const currentChat = findChatById(activeChatId, { chats, standaloneChats, archivedChats })
   const currentChatTitle = currentChat?.title
   const currentChatProjectName = currentChat?.projectId
     ? projects.find(p => p.id === currentChat.projectId)?.name ?? null
@@ -201,9 +207,6 @@ export default function Home() {
 
   // Dialog state — centralised in useDialogs
   const dialogs = useDialogs()
-
-  // Archived chats state
-  const [archivedChats, setArchivedChats] = useState<Chat[]>([])
 
   // Composer state (NOT in useDialogs — owned by the composer, not the dialog layer)
   const [currentSystemPrompt, setCurrentSystemPrompt] = useState<string | null>(null)
@@ -447,6 +450,8 @@ export default function Home() {
     } catch (e) {
       console.error(e)
       setError("Failed to load chats.")
+    } finally {
+      setChatListsLoaded(prev => (prev.standalone ? prev : { ...prev, standalone: true }))
     }
   }, [])
 
@@ -457,6 +462,8 @@ export default function Home() {
     } catch (e) {
       console.error(e)
       setError("Failed to load archived chats.")
+    } finally {
+      setChatListsLoaded(prev => (prev.archived ? prev : { ...prev, archived: true }))
     }
   }, [])
 
@@ -467,6 +474,8 @@ export default function Home() {
     } catch (e) {
       console.error(e)
       setError("Failed to load chats.")
+    } finally {
+      setChatListsLoaded(prev => (prev.chats ? prev : { ...prev, chats: true }))
     }
   }, [])
 
@@ -559,11 +568,11 @@ export default function Home() {
   // Validate persisted activeChatId/activeProjectId after data loads. Also cleans
   // stale deep links (useUrlNavSync restores ids from the URL optimistically);
   // suppressNextPush makes the URL correction a replaceState so history gets no
-  // dead entry pointing at the broken URL.
+  // dead entry pointing at the broken URL. A chat id is judged only once all three
+  // chat lists have loaded, and an archived chat counts as known (U2).
   useEffect(() => {
     if (activeChatId !== null) {
-      const allChats = [...chats, ...standaloneChats]
-      if (allChats.length > 0 && !allChats.find(c => c.id === activeChatId)) {
+      if (isStaleChatId(activeChatId, { chats, standaloneChats, archivedChats }, chatListsLoaded)) {
         navSync.suppressNextPush()
         setActiveChatId(null)
       }
@@ -574,7 +583,7 @@ export default function Home() {
         setActiveProjectId(null)
       }
     }
-  }, [projects, chats, standaloneChats]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [projects, chats, standaloneChats, archivedChats, chatListsLoaded]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load chat previews when viewing a project (no active chat)
   useEffect(() => {
@@ -991,6 +1000,15 @@ export default function Home() {
     try {
       await deleteProject(targetId)
       setProjects(prev => prev.filter(p => p.id !== targetId))
+      // The DB cascades the project's chats; drop them from page state too so the
+      // palette and the deep-link validator stop treating them as live (U14).
+      const lists = { chats: chatsRef.current, standaloneChats: standaloneChatsRef.current, archivedChats: archivedChatsRef.current }
+      const next = removeProjectChats(lists, targetId)
+      if (next !== lists) {
+        setChats(next.chats)
+        setArchivedChats(next.archivedChats)
+      }
+      if (findChatById(activeChatIdRef.current, lists)?.projectId === targetId) setActiveChatId(null)
       if (activeProjectId === targetId) setActiveProjectId(null)
       dialogs.deleteProject.close()
       toast.success("Project deleted")
@@ -1086,6 +1104,13 @@ export default function Home() {
 
   const handleRestoreChat = useCallback(async (chatId: number) => {
     await restoreChat(chatId)
+    // Move it between lists now, in one batched tick: the three reloads below land
+    // independently, and the restored chat (possibly the open one) must never be
+    // absent from all three in between or the validator would close it.
+    const next = moveRestoredChat({ chats: chatsRef.current, standaloneChats: standaloneChatsRef.current, archivedChats: archivedChatsRef.current }, chatId)
+    setChats(next.chats)
+    setStandaloneChats(next.standaloneChats)
+    setArchivedChats(next.archivedChats)
     loadArchivedChats()
     loadStandaloneChats()
     loadAllProjectChats()
@@ -1105,6 +1130,27 @@ export default function Home() {
     setActiveProjectId(null) // Clear project when selecting standalone chat
     setActiveChatId(id)
   }, [])
+
+  // View-aware navigation, shared by the sidebar and the command palette: both can
+  // fire from the Projects/Artifacts/Images tabs, which render ahead of the chat
+  // pane, so each switches back to 'home' first (U7).
+  const openProject = useCallback((id: number) => {
+    setActiveView('home')
+    handleSelectProject(id)
+  }, [handleSelectProject])
+  const openStandaloneChat = useCallback((id: number) => {
+    setActiveView('home')
+    handleSelectStandaloneChat(id)
+  }, [handleSelectStandaloneChat])
+  // Opens any chat — project, quick or archived — under its OWN project.
+  const openChat = useCallback((id: number, projectId: number | null) => {
+    setActiveView('home')
+    setActiveProjectId(projectId)
+    setActiveChatId(id)
+  }, [])
+  const openProjectChat = useCallback((id: number) => {
+    openChat(id, chatsRef.current.find(c => c.id === id)?.projectId ?? null)
+  }, [openChat])
 
   const handleUpdateChatTitle = useCallback(async (id: number, title: string) => {
     try {
@@ -1199,14 +1245,15 @@ export default function Home() {
     createProject: handleCreateProject,
     renameProject: handleRenameProject,
     deleteProject: handleRequestDeleteProject,
-    selectProject: (id: number) => { setActiveView('home'); handleSelectProject(id); },
+    selectProject: openProject,
     openProjectDocuments: handleOpenProjectDocuments,
     openProjectSettings: handleOpenProjectSettings,
     createChat: handleCreateChat,
     createStandaloneChat: handleCreateStandaloneChat,
     createChatInProject: handleCreateChatInProject,
     selectChat: (id: number) => { setActiveView('home'); setActiveChatId(id); },
-    selectStandaloneChat: (id: number) => { setActiveView('home'); handleSelectStandaloneChat(id); },
+    selectStandaloneChat: openStandaloneChat,
+    openChat,
     moveChat: handleMoveChat,
     renameChat: handleRequestRename,
     archiveChat: handleArchiveChat,
@@ -1218,7 +1265,7 @@ export default function Home() {
     selectView: (view: AppView) => { setActiveView(view); setActiveChatId(null); },
     activeView,
     titlePendingIds,
-  }), [handleCreateProject, handleRenameProject, handleRequestDeleteProject, handleSelectProject, handleOpenProjectDocuments, handleOpenProjectSettings, handleCreateChat, handleCreateStandaloneChat, handleCreateChatInProject, setActiveChatId, handleSelectStandaloneChat, handleMoveChat, handleRequestRename, handleArchiveChat, handleRestoreChat, handleRequestDelete, theme, activeView, dialogs.settings, titlePendingIds])
+  }), [handleCreateProject, handleRenameProject, handleRequestDeleteProject, openProject, handleOpenProjectDocuments, handleOpenProjectSettings, handleCreateChat, handleCreateStandaloneChat, handleCreateChatInProject, setActiveChatId, openStandaloneChat, openChat, handleMoveChat, handleRequestRename, handleArchiveChat, handleRestoreChat, handleRequestDelete, theme, activeView, dialogs.settings, titlePendingIds])
 
   // One key per distinct main-pane surface: tab views, individual chats, and
   // project landings each get their own crossfade (soft fade + rise, no pop-in).
@@ -1499,9 +1546,9 @@ export default function Home() {
         projects={projects}
         standaloneChats={standaloneChats}
         chats={chats}
-        onSelectProject={handleSelectProject}
-        onSelectChat={setActiveChatId}
-        onSelectStandaloneChat={handleSelectStandaloneChat}
+        onSelectProject={openProject}
+        onSelectChat={openProjectChat}
+        onSelectStandaloneChat={openStandaloneChat}
       />
 
       {/* Create Project Dialog */}
