@@ -326,9 +326,15 @@ export async function getModelRegistry(): Promise<ModelRegistry> {
  * `[nanoBanana]` alone, and `curated[0]` would silently route a text
  * request to an image model (responseModalities TEXT+IMAGE). Falls back to
  * the literal id only when curated has no Anthropic entry at all.
+ *
+ * `registry` lets a caller that also reads the registry (updateProjectDefaults
+ * checks `source`) resolve against the same snapshot instead of a second read.
  */
-export async function resolveRequestedModel(requested?: string): Promise<{ modelId: string; usedFallback: boolean }> {
-  const registry = await getModelRegistry()
+export async function resolveRequestedModel(
+  requested?: string,
+  registry?: ModelRegistry,
+): Promise<{ modelId: string; usedFallback: boolean }> {
+  registry ??= await getModelRegistry()
   const fallback = registry.curated.find(m => m.provider === 'anthropic')?.id ?? DEFAULT_MODEL_ID
 
   if (!requested) {
@@ -341,7 +347,7 @@ export async function resolveRequestedModel(requested?: string): Promise<{ model
   // The client stays the primary resolver; this only prevents a tier from
   // masquerading as an "unknown model id" warning + wrong-model fallback.
   if (isModelTier(requested)) {
-    return { modelId: await resolveTier(requested), usedFallback: false }
+    return { modelId: resolveTierIn(registry, requested), usedFallback: false }
   }
   const match = registry.byId.get(requested)
   if (match) {
@@ -365,7 +371,10 @@ export async function resolveRequestedModel(requested?: string): Promise<{ model
  * never a throw.
  */
 export async function resolveTier(tier: ModelTier): Promise<string> {
-  const registry = await getModelRegistry()
+  return resolveTierIn(await getModelRegistry(), tier)
+}
+
+function resolveTierIn(registry: ModelRegistry, tier: ModelTier): string {
   const family = tierFamily(tier)
   const match = registry.curated.find(m => m.family === family)
   if (match) return match.id

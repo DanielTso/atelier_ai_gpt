@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 const { getSetting } = vi.hoisted(() => ({ getSetting: vi.fn() }))
 vi.mock('@/lib/settings', () => ({ getServerSetting: getSetting }))
 
-import { resolvePricing, loadPricingOverrides } from '@/lib/models/pricing'
+import { resolvePricing, loadPricingOverrides, applyLongContextPricing } from '@/lib/models/pricing'
 
 describe('resolvePricing', () => {
   it('an override wins over the exact-id table', () => {
@@ -54,6 +54,23 @@ describe('resolvePricing', () => {
     }
     expect(resolvePricing('claude-haiku-4-5-20251001', 'haiku', overrides)).toEqual({
       inputPerMTok: 0.7, outputPerMTok: 3, estimated: false,
+    })
+  })
+
+  // C6 review: an override that omits the cache-hit rate must not drop the
+  // exact row's non-standard one (Opus 5.5 would bill cache hits 2x too high).
+  it('an override without a cache-hit rate inherits the cache-hit rate of the exact row', () => {
+    const overrides = { 'claude-opus-5-5': { inputPerMTok: 5, outputPerMTok: 25 } }
+    expect(resolvePricing('claude-opus-5-5', 'opus', overrides)).toEqual({
+      inputPerMTok: 5, outputPerMTok: 25, cacheReadPerMTok: 0.2, estimated: false,
+    })
+    // Through the bare alias too.
+    expect(resolvePricing('claude-fable-5-2-20261101', 'fable', { 'claude-fable-5-2': { inputPerMTok: 9, outputPerMTok: 45 } })).toEqual({
+      inputPerMTok: 9, outputPerMTok: 45, cacheReadPerMTok: 0.2, estimated: false,
+    })
+    // A model whose exact row has the standard rate gains no cacheReadPerMTok key.
+    expect(resolvePricing('claude-opus-4-8', 'opus', { 'claude-opus-4-8': { inputPerMTok: 99, outputPerMTok: 199 } })).toStrictEqual({
+      inputPerMTok: 99, outputPerMTok: 199, estimated: false,
     })
   })
 
@@ -166,5 +183,26 @@ describe('loadPricingOverrides', () => {
     expect(resolvePricing('claude-opus-4-8', 'opus', overrides)).toEqual({
       inputPerMTok: 99, outputPerMTok: 199, estimated: false,
     })
+  })
+})
+
+// C6 review: Haiku 5.5 bills a request whose prompt (fresh + cache read +
+// cache write) is over 100K tokens at $0.50 / $2.50, cache read $0.05.
+describe('applyLongContextPricing', () => {
+  const base = { inputPerMTok: 0.1, outputPerMTok: 0.5, estimated: false }
+
+  it('switches Haiku 5.5 to the long-context rates over 100K prompt tokens and marks the row estimated', () => {
+    expect(applyLongContextPricing('claude-haiku-5-5', base, 100_001)).toEqual({
+      inputPerMTok: 0.5, outputPerMTok: 2.5, cacheReadPerMTok: 0.05, estimated: true,
+    })
+    expect(applyLongContextPricing('claude-haiku-5-5-20261101', base, 250_000)).toEqual({
+      inputPerMTok: 0.5, outputPerMTok: 2.5, cacheReadPerMTok: 0.05, estimated: true,
+    })
+  })
+
+  it('leaves pricing untouched at or under the threshold, and for every other model', () => {
+    expect(applyLongContextPricing('claude-haiku-5-5', base, 100_000)).toBe(base)
+    const opus = { inputPerMTok: 4, outputPerMTok: 20, cacheReadPerMTok: 0.2, estimated: false }
+    expect(applyLongContextPricing('claude-opus-5-5', opus, 900_000)).toBe(opus)
   })
 })

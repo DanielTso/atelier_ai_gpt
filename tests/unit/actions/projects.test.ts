@@ -69,10 +69,18 @@ describe('updateProjectDefaults - model validation', () => {
 
   // Stub the registry so the test never hits the network — resolveRequestedModel's
   // real implementation calls out to Anthropic when there's no cached registry.
+  const registryReads = vi.fn()
+  const resolveCalls = vi.fn()
   function mockRegistry(knownIds: string[], source: 'live' | 'stale' | 'seed' = 'live') {
+    registryReads.mockClear()
+    resolveCalls.mockClear()
     vi.doMock('@/lib/models/registry', () => ({
-      getModelRegistry: async () => ({ curated: [], byId: new Map(), source }),
-      resolveRequestedModel: async (requested?: string) => {
+      getModelRegistry: async () => {
+        registryReads()
+        return { curated: [], byId: new Map(), source }
+      },
+      resolveRequestedModel: async (requested?: string, registry?: unknown) => {
+        resolveCalls(requested, registry)
         if (!requested) return { modelId: 'claude-opus-4-8', usedFallback: false }
         if (knownIds.includes(requested)) return { modelId: requested, usedFallback: false }
         return { modelId: 'claude-opus-4-8', usedFallback: true }
@@ -98,6 +106,16 @@ describe('updateProjectDefaults - model validation', () => {
     await updateProjectDefaults(project.id, { defaultModel: 'claude-opus-5' })
     const defaults = await getProjectDefaults(project.id)
     expect(defaults.defaultModel).toBe('claude-opus-5')
+  })
+
+  // C6 review: one registry snapshot decides both "unknown?" and "live?".
+  it('reads the registry once and resolves against that same snapshot', async () => {
+    mockRegistry(['claude-opus-4-8'], 'live')
+    const { createProject, updateProjectDefaults } = await import('@/app/actions')
+    const [project] = await createProject('One Snapshot')
+    await updateProjectDefaults(project.id, { defaultModel: 'claude-bogus-9' })
+    expect(registryReads).toHaveBeenCalledTimes(1)
+    expect(resolveCalls).toHaveBeenCalledWith('claude-bogus-9', expect.objectContaining({ source: 'live' }))
   })
 
   it('persists a valid defaultModel unchanged', async () => {

@@ -2,7 +2,7 @@ import type { LanguageModelUsage } from 'ai'
 import { db } from '@/db'
 import { usageEvents } from '@/db/schema'
 import { getModelRegistry } from '@/lib/models/registry'
-import { loadPricingOverrides, resolvePricing } from '@/lib/models/pricing'
+import { applyLongContextPricing, loadPricingOverrides, resolvePricing } from '@/lib/models/pricing'
 import { parseFamily } from '@/lib/models/curate'
 import type { ModelPricing } from '@/lib/models/types'
 
@@ -179,8 +179,13 @@ export interface RecordUsageArgs {
  */
 export async function recordUsage(args: RecordUsageArgs): Promise<void> {
   try {
-    const pricing = await resolveUsagePricing(args.model)
     const tokens = usageTokens(args.usage)
+    // Haiku 5.5 bills a prompt over 100K tokens at higher rates (pricing.ts).
+    const pricing = applyLongContextPricing(
+      args.model,
+      await resolveUsagePricing(args.model),
+      tokens.inputTokens + tokens.cacheReadTokens + tokens.cacheCreationTokens,
+    )
     const costUsd = estimateCost(args.model, args.usage, pricing)
     await db.insert(usageEvents).values({
       chatId: args.chatId ?? null,

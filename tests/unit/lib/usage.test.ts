@@ -204,6 +204,31 @@ describe('recordUsage', () => {
     })
   })
 
+  it('prices a Haiku 5.5 row over 100K prompt tokens at the long-context rates, marked estimated', async () => {
+    mockById.set('claude-haiku-5-5', catalogEntry('claude-haiku-5-5', { inputPerMTok: 0.1, outputPerMTok: 0.5, estimated: false }))
+    const long = makeUsage({
+      inputTokens: 110_000,
+      inputTokenDetails: { noCacheTokens: 90_000, cacheReadTokens: 20_000, cacheWriteTokens: 0 },
+      outputTokens: 1000,
+    })
+    const short = makeUsage({
+      inputTokens: 60_000,
+      inputTokenDetails: { noCacheTokens: 50_000, cacheReadTokens: 10_000, cacheWriteTokens: 0 },
+      outputTokens: 1000,
+    })
+
+    await recordUsage({ chatId: null, projectId: null, purpose: 'chat', model: 'claude-haiku-5-5', usage: long })
+    await recordUsage({ chatId: null, projectId: null, purpose: 'chat', model: 'claude-haiku-5-5', usage: short })
+
+    const rows = await testDb.select().from(usageEvents).orderBy(usageEvents.id)
+    // 90000x0.5 + 20000x0.05 + 1000x2.5 = 48500 / 1e6
+    expect(rows[0].costUsd).toBeCloseTo(0.0485, 8)
+    expect(rows[0].costEstimated).toBe(true)
+    // 50000x0.1 + 10000x0.1x0.1 + 1000x0.5 = 5600 / 1e6
+    expect(rows[1].costUsd).toBeCloseTo(0.0056, 8)
+    expect(rows[1].costEstimated).toBe(false)
+  })
+
   // Audit C5: the five formerly unrecorded LLM call sites each have a purpose
   // the usage_events CHECK accepts (migration 0023).
   it.each(['suggest-followups', 'query-rewrite', 'rerank', 'image-generate', 'vision-extract'] as const)(

@@ -32,11 +32,34 @@ export const EXACT_PRICING: Record<string, Rates> = {
   // $2/$10 is the standard price: the increase to $3/$15 scheduled for
   // 2026-09-01 was cancelled (pricing page footnote, read 2026-11-14).
   'claude-sonnet-5': { inputPerMTok: 2, outputPerMTok: 10 },
-  // Prompts up to 100K tokens. A request over 100K is billed $0.50 / $2.50;
-  // usage rows are priced from step-summed usage, which cannot tell a long
-  // request apart, so those requests are under-costed here.
+  // Prompts up to 100K tokens; longer ones: LONG_CONTEXT_PRICING below.
   'claude-haiku-5-5': { inputPerMTok: 0.1, outputPerMTok: 0.5 },
   'claude-haiku-4-5': { inputPerMTok: 1, outputPerMTok: 5 },
+}
+
+// Models whose price depends on prompt length. A request whose prompt (fresh +
+// cache read + cache write input) is over `thresholdTokens` is billed at these
+// rates (cache writes stay 1.25x of the input rate: $0.625 for Haiku 5.5).
+export const LONG_CONTEXT_PRICING: Record<string, Rates & { thresholdTokens: number }> = {
+  'claude-haiku-5-5': { thresholdTokens: 100_000, inputPerMTok: 0.5, outputPerMTok: 2.5, cacheReadPerMTok: 0.05 },
+}
+
+/**
+ * Switch a row to the long-context rates when its prompt is over the model's
+ * threshold. Always `estimated: true`: a chat row sums every step of a tool
+ * loop, so a summed prompt over the threshold does not prove any single
+ * request was (and one under it can hide none). Returns `pricing` unchanged
+ * otherwise.
+ */
+export function applyLongContextPricing(modelId: string, pricing: ModelPricing, promptTokens: number): ModelPricing {
+  const tier = LONG_CONTEXT_PRICING[modelId] ?? LONG_CONTEXT_PRICING[modelId.replace(DATED_SNAPSHOT_RE, '')]
+  if (!tier || promptTokens <= tier.thresholdTokens) return pricing
+  return {
+    inputPerMTok: tier.inputPerMTok,
+    outputPerMTok: tier.outputPerMTok,
+    ...(tier.cacheReadPerMTok != null && { cacheReadPerMTok: tier.cacheReadPerMTok }),
+    estimated: true,
+  }
 }
 
 // Family-tier fallback for an id not (yet) in EXACT_PRICING — e.g. a brand-new
@@ -115,12 +138,16 @@ export async function loadPricingOverrides(): Promise<PricingOverrides> {
 export function resolvePricing(modelId: string, family: string, overrides: PricingOverrides): ModelPricing {
   const alias = modelId.replace(DATED_SNAPSHOT_RE, '')
 
+  const exact = EXACT_PRICING[modelId] ?? EXACT_PRICING[alias]
+
   const override = overrides[modelId] ?? overrides[alias]
   if (override) {
-    return { ...override, estimated: false }
+    // An override that names no cache-hit rate keeps the exact row's
+    // non-standard one rather than falling back to 0.1x of its input rate.
+    const cacheReadPerMTok = override.cacheReadPerMTok ?? exact?.cacheReadPerMTok
+    return { ...override, ...(cacheReadPerMTok != null && { cacheReadPerMTok }), estimated: false }
   }
 
-  const exact = EXACT_PRICING[modelId] ?? EXACT_PRICING[alias]
   if (exact) {
     return { ...exact, estimated: false }
   }

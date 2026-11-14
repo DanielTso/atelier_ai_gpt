@@ -347,6 +347,36 @@ describe('models/registry', () => {
     })
   })
 
+  // The previous seed generation stays routable on the seed path, outside the picker.
+  describe('getModelRegistry — seed-path routable ids (SEED_ROUTABLE)', () => {
+    beforeEach(() => {
+      getAnthropicApiKey.mockResolvedValue('sk-test')
+      const fetchMock = fetch as ReturnType<typeof vi.fn>
+      fetchMock.mockResolvedValue({ ok: false, status: 500, json: async () => ({}) }) // -> STATIC_SEED
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+    })
+
+    it("passes Contract Abstract's pinned claude-fable-5 through instead of falling back", async () => {
+      expect(await resolveRequestedModel('claude-fable-5')).toEqual({ modelId: 'claude-fable-5', usedFallback: false })
+    })
+
+    it('reports Haiku 4.5 with no adaptive thinking and no effort levels', async () => {
+      const caps = await getModelCapabilities('claude-haiku-4-5')
+      expect(caps.supportsThinking).toBe(false)
+      expect(caps.effortLevels).toEqual([])
+      expect(caps.supportsEffort).toBe(false)
+    })
+
+    it('keeps the previous-generation ids out of the picker', async () => {
+      const registry = await getModelRegistry()
+      const curatedIds = registry.curated.map(m => m.id)
+      expect(curatedIds).not.toContain('claude-fable-5')
+      expect(curatedIds).not.toContain('claude-haiku-4-5')
+      expect(registry.byId.has('claude-fable-5')).toBe(true)
+      expect(registry.byId.has('claude-haiku-4-5')).toBe(true)
+    })
+  })
+
   describe('getModelRegistry — in-flight build deduplication', () => {
     it('concurrent callers on a cold cache share ONE build (one catalog fetch)', async () => {
       getAnthropicApiKey.mockResolvedValue('sk-test')
@@ -357,6 +387,19 @@ describe('models/registry', () => {
       expect(fetchMock).toHaveBeenCalledTimes(1)
       expect(a).toBe(b)
       expect(c).toEqual({ modelId: 'claude-opus-4-8', usedFallback: false })
+    })
+
+    it('a rejected build clears the in-flight slot, so the next call retries', async () => {
+      // A synchronous throw escapes the key read's .catch(), so the build rejects.
+      getAnthropicApiKey.mockImplementationOnce(() => { throw new Error('boom') })
+      getAnthropicApiKey.mockResolvedValue('sk-test')
+      const fetchMock = fetch as ReturnType<typeof vi.fn>
+      fetchMock.mockResolvedValue(mockLivePage([OPUS_RAW]))
+
+      await expect(getModelRegistry()).rejects.toThrow('boom')
+      const registry = await getModelRegistry()
+      expect(registry.source).toBe('live')
+      expect(getAnthropicApiKey).toHaveBeenCalledTimes(2)
     })
 
     it('a build in flight when the cache is cleared does not repopulate the cache with pre-clear state', async () => {
@@ -703,7 +746,8 @@ describe('models/registry', () => {
       clearModelRegistryCache({ includeLastGood: true })
       const repriced = await getModelRegistry()
       const overridden = repriced.byId.get('claude-sonnet-5-5')
-      expect(overridden?.pricing).toEqual({ inputPerMTok: 7, outputPerMTok: 70, estimated: false })
+      // The override names no cache-hit rate, so it keeps the exact row's.
+      expect(overridden?.pricing).toEqual({ inputPerMTok: 7, outputPerMTok: 70, cacheReadPerMTok: 0.1, estimated: false })
     })
 
     it('prices a synthesized legacy pin via resolvePricing (family-tier, since it has no hardcoded field to drift from)', async () => {

@@ -340,6 +340,11 @@ export async function getSettings(keys: string[]) {
   return map
 }
 
+// The registry's last good live catalog was fetched under the current
+// Anthropic key; after a key change it belongs to the old key and must not be
+// served as `stale`, so saving the key drops it too.
+const ANTHROPIC_KEY_SETTING = 'anthropic-api-key'
+
 export async function setSetting(key: string, value: string) {
   const { clearSettingsCache } = await import('@/lib/settings')
   clearSettingsCache()
@@ -354,7 +359,7 @@ export async function setSetting(key: string, value: string) {
   // clear and the commit re-populates the cache with pre-write state, which
   // then stands for the full 5-minute live TTL.
   const { clearModelRegistryCache } = await import('@/lib/models/registry')
-  clearModelRegistryCache()
+  clearModelRegistryCache({ includeLastGood: key === ANTHROPIC_KEY_SETTING })
   return result
 }
 
@@ -375,7 +380,7 @@ export async function setSettings(entries: { key: string; value: string }[]) {
   // See setSetting() above — clear the registry cache AFTER the write
   // commits so a read racing the clear can't re-cache pre-write state.
   const { clearModelRegistryCache } = await import('@/lib/models/registry')
-  clearModelRegistryCache()
+  clearModelRegistryCache({ includeLastGood: entries.some(e => e.key === ANTHROPIC_KEY_SETTING) })
   return results
 }
 
@@ -431,9 +436,11 @@ export async function updateProjectDefaults(
     // resolveRequestedModel falls back to. Only a LIVE catalog proves the id
     // is gone (audit B12): under a stale or seed registry the id may simply
     // be newer than the fallback list, so it is kept as given.
+    // One registry snapshot answers both questions.
     const { getModelRegistry, resolveRequestedModel } = await import('@/lib/models/registry')
-    const { usedFallback } = await resolveRequestedModel(defaultModel)
-    if (usedFallback && (await getModelRegistry()).source === 'live') defaultModel = null
+    const registry = await getModelRegistry()
+    const { usedFallback } = await resolveRequestedModel(defaultModel, registry)
+    if (usedFallback && registry.source === 'live') defaultModel = null
   }
   return await db.update(projects)
     .set({ ...defaults, defaultModel })
