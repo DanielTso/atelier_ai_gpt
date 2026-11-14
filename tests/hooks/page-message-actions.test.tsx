@@ -37,6 +37,8 @@ type ChatCall = {
   close: () => void
 }
 let chatCalls: ChatCall[] = []
+// A one-off canned /api/chat response (an HTTP error); otherwise the stream is driven by the test.
+let nextChatResponse: (() => Response) | null = null
 
 const MODEL: Model = {
   name: 'Claude Opus 4.8',
@@ -59,6 +61,12 @@ function installFetch() {
   const json = (data: unknown) => new Response(JSON.stringify(data), { status: 200, headers: { 'Content-Type': 'application/json' } })
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
+    if (url === '/api/chat' && nextChatResponse) {
+      const respond = nextChatResponse
+      nextChatResponse = null
+      chatCalls.push({ body: JSON.parse(String(init?.body)), send: () => {}, close: () => {} })
+      return respond()
+    }
     if (url === '/api/chat') {
       let controller!: ReadableStreamDefaultController<Uint8Array>
       const stream = new ReadableStream<Uint8Array>({ start(c) { controller = c } })
@@ -89,6 +97,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   chatCalls = []
+  nextChatResponse = null
   for (const key of Object.keys(actionMocks)) delete actionMocks[key]
   installFetch()
   vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} })
@@ -207,6 +216,97 @@ describe('Home — Regenerate (D2)', () => {
   })
 })
 
+describe('Home — a regenerate that produces no new reply puts the old one back', () => {
+  async function regenerateLoaded() {
+    await openLoadedChat()
+    openMenu(screen.getAllByRole('button', { name: 'Message actions' })[1])
+    await act(async () => { fireEvent.click(screen.getByRole('menuitem', { name: 'Regenerate' })) })
+  }
+
+  it('after an HTTP refusal (409), and the banner shows the server\'s message, not raw JSON', async () => {
+    nextChatResponse = () => new Response(JSON.stringify({ error: 'This reply can no longer be regenerated' }), { status: 409 })
+    await regenerateLoaded()
+
+    expect(await screen.findByText('This reply can no longer be regenerated')).toBeTruthy()
+    expect(screen.queryByText(/"error"/)).toBeNull()
+    expect(await screen.findByText('Loaded answer')).toBeTruthy()
+  })
+
+  it('after a stream that ends in an error before any content', async () => {
+    await regenerateLoaded()
+    await waitFor(() => expect(chatCalls).toHaveLength(1))
+    await waitFor(() => expect(screen.queryByText('Loaded answer')).toBeNull())
+
+    await act(async () => {
+      chatCalls[0].send(
+        { type: 'start', messageMetadata: { chatId: 5, projectId: null, userMessageDbId: 11, assistantMessageDbId: null } },
+        { type: 'error', errorText: 'The AI provider is overloaded or unavailable right now. Try again in a moment.' },
+      )
+      chatCalls[0].close()
+    })
+
+    expect(await screen.findByText('Loaded answer')).toBeTruthy()
+    // Only one copy, still the last message.
+    expect(screen.getAllByText('Loaded answer')).toHaveLength(1)
+  })
+
+  it('but keeps the new reply when the regenerate produced one', async () => {
+    await regenerateLoaded()
+    await waitFor(() => expect(chatCalls).toHaveLength(1))
+    const meta = { chatId: 5, projectId: null, userMessageDbId: 11, assistantMessageDbId: null }
+    await act(async () => {
+      chatCalls[0].send(
+        { type: 'start', messageMetadata: meta },
+        { type: 'start-step' },
+        { type: 'text-start', id: 't1' },
+        { type: 'text-delta', id: 't1', delta: 'Regenerated answer' },
+        { type: 'text-end', id: 't1' },
+        { type: 'finish-step' },
+        { type: 'finish', messageMetadata: { ...meta, assistantMessageDbId: 12 } },
+      )
+      chatCalls[0].close()
+    })
+
+    expect(await screen.findByText('Regenerated answer')).toBeTruthy()
+    await new Promise(r => setTimeout(r, 50))
+    expect(screen.queryByText('Loaded answer')).toBeNull()
+  })
+})
+
+describe('Home — Delete on a message sent this session', () => {
+  it('deletes a session user message by the id on the reply after it', async () => {
+    render(<Home />)
+    const textarea = await screen.findByPlaceholderText(/type a message/i)
+    fireEvent.change(textarea, { target: { value: 'Session question' } })
+    await act(async () => { fireEvent.keyDown(textarea, { key: 'Enter' }) })
+    await waitFor(() => expect(chatCalls).toHaveLength(1))
+    const meta = { chatId: 1, projectId: null, userMessageDbId: 100, assistantMessageDbId: null }
+    await act(async () => {
+      chatCalls[0].send(
+        { type: 'start', messageMetadata: meta },
+        { type: 'start-step' },
+        { type: 'text-start', id: 't1' },
+        { type: 'text-delta', id: 't1', delta: 'Session answer' },
+        { type: 'text-end', id: 't1' },
+        { type: 'finish-step' },
+        { type: 'finish', messageMetadata: { ...meta, assistantMessageDbId: 101 } },
+      )
+      chatCalls[0].close()
+    })
+    expect(await screen.findByText('Session answer')).toBeTruthy()
+
+    await waitFor(async () => {
+      openMenu(screen.getAllByRole('button', { name: 'Message actions' })[0])
+      expect(await screen.findByRole('menuitem', { name: 'Delete' })).toBeTruthy()
+    })
+    await act(async () => { fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' })) })
+
+    expect(action('deleteMessage')).toHaveBeenCalledExactlyOnceWith(100)
+    await waitFor(() => expect(screen.queryByText('Session question')).toBeNull())
+    expect(screen.getByText('Session answer')).toBeTruthy()
+  })
+})
+
 describe('Home — Project settings (D1)', () => {
   const dialogTitle = () => screen.findByText('Project Defaults: Tower')
 
@@ -300,6 +400,33 @@ describe('Home — default system prompt (D4 / U9)', () => {
 
     await sendFrom('Hello')
     expect(action('updateChatSystemPrompt')).toHaveBeenCalledExactlyOnceWith(1, 'Cite the spec section.')
+  })
+
+  it('loses to an explicit General Assistant pick', async () => {
+    withDefaultPrompt('Answer like a superintendent.')
+    render(<Home />)
+    openMenu(await screen.findByTitle('Select persona'))
+    await act(async () => { fireEvent.click(await screen.findByRole('menuitem', { name: /General Assistant/ })) })
+    await sendFrom('Hello')
+    const calls = action('updateChatSystemPrompt').mock.calls
+    expect(calls).toHaveLength(1)
+    expect(calls[0][1]).not.toBe('Answer like a superintendent.')
+    expect(String(calls[0][1]).length).toBeGreaterThan(0)
+  })
+
+  it('waits for the setting when a chat is created before it has loaded', async () => {
+    let release!: (v: string) => void
+    action('getSetting').mockImplementation((key: string) =>
+      key === 'default-system-prompt' ? new Promise<string>(r => { release = r }) : Promise.resolve(null))
+    render(<Home />)
+    const textarea = await screen.findByPlaceholderText(/type a message/i)
+    fireEvent.change(textarea, { target: { value: 'Hello' } })
+    await act(async () => { fireEvent.keyDown(textarea, { key: 'Enter' }) })
+    expect(chatCalls).toHaveLength(0)
+
+    await act(async () => { release('Late default.') })
+    await waitFor(() => expect(chatCalls).toHaveLength(1))
+    expect(action('updateChatSystemPrompt')).toHaveBeenCalledExactlyOnceWith(1, 'Late default.')
   })
 
   it('writes no system prompt when the setting is empty', async () => {

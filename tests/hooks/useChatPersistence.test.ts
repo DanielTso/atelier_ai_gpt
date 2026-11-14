@@ -460,7 +460,9 @@ describe('useChatPersistence', () => {
     mockGetAssistantReplyId.mockResolvedValue(77)
     const opts = makeOpts()
     const { result } = renderHook(() => useChatPersistence(opts))
-    const message = makeMessage({ id: 'stopped-1', text: 'Partial', metadata: meta({ chatId: 3, userMessageDbId: 30, assistantMessageDbId: null }) })
+    // Any other metadata the reply carries is kept as is.
+    const metadata = { ...meta({ chatId: 3, userMessageDbId: 30, assistantMessageDbId: null }), extra: 'kept' } as unknown as TurnMetadata
+    const message = makeMessage({ id: 'stopped-1', text: 'Partial', metadata })
 
     await act(async () => { await result.current.onTurnFinish(makeTurn(message, { isAbort: true })) })
     await settle()
@@ -469,7 +471,7 @@ describe('useChatPersistence', () => {
     const other = { id: 'other', role: 'user', parts: [] } as unknown as UIMessage
     const patched = updaters.reduce((list, updater) => updater(list), [other, message] as UIMessage[])
     expect(patched[0]).toBe(other)
-    expect(patched[1].metadata).toEqual({ chatId: 3, projectId: null, userMessageDbId: 30, assistantMessageDbId: 77 })
+    expect(patched[1].metadata).toEqual({ chatId: 3, projectId: null, userMessageDbId: 30, assistantMessageDbId: 77, extra: 'kept' })
   })
 
   it('skips the user-message steps on a regenerate — the posted user message is an existing DB row', async () => {

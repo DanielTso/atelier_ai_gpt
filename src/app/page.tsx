@@ -62,6 +62,21 @@ type ComposerSnapshot = { input: string; files: AttachedFile[]; images: Attached
 // A message handed to its chat session; `turn` resolves when the reply ends.
 type StartedSend = { turn: Promise<void> }
 
+// The AI SDK's chat transport reports an HTTP error as Error(<response body>), and
+// /api/chat's error bodies are JSON `{ error }` (apiError) — show that string,
+// not the raw JSON. Anything else (a stream error's text, a plain body) as is.
+function chatErrorText(message: string): string {
+  try {
+    const parsed: unknown = JSON.parse(message)
+    if (parsed && typeof parsed === 'object' && typeof (parsed as { error?: unknown }).error === 'string') {
+      return (parsed as { error: string }).error
+    }
+  } catch {
+    // not JSON
+  }
+  return message
+}
+
 // fetchModels' own banner messages — the only ones it may clear.
 const NO_MODELS_ERROR = "No models found. Please check your API keys in Settings."
 const MODELS_LOAD_ERROR = "Failed to load models. Please check your configuration."
@@ -411,8 +426,9 @@ export default function Home() {
   const shownChatErrorRef = useRef<string | null>(null)
   useEffect(() => {
     if (chatError) {
-      shownChatErrorRef.current = chatError.message
-      setError(chatError.message)
+      const text = chatErrorText(chatError.message)
+      shownChatErrorRef.current = text
+      setError(text)
     } else if (shownChatErrorRef.current != null) {
       const stale = shownChatErrorRef.current
       shownChatErrorRef.current = null
@@ -462,17 +478,34 @@ export default function Home() {
   // Settings → Model Defaults → "Default system prompt" (D4/U9): written to a new
   // chat created with no persona or custom prompt (persona → custom → default).
   // Held in a ref, loaded on mount and again after every settings save, so the
-  // create path reads it synchronously — no extra round-trip, no extra await
-  // between creating the chat and handing it the message.
-  const defaultSystemPromptRef = useRef<string | null>(null)
-  const loadDefaultSystemPrompt = useCallback(async () => {
-    try {
-      const value = await getSetting('default-system-prompt')
-      defaultSystemPromptRef.current = value && value.trim() ? value : null
-    } catch {
-      // Best-effort: keep the last known value.
-    }
+  // create path normally reads it synchronously — no extra round-trip and no
+  // extra await between creating the chat and handing it the message (an added
+  // await there lets a fast failing turn end before its chat is on screen).
+  // `undefined` = not loaded yet: a chat created that early awaits the load
+  // (`defaultSystemPrompt()`) instead of silently skipping the default.
+  const defaultSystemPromptRef = useRef<string | null | undefined>(undefined)
+  const defaultSystemPromptLoadRef = useRef<Promise<string | null> | null>(null)
+  const loadDefaultSystemPrompt = useCallback(() => {
+    const load = (async () => {
+      try {
+        const value = await getSetting('default-system-prompt')
+        defaultSystemPromptRef.current = value && value.trim() ? value : null
+      } catch {
+        // Best-effort: keep the last known value (none yet → no default).
+        if (defaultSystemPromptRef.current === undefined) defaultSystemPromptRef.current = null
+      }
+      return defaultSystemPromptRef.current ?? null
+    })()
+    defaultSystemPromptLoadRef.current = load
+    return load
   }, [])
+  // The default system prompt for a chat being created now: from the ref, or —
+  // before the first load has finished — once that load lands.
+  const defaultSystemPrompt = useCallback(async (): Promise<string | null> => {
+    const known = defaultSystemPromptRef.current
+    if (known !== undefined) return known
+    return defaultSystemPromptLoadRef.current ?? loadDefaultSystemPrompt()
+  }, [loadDefaultSystemPrompt])
   const handleSettingsChanged = useCallback(() => {
     void refreshModels()
     void loadDefaultSystemPrompt()
@@ -950,7 +983,8 @@ export default function Home() {
         // Persist the chat's system prompt — the composer's persona/custom prompt,
         // else the default system prompt (D4/U9) — so it survives the post-create
         // reload and applies to the first message.
-        const systemPrompt = currentSystemPrompt || defaultSystemPromptRef.current
+        let systemPrompt = currentSystemPrompt || defaultSystemPromptRef.current
+        if (systemPrompt === undefined) systemPrompt = await defaultSystemPrompt()
         if (systemPrompt) {
           await updateChatSystemPrompt(newC.id, systemPrompt).catch(() => {})
         }
@@ -1036,7 +1070,8 @@ export default function Home() {
       setChats(prev => [newC, ...prev])
       // No persona (picked or project default) and no custom prompt → the
       // default system prompt (D4/U9).
-      systemPrompt = systemPrompt || defaultSystemPromptRef.current
+      const fallback = systemPrompt || defaultSystemPromptRef.current
+      systemPrompt = fallback === undefined ? await defaultSystemPrompt() : fallback
       if (systemPrompt) {
         await updateChatSystemPrompt(newC.id, systemPrompt).catch(() => {})
         setCurrentSystemPrompt(systemPrompt)
@@ -1054,7 +1089,7 @@ export default function Home() {
     }
 
     return { turn: sendComposerMessage(newChatId, composed) }
-  }, [getPersonaById, sendComposerMessage, restoreComposer, currentSystemPrompt, applyGroundedDefault, models])
+  }, [getPersonaById, sendComposerMessage, restoreComposer, defaultSystemPrompt, currentSystemPrompt, applyGroundedDefault, models])
 
   const handleProjectLandingCompose = useCallback(async () => {
     if ((!input.trim() && attachedFiles.length === 0 && attachedImages.length === 0) || isLoading || sendingRef.current) return
@@ -1389,8 +1424,22 @@ export default function Home() {
     pendingImagesRef.current.delete(chatId)
     groundedAtSendRef.current.set(chatId, groundedRef.current)
     clearFollowUps()
-    void regenerateInChat(chatId, messageId, { regenerate: true, replaceMessageDbId })
-  }, [messages, isChatBusy, regenerateInChat, clearFollowUps])
+    // The SDK drops the reply from the store before posting. The server only
+    // writes over it once a new reply exists, so when the turn ends with nothing
+    // (an HTTP refusal or error before the stream, an error or Stop before the
+    // first token) the old reply is still the saved one: put the kept copy back
+    // where it was — right after the user message it answers.
+    const replaced = messages[index]
+    const answered = messages[index - 1]
+    regenerateInChat(chatId, messageId, { regenerate: true, replaceMessageDbId })
+      .then(() => {
+        updateChatMessages(chatId, prev => {
+          const last = prev[prev.length - 1]
+          return last && answered && last.id === answered.id ? [...prev, replaced] : prev
+        })
+      })
+      .catch(err => console.error('[chat] regenerate failed:', err))
+  }, [messages, isChatBusy, regenerateInChat, updateChatMessages, clearFollowUps])
 
   const handleOpenProjectDocuments = useCallback((projectId: number) => {
     const project = projects.find(p => p.id === projectId)

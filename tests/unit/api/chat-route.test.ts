@@ -71,7 +71,7 @@ vi.mock('@ai-sdk/anthropic', () => ({
   createAnthropic: () => mockAnthropicFn,
 }))
 
-import { createProject, createChat, createStandaloneChat, updateChatSystemPrompt, updateChatSummary } from '@/app/actions'
+import { createProject, createChat, createStandaloneChat, updateChatSystemPrompt, updateChatSummary, saveMessage } from '@/app/actions'
 
 // Ids the fake registry treats as "known" — mirrors the model set the picker
 // used to hardcode. Anything else falls back, matching production
@@ -280,6 +280,22 @@ describe('POST /api/chat', () => {
     const scope = mockRetrieveContext.mock.calls[0][1] as { excludeMessageIds?: number[] }
     expect(scope).not.toHaveProperty('excludeChatId')
     expect([...(scope.excludeMessageIds ?? [])].sort((a, b) => a - b)).toEqual(Array.from({ length: 60 }, (_, i) => i + 21))
+  })
+
+  it('keeps the reply being regenerated out of semantic retrieval when the history is trimmed', async () => {
+    const [chat] = await createStandaloneChat('Chat')
+    await saveMessage(chat.id, 'user', 'Question')
+    const [reply] = await saveMessage(chat.id, 'assistant', 'Old answer')
+    // 81 client-id messages ending with the user message being re-answered.
+    const history = Array.from({ length: 81 }, (_, i) => ({
+      id: `clientMsg${String(i).padStart(7, '0')}`,
+      role: i % 2 === 0 ? 'user' : 'assistant',
+      parts: [{ type: 'text', text: `m${i}` }],
+    }))
+    await postChat({ messages: history, model: 'gemini-3.5-flash', chatId: chat.id, regenerate: true, replaceMessageDbId: reply.id })
+    const scope = mockRetrieveContext.mock.calls[0][1] as { excludeMessageIds?: number[] }
+    expect(scope).not.toHaveProperty('excludeChatId')
+    expect(scope.excludeMessageIds).toContain(reply.id)
   })
 
   it('stubs-old-read-document-outputs and drops incomplete tool calls before converting', async () => {
@@ -1181,42 +1197,120 @@ describe('POST /api/chat — server-side turn persistence', () => {
       return { chat, user, reply }
     }
 
-    it('deletes the replaced reply and leaves exactly one assistant row (history loaded from the DB)', async () => {
+    /** The chat's rows once the reply's content has become `content` (and stays one row). */
+    async function rowsWithReply(chatId: number, content: string) {
+      await vi.waitFor(async () => {
+        expect((await rowsFor(chatId)).filter(r => r.role === 'assistant').map(r => r.content)).toEqual([content])
+      }, { timeout: 5000, interval: 20 })
+      await new Promise(r => setTimeout(r, 100))
+      return rowsFor(chatId)
+    }
+
+    const regenerateBody = (chatId: number, userId: number | null, replyId: number) => ({
+      messages: [userId == null ? userMessage('Question') : userMessage('Question', String(userId))],
+      chatId,
+      trigger: 'regenerate-message',
+      regenerate: true,
+      replaceMessageDbId: replyId,
+    })
+
+    it('replaces the reply in place: same row id, new content, exactly one assistant row (history loaded from the DB)', async () => {
       const { chat, user, reply } = await chatWithTurn()
-      const response = await postTurn({
-        messages: [userMessage('Question', String(user.id))],
-        chatId: chat.id,
-        trigger: 'regenerate-message',
-        regenerate: true,
-        replaceMessageDbId: reply.id,
-      })
+      const response = await postTurn(regenerateBody(chat.id, user.id, reply.id))
       expect(response.status).toBe(200)
       const chunks = await readChunks(response)
 
-      const rows = await settledRows(chat.id)
-      expect(rows.map(r => [r.role, r.content])).toEqual([['user', 'Question'], ['assistant', 'Full answer.']])
-      expect(rows.some(r => r.id === reply.id)).toBe(false)
+      const rows = await rowsWithReply(chat.id, 'Full answer.')
+      expect(rows.map(r => [r.id, r.role, r.content])).toEqual([[user.id, 'user', 'Question'], [reply.id, 'assistant', 'Full answer.']])
       // The reply answers the existing user row; nothing new was inserted for it.
       expect(chunks.find(c => c.type === 'finish')?.messageMetadata).toEqual({
         chatId: chat.id,
         projectId: null,
         userMessageDbId: user.id,
-        assistantMessageDbId: rows[1].id,
+        assistantMessageDbId: reply.id,
       })
+    })
+
+    it('keeps the old reply until the new one is saved — nothing is deleted before the model runs', async () => {
+      const { chat, user, reply } = await chatWithTurn()
+      const { model, push, close } = controlledModel()
+      const response = await postTurn(regenerateBody(chat.id, user.id, reply.id), { model })
+      expect((await rowsFor(chat.id)).map(r => r.content)).toEqual(['Question', 'Old answer'])
+
+      push(...START, textDelta('New answer'), ...END)
+      close()
+      await response.text()
+      expect((await rowsWithReply(chat.id, 'New answer')).map(r => r.id)).toEqual([user.id, reply.id])
+    })
+
+    it('keeps the old reply when the model fails before producing any text', async () => {
+      const { chat, user, reply } = await chatWithTurn()
+      const { model, push, fail } = controlledModel()
+      const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      try {
+        const response = await postTurn(regenerateBody(chat.id, user.id, reply.id), { model })
+        push({ type: 'stream-start', warnings: [] })
+        fail(new Error('overloaded'))
+        await response.text().catch(() => '')
+        await new Promise(r => setTimeout(r, 200))
+      } finally {
+        errSpy.mockRestore()
+      }
+      expect((await rowsFor(chat.id)).map(r => [r.id, r.content])).toEqual([[user.id, 'Question'], [reply.id, 'Old answer']])
+    })
+
+    it('keeps the old reply when the regenerate is stopped before the first token', async () => {
+      const { chat, user, reply } = await chatWithTurn()
+      const client = new AbortController()
+      const { model, push } = controlledModel()
+      const response = await postTurn(regenerateBody(chat.id, user.id, reply.id), { model, signal: client.signal })
+      push(...START)
+      const reader = response.body!.getReader()
+      await reader.read()
+      client.abort()
+      reader.cancel().catch(() => {})
+
+      await new Promise(r => setTimeout(r, 200))
+      expect((await rowsFor(chat.id)).map(r => [r.id, r.content])).toEqual([[user.id, 'Question'], [reply.id, 'Old answer']])
+    })
+
+    it('replaces the reply with the partial text when stopped mid-stream, keeping its id', async () => {
+      const { chat, user, reply } = await chatWithTurn()
+      const client = new AbortController()
+      const { model, push } = controlledModel()
+      const response = await postTurn(regenerateBody(chat.id, user.id, reply.id), { model, signal: client.signal })
+      push(...START, textDelta('Partial '), textDelta('answer'))
+
+      const reader = response.body!.getReader()
+      const decoder = new TextDecoder()
+      let received = ''
+      while (!received.includes('"delta":"answer"')) {
+        const { done, value } = await reader.read()
+        if (done) break
+        received += decoder.decode(value, { stream: true })
+      }
+      client.abort()
+      reader.cancel().catch(() => {})
+
+      const rows = await rowsWithReply(chat.id, 'Partial answer')
+      expect(rows.map(r => r.id)).toEqual([user.id, reply.id])
+    })
+
+    it('two regenerates in a row leave one assistant row, with the latest text', async () => {
+      const { chat, user, reply } = await chatWithTurn()
+      await (await postTurn(regenerateBody(chat.id, user.id, reply.id), { model: scriptedModel('First ', 'redo.') })).text()
+      await rowsWithReply(chat.id, 'First redo.')
+      await (await postTurn(regenerateBody(chat.id, user.id, reply.id), { model: scriptedModel('Second ', 'redo.') })).text()
+      const rows = await rowsWithReply(chat.id, 'Second redo.')
+      expect(rows.map(r => [r.id, r.role])).toEqual([[user.id, 'user'], [reply.id, 'assistant']])
     })
 
     it('does not insert a second user row when the user message carries a client id (sent this session)', async () => {
       const { chat, reply } = await chatWithTurn()
-      const response = await postTurn({
-        messages: [userMessage('Question')],
-        chatId: chat.id,
-        trigger: 'regenerate-message',
-        regenerate: true,
-        replaceMessageDbId: reply.id,
-      })
+      const response = await postTurn(regenerateBody(chat.id, null, reply.id))
       await response.text()
 
-      const rows = await settledRows(chat.id)
+      const rows = await rowsWithReply(chat.id, 'Full answer.')
       expect(rows.map(r => [r.role, r.content])).toEqual([['user', 'Question'], ['assistant', 'Full answer.']])
     })
 
@@ -1229,7 +1323,7 @@ describe('POST /api/chat — server-side turn persistence', () => {
         replaceMessageDbId: reply.id,
       })
       await response.text()
-      await settledRows(chat.id)
+      await rowsWithReply(chat.id, 'Full answer.')
       await vi.waitFor(() => expect(mockRecordUsage).toHaveBeenCalledTimes(1))
       expect(mockRecordUsage.mock.calls[0][0]).toMatchObject({ chatId: chat.id, purpose: 'chat' })
     })

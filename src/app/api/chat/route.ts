@@ -1,5 +1,6 @@
 import { streamText, convertToModelMessages, stepCountIs, APICallError, type UIMessage, type LanguageModelUsage } from 'ai';
-import { deleteMessage, getChatWithContext, getProjectContext, getProjectDocuments, getRegenerateTarget, saveMessage } from '@/app/actions';
+import { getChatWithContext, getProjectContext, getProjectDocuments, getRegenerateTarget, saveMessage } from '@/app/actions';
+import { replaceAssistantReply } from '@/lib/chatTurnDb';
 import { buildProjectPreamble } from '@/lib/projectPreamble';
 import { retrieveContext } from '@/lib/retrieval';
 import { createProvider } from '@/lib/providers';
@@ -155,8 +156,10 @@ export async function POST(req: Request) {
     // and posts the transcript ending at the user message, plus the replaced row's
     // id. The user message is already saved, so nothing is inserted for it (even
     // when it carries a client id — it was sent this session) and its row is
-    // reported as the turn's `userMessageDbId`. The old reply is deleted below,
-    // before the model is called, so the new one is saved in its place.
+    // reported as the turn's `userMessageDbId`. Nothing is deleted up front: the
+    // turn recorder writes the new reply over the old row (replaceAssistantReply)
+    // when it persists, so a regenerate that fails or is stopped before its first
+    // token leaves the old reply exactly as it was.
     const isRegenerate = regenerate === true || trigger === 'regenerate-message' || replaceMessageDbId != null;
     let regenerateUserRowId: number | null = null;
     if (isRegenerate) {
@@ -201,15 +204,6 @@ export async function POST(req: Request) {
     const [userMessageDbId, { modelName, model: selectedModel, tools: providerTools, providerOptions }] =
       await Promise.all([saveUserTurn(), resolveProvider()]);
 
-    // Regenerate: delete the replaced reply (and its attachments' Storage objects)
-    // now — after the provider resolved, so a missing key does not cost the user
-    // the reply they had, and before the model runs, so a stopped turn's reply
-    // lookup (getAssistantReplyId: the row right after the user row) can only find
-    // the NEW reply. False means a concurrent regenerate deleted it first.
-    if (isRegenerate && replaceMessageDbId != null && !(await deleteMessage(replaceMessageDbId))) {
-      return apiError(new Error(`message ${replaceMessageDbId} was already replaced`), 'This reply can no longer be regenerated', 409);
-    }
-
     // Build context with hybrid approach: system prompt + semantic context + summary + recent messages.
     //
     // Recent messages (layer 5), bounded before anything else is added. The client
@@ -252,7 +246,9 @@ export async function POST(req: Request) {
           // stopped-reply edge of the id path.
           ...(sentTail.length === messages.length
             ? { excludeChatId: chatId }
-            : { excludeMessageIds: sentMessageDbIds(sentTail, userMessageDbId) }),
+            // A regenerate also leaves out the reply being replaced: its old
+            // text is still embedded until the new reply is written over it.
+            : { excludeMessageIds: [...sentMessageDbIds(sentTail, userMessageDbId), ...(isRegenerate && replaceMessageDbId != null ? [replaceMessageDbId] : [])] }),
         }),
         chat?.projectId ? getProjectDocuments(chat.projectId).catch(() => []) : Promise.resolve([]),
       ]);
@@ -357,8 +353,13 @@ export async function POST(req: Request) {
     // transform rather than onFinish/onAbort code so that the row id exists before
     // the `finish` chunk is sent; see createAssistantTurnRecorder for the SDK
     // details. No chat (a chat-less request) → nothing to persist.
+    // A regenerate writes over the reply it replaces (same row id), and only here
+    // — at persist time — so a regenerate that saves nothing keeps the old reply.
     const recorder = chat
       ? createAssistantTurnRecorder(async (text) => {
+          if (isRegenerate && replaceMessageDbId != null) {
+            return replaceAssistantReply(chat.id, replaceMessageDbId, text);
+          }
           const [row] = await saveMessage(chat.id, 'assistant', text);
           return row?.id ?? null;
         })

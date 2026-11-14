@@ -211,10 +211,9 @@ export async function saveMessage(chatId: number, role: string, content: string)
   return rows
 }
 
-// Removes one message: its attachments' Storage objects first, then the row (its
-// attachment rows and embedding cascade). Resolves true when a row was deleted and
-// false when it was already gone — `/api/chat`'s regenerate path reads false as
-// "another request replaced this reply first".
+// Removes one message (the message menu's Delete): its attachments' Storage
+// objects first, then the row (its attachment rows and embedding cascade).
+// Resolves true when a row was deleted and false when it was already gone.
 export async function deleteMessage(id: number): Promise<boolean> {
   await removeAttachmentObjects(eq(messageAttachments.messageId, id))
   const deleted = await db.delete(messages).where(eq(messages.id, id)).returning({ id: messages.id })

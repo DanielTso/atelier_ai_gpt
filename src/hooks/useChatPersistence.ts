@@ -240,7 +240,7 @@ export function useChatPersistence(opts: UseChatPersistenceOpts) {
         const foundId = assistantMessageDbId
         if (foundId != null) {
           updateChatMessages(chatId, prev => prev.map(m => m.id === message.id
-            ? { ...m, metadata: { ...turn, assistantMessageDbId: foundId } satisfies TurnMetadata }
+            ? { ...m, metadata: { ...(m.metadata as Record<string, unknown> | undefined), assistantMessageDbId: foundId } }
             : m))
         }
       }
