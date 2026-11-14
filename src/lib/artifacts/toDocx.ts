@@ -56,38 +56,37 @@ function mdTable(b: Extract<Block, { type: 'table' }>): Table {
 // Word supports nesting levels 0..8.
 const MAX_LEVEL = 8
 
-// One numbering definition per distinct start value ("3." for a list that
-// resumes after a paragraph). Each ordered list or sublist gets its OWN
-// instance of it, so a later list restarts at its start instead of continuing
-// the previous list's count (audit B17). Every ordered item sits on level 0 of
-// its instance, the level docx writes a restart override for; a nested
-// sublist's depth is carried by the paragraph's own indent instead.
-const olReference = (start: number) => `ol-${start}`
-function olConfig(start: number) {
+// Every ordered list or sublist gets its OWN numbering definition (its own
+// abstractNum, starting at the list's start value, e.g. "3." for a list that
+// resumes after a paragraph), so Word cannot share a counter between lists and
+// a later list restarts instead of continuing the previous one (audit B17).
+// Every ordered item sits on level 0 of its definition; a nested sublist's
+// depth is carried by the paragraph's own indent instead.
+type OrderedList = { reference: string; start: number }
+function olConfig({ reference, start }: OrderedList) {
   return {
-    reference: olReference(start),
+    reference,
     levels: [{ level: 0, format: 'decimal' as const, text: '%1.', start, alignment: AlignmentType.START }],
   }
 }
 
-type Numbering = { instance: number; starts: Set<number> }
+type Numbering = { lists: OrderedList[] }
 
 function listParas(b: Extract<Block, { type: 'list' }>, num: Numbering): Paragraph[] {
   // The open ordered list at each depth, so a parent's later items keep their
   // count after a nested sublist.
-  const open: { instance: number; start: number }[] = []
+  const open: OrderedList[] = []
   return b.items.map(item => {
     const level = Math.min(item.level, MAX_LEVEL)
     if (!item.ordered) return new Paragraph({ children: runs(item.inlines), bullet: { level } })
     if (item.startsList || !open[level]) {
-      num.instance += 1
-      num.starts.add(item.number)
-      open[level] = { instance: num.instance, start: item.number }
+      const list = { reference: `ol-${num.lists.length + 1}`, start: item.number }
+      num.lists.push(list)
+      open[level] = list
     }
-    const list = open[level]!
     return new Paragraph({
       children: runs(item.inlines),
-      numbering: { reference: olReference(list.start), level: 0, instance: list.instance },
+      numbering: { reference: open[level]!.reference, level: 0 },
       indent: { left: 720 * (level + 1), hanging: 360 },
     })
   })
@@ -104,7 +103,7 @@ function codePara(text: string): Paragraph {
 export async function toDocx(markdown: string): Promise<Buffer> {
   const blocks = parseMarkdown(markdown)
   const children: (Paragraph | Table)[] = []
-  const num: Numbering = { instance: 0, starts: new Set() }
+  const num: Numbering = { lists: [] }
 
   for (const b of blocks) {
     if (b.type === 'heading') children.push(headingPara(b))
@@ -116,7 +115,7 @@ export async function toDocx(markdown: string): Promise<Buffer> {
   if (children.length === 0) children.push(new Paragraph({}))
 
   const doc = new Document({
-    numbering: { config: [...num.starts].map(olConfig) },
+    numbering: { config: num.lists.map(olConfig) },
     styles: { default: { document: { run: { font: FONT.office, size: SIZE.body * 2, color: BRAND.ink } } } },
     sections: [{
       headers: { default: new Header({ children: [new Paragraph({ children: [new TextRun({ text: '', color: BRAND.slateText })] })] }) },

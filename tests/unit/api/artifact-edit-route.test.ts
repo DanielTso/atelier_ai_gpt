@@ -91,6 +91,25 @@ describe('POST /api/artifacts/[id]/edit', () => {
     expect(m.renderArtifact).not.toHaveBeenCalled()
   })
 
+  it('saves an xlsx edit with empty (null) cells', async () => {
+    m.getArtifactById.mockResolvedValue({ id: 1, projectId: 5, type: 'xlsx', title: 'Budget', format: 'sheets', content: '[]' })
+    m.renderArtifact.mockResolvedValue({ buffer: Buffer.from('xlsxbytes'), contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', ext: 'xlsx' })
+    const sheets = [{ name: 'Q1', rows: [['Item', 'Cost'], ['Steel', null]] }]
+    const POST = await importRoute()
+    const res = await POST(req({ content: sheets }), ctx('1'))
+    expect(res.status).toBe(200)
+    expect(m.renderArtifact).toHaveBeenCalledWith('xlsx', 'Budget', sheets, undefined)
+  })
+
+  it('422 (never a 500) when the sheets are not {name, rows} objects', async () => {
+    m.getArtifactById.mockResolvedValue({ id: 1, projectId: 5, type: 'xlsx', title: 'Budget', format: 'sheets', content: '[]' })
+    const POST = await importRoute()
+    const res = await POST(req({ content: [{ name: 'Q1', rows: 'not rows' }] }), ctx('1'))
+    expect(res.status).toBe(422)
+    expect(m.renderArtifact).not.toHaveBeenCalled()
+    expect(m.addArtifactVersion).not.toHaveBeenCalled()
+  })
+
   it('xlsx edit stores the sheets array verbatim as JSON with format sheets', async () => {
     m.getArtifactById.mockResolvedValue({ id: 1, projectId: 5, type: 'xlsx', title: 'Budget', format: 'sheets', content: '[]' })
     m.renderArtifact.mockResolvedValue({ buffer: Buffer.from('xlsxbytes'), contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', ext: 'xlsx' })

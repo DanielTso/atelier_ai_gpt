@@ -7,14 +7,18 @@ import { mdToPlainText } from './markdown'
 const PLAIN_NUMBER = /^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$/
 
 // Excel can't render Markdown — convert any Markdown markup in a string cell to plain
-// text (so "## A", "**bold**" don't show their raw markers), then apply the formula guard.
-// The guard prefixes an apostrophe, which shows in the cell, so it only applies to text
-// that could be read as a formula: a leading = + - @ that is not a plain number or a
-// lone "-" (audit B18).
+// text (so "## A", "**bold**" don't show their raw markers). A numeric string that
+// round-trips exactly ("-12.5", "42") becomes a real number cell so SUM works; "00123",
+// "1e3", "1.50" keep their spelling as text. Then the formula guard: it prefixes an
+// apostrophe, which shows in the cell, so it only applies to text that could be read
+// as a formula — a leading = + - @ TAB or CR that is not a plain number or a lone "-"
+// (audit B18).
 function cleanCell(value: unknown): unknown {
   if (typeof value !== 'string' || value.length === 0) return value
   const text = /[*_`#~]/.test(value) ? mdToPlainText(value) : value
-  const formulaLike = /^[=+\-@]/.test(text) && text !== '-' && !PLAIN_NUMBER.test(text)
+  const num = Number(text)
+  if (Number.isFinite(num) && String(num) === text) return num
+  const formulaLike = /^[=+\-@\t\r]/.test(text) && text !== '-' && !PLAIN_NUMBER.test(text)
   return formulaLike ? `'${text}` : text
 }
 
@@ -52,10 +56,11 @@ export async function toXlsx(sheets: SheetSpec[]): Promise<Buffer> {
   const names = sheetNames(specs.map(s => s.name))
   for (const [si, spec] of specs.entries()) {
     const ws = wb.addWorksheet(names[si])
-    const rows = spec.rows ?? []
+    // Cleaned once, so column sizing and right-alignment see the real cell values.
+    const rows = (spec.rows ?? []).map(row => row.map(cleanCell))
 
     rows.forEach((row, i) => {
-      const added = ws.addRow(row.map(cleanCell))
+      const added = ws.addRow(row)
       added.eachCell({ includeEmpty: true }, cell => {
         cell.border = ALL_BORDERS
         cell.alignment = { vertical: 'middle', wrapText: true }

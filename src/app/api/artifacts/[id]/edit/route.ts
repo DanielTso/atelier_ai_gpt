@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getArtifactById, addArtifactVersion } from '@/app/actions'
 import { isStorageConfigured, uploadBuffer, signedArtifactUrl, removeObjects } from '@/lib/storage'
 import { renderArtifact } from '@/lib/artifacts/render'
+import { artifactContentShapeError } from '@/lib/artifacts/shape'
 import { artifactStoragePath } from '@/lib/artifacts/path'
 import { artifactLanguage, codeLanguage } from '@/lib/artifacts/code'
 import type { ArtifactType } from '@/lib/artifacts/types'
@@ -27,16 +28,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const type = artifact.type as ArtifactType
     const title = body.data.title ?? artifact.title
     const content = body.data.content
-    // Guard the content shape against the artifact type. Without this, renderArtifact
-    // silently coerces a mismatch (a string for xlsx, or an array for docx/pdf/pptx/html)
-    // to EMPTY output and persists a blank version — silent data loss. Reject instead.
-    const needsArray = type === 'xlsx'
-    if (Array.isArray(content) !== needsArray) {
-      return NextResponse.json(
-        { error: `Invalid content shape for a ${type} artifact (expected ${needsArray ? 'an array of sheets' : 'a string'}).` },
-        { status: 422 }
-      )
-    }
+    // Guard the content shape against the artifact type (a string for xlsx, an array
+    // for docx/pdf/pptx/html, or sheets whose rows are not arrays). renderArtifact
+    // throws on a mismatch, so checking here keeps a bad shape a 422, never a 500.
+    const shapeError = artifactContentShapeError(type, content)
+    if (shapeError) return NextResponse.json({ error: `Invalid content shape: ${shapeError}` }, { status: 422 })
     const format = artifact.format ?? (type === 'html' ? 'html' : typeof content === 'string' ? 'markdown' : 'sheets')
 
     // Code artifacts store their language in the format column — re-derive it

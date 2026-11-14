@@ -16,13 +16,14 @@ const m = {
   signedArtifactUrl: vi.fn(async (p: string) => `signed:${p}`),
   removeObjects: vi.fn(async () => undefined),
   renderArtifact: vi.fn(async () => ({ buffer: Buffer.from('x'), contentType: 'application/pdf', ext: 'pdf' })),
-  generateText: vi.fn<(...args: unknown[]) => Promise<{ text: string; finishReason: string; totalUsage: typeof FAKE_TOTAL_USAGE }>>(
+  // What the streamed model call settles to. The route streams (streamText) so a
+  // long rewrite never waits on one non-streamed response; the `ai` mock below
+  // exposes these as streamText's text / finishReason / totalUsage promises.
+  generate: vi.fn<(...args: unknown[]) => Promise<{ text: string; finishReason: string; totalUsage: typeof FAKE_TOTAL_USAGE }>>(
     async () => ({ text: '# revised', finishReason: 'stop', totalUsage: FAKE_TOTAL_USAGE })
   ),
   // Prior C8: the model comes from the live registry, never a hardcoded id.
-  resolveRequestedModel: vi.fn<(requested?: string) => Promise<{ modelId: string; usedFallback: boolean }>>(
-    async () => ({ modelId: 'claude-sonnet-5', usedFallback: false })
-  ),
+  resolveTier: vi.fn<(tier: string) => Promise<string>>(async () => 'claude-sonnet-5'),
   // Usage capture (Task 10) — mocked so this file asserts the wiring;
   // recordUsage itself is covered against PGlite in tests/unit/lib/usage.test.ts.
   recordUsage: vi.fn<(...args: unknown[]) => Promise<undefined>>(async () => undefined),
@@ -37,12 +38,17 @@ async function importRoute() {
   }))
   vi.doMock('@/lib/artifacts/render', () => ({ renderArtifact: m.renderArtifact }))
   vi.doMock('@/lib/settings', () => ({ getAnthropicApiKey: () => Promise.resolve('test-anthropic-key') }))
-  vi.doMock('ai', () => ({ generateText: (...args: unknown[]) => m.generateText(...args) }))
+  vi.doMock('ai', () => ({
+    streamText: (...args: unknown[]) => {
+      const done = m.generate(...args)
+      return { text: done.then(r => r.text), finishReason: done.then(r => r.finishReason), totalUsage: done.then(r => r.totalUsage) }
+    },
+  }))
   vi.doMock('@ai-sdk/anthropic', () => ({
     createAnthropic: () => vi.fn((model: string) => ({ modelId: model })),
   }))
   vi.doMock('@/lib/usage', () => ({ recordUsage: (...args: unknown[]) => m.recordUsage(...args) }))
-  vi.doMock('@/lib/models/registry', () => ({ resolveRequestedModel: (r?: string) => m.resolveRequestedModel(r) }))
+  vi.doMock('@/lib/models/registry', () => ({ resolveTier: (t: string) => m.resolveTier(t) }))
   const { POST } = await import('@/app/api/artifacts/[id]/regenerate/route')
   return POST
 }
@@ -62,9 +68,9 @@ describe('POST /api/artifacts/[id]/regenerate', () => {
     m.signedArtifactUrl.mockImplementation(async (p: string) => `signed:${p}`)
     m.renderArtifact.mockResolvedValue({ buffer: Buffer.from('x'), contentType: 'application/pdf', ext: 'pdf' })
     m.addArtifactVersion.mockResolvedValue({ version: 2 })
-    m.generateText.mockResolvedValue({ text: '# revised', finishReason: 'stop', totalUsage: FAKE_TOTAL_USAGE })
+    m.generate.mockResolvedValue({ text: '# revised', finishReason: 'stop', totalUsage: FAKE_TOTAL_USAGE })
     m.recordUsage.mockResolvedValue(undefined)
-    m.resolveRequestedModel.mockResolvedValue({ modelId: 'claude-sonnet-5', usedFallback: false })
+    m.resolveTier.mockResolvedValue('claude-sonnet-5')
   })
 
   it('regenerates and records Claude usage against the artifact chat/project', async () => {
@@ -84,7 +90,7 @@ describe('POST /api/artifacts/[id]/regenerate', () => {
 
   it('still records usage when the regenerated content fails to parse (tokens were spent)', async () => {
     m.getArtifactById.mockResolvedValue({ id: 1, chatId: 42, projectId: null, type: 'xlsx', title: 'Sheet', format: 'sheets', content: '[]' })
-    m.generateText.mockResolvedValue({ text: 'not json at all', finishReason: 'stop', totalUsage: FAKE_TOTAL_USAGE })
+    m.generate.mockResolvedValue({ text: 'not json at all', finishReason: 'stop', totalUsage: FAKE_TOTAL_USAGE })
     const POST = await importRoute()
     const res = await POST(req({ instruction: 'add a row' }), ctx('1'))
     expect(res.status).toBe(422)
@@ -96,12 +102,12 @@ describe('POST /api/artifacts/[id]/regenerate', () => {
 
   it('resolves the model through the registry (Sonnet tier) and records the resolved id (prior C8)', async () => {
     m.getArtifactById.mockResolvedValue({ id: 1, chatId: 42, projectId: 5, type: 'pdf', title: 'Report', format: 'markdown', content: '# old' })
-    m.resolveRequestedModel.mockResolvedValue({ modelId: 'claude-sonnet-6-20270101', usedFallback: false })
+    m.resolveTier.mockResolvedValue('claude-sonnet-6-20270101')
     const POST = await importRoute()
     const res = await POST(req({ instruction: 'shorten it' }), ctx('1'))
     expect(res.status).toBe(200)
-    expect(m.resolveRequestedModel).toHaveBeenCalledWith('sonnet')
-    const args = m.generateText.mock.calls[0]![0] as { model: { modelId: string }; maxOutputTokens: number }
+    expect(m.resolveTier).toHaveBeenCalledWith('sonnet')
+    const args = m.generate.mock.calls[0]![0] as { model: { modelId: string }; maxOutputTokens: number }
     expect(args.model.modelId).toBe('claude-sonnet-6-20270101')
     expect(m.recordUsage).toHaveBeenCalledWith(expect.objectContaining({ model: 'claude-sonnet-6-20270101' }))
   })
@@ -111,14 +117,14 @@ describe('POST /api/artifacts/[id]/regenerate', () => {
     const POST = await importRoute()
     await POST(req({ instruction: 'make the header blue' }), ctx('1'))
     const { ARTIFACT_MAX_OUTPUT_TOKENS } = await import('@/lib/artifacts/limits')
-    const args = m.generateText.mock.calls[0]![0] as { maxOutputTokens: number }
+    const args = m.generate.mock.calls[0]![0] as { maxOutputTokens: number }
     expect(ARTIFACT_MAX_OUTPUT_TOKENS).toBe(32000)
     expect(args.maxOutputTokens).toBe(ARTIFACT_MAX_OUTPUT_TOKENS)
   })
 
   it('returns 422 and writes no version when the output hit the token cap (audit B6)', async () => {
     m.getArtifactById.mockResolvedValue({ id: 1, chatId: 42, projectId: 5, type: 'html', title: 'Page', format: 'html', content: '<html></html>' })
-    m.generateText.mockResolvedValue({ text: '<html><body><h1>Cut o', finishReason: 'length', totalUsage: FAKE_TOTAL_USAGE })
+    m.generate.mockResolvedValue({ text: '<html><body><h1>Cut o', finishReason: 'length', totalUsage: FAKE_TOTAL_USAGE })
     const POST = await importRoute()
     const res = await POST(req({ instruction: 'make the header blue' }), ctx('1'))
     expect(res.status).toBe(422)
@@ -132,12 +138,23 @@ describe('POST /api/artifacts/[id]/regenerate', () => {
 
   it('returns 422 when regenerated sheets are not {name, rows} objects (audit B14)', async () => {
     m.getArtifactById.mockResolvedValue({ id: 1, chatId: 42, projectId: null, type: 'xlsx', title: 'Sheet', format: 'sheets', content: '[]' })
-    m.generateText.mockResolvedValue({ text: '[{"title":"T","cells":[1,2]}]', finishReason: 'stop', totalUsage: FAKE_TOTAL_USAGE })
+    m.generate.mockResolvedValue({ text: '[{"title":"T","cells":[1,2]}]', finishReason: 'stop', totalUsage: FAKE_TOTAL_USAGE })
     const POST = await importRoute()
     const res = await POST(req({ instruction: 'add a row' }), ctx('1'))
     expect(res.status).toBe(422)
     expect(m.renderArtifact).not.toHaveBeenCalled()
     expect(m.addArtifactVersion).not.toHaveBeenCalled()
+    expect(m.recordUsage).toHaveBeenCalledOnce()
+  })
+
+  it('accepts regenerated sheets with empty (null) cells and no sheet name', async () => {
+    m.getArtifactById.mockResolvedValue({ id: 1, chatId: 42, projectId: null, type: 'xlsx', title: 'Sheet', format: 'sheets', content: '[]' })
+    m.generate.mockResolvedValue({ text: '[{"rows":[["Item","Qty"],["Rebar",null]]}]', finishReason: 'stop', totalUsage: FAKE_TOTAL_USAGE })
+    const POST = await importRoute()
+    const res = await POST(req({ instruction: 'blank the qty' }), ctx('1'))
+    expect(res.status).toBe(200)
+    expect(m.renderArtifact).toHaveBeenCalledWith('xlsx', 'Sheet', [{ rows: [['Item', 'Qty'], ['Rebar', null]] }], undefined)
+    expect(m.addArtifactVersion).toHaveBeenCalled()
   })
 
   it('does not call Claude or record usage when the artifact is missing', async () => {
@@ -145,7 +162,7 @@ describe('POST /api/artifacts/[id]/regenerate', () => {
     const POST = await importRoute()
     const res = await POST(req({ instruction: 'x' }), ctx('1'))
     expect(res.status).toBe(404)
-    expect(m.generateText).not.toHaveBeenCalled()
+    expect(m.generate).not.toHaveBeenCalled()
     expect(m.recordUsage).not.toHaveBeenCalled()
   })
 })

@@ -9,6 +9,7 @@ import type { ArtifactSummary, ArtifactVersionSummary } from '@/types'
 import { getArtifactVersions, restoreArtifactVersion } from '@/app/actions'
 import { ArtifactPreview } from './ArtifactPreview'
 import { codeLanguage } from '@/lib/artifacts/code'
+import { readError } from '@/lib/readError'
 
 const ICON: Record<string, LucideIcon> = { xlsx: FileSpreadsheet, docx: FileType, pdf: FileText, pptx: Presentation, html: Code, code: FileCode }
 type Mode = 'preview' | 'edit' | 'versions'
@@ -67,7 +68,8 @@ export function ArtifactWorkspace({ artifact, onClose, onChanged, width = 448, o
       const res = await fetch(`/api/artifacts/${artifact.id}/edit`, {
         method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ content }),
       })
-      if (!res.ok) throw new Error()
+      // Show the route's reason (e.g. an invalid sheet shape), not a generic failure.
+      if (!res.ok) { toast.error(await readError(res, 'Failed to save')); return }
       toast.success('Saved as a new version'); onChanged(); setMode('preview')
     } catch { toast.error('Failed to save') } finally { setBusy(false) }
   }
@@ -79,7 +81,8 @@ export function ArtifactWorkspace({ artifact, onClose, onChanged, width = 448, o
       const res = await fetch(`/api/artifacts/${artifact.id}/regenerate`, {
         method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ instruction }),
       })
-      if (!res.ok) throw new Error()
+      // Show the route's reason (e.g. "cut off… try a smaller change"), not a generic failure.
+      if (!res.ok) { toast.error(await readError(res, 'Failed to regenerate')); return }
       toast.success('Regenerated as a new version'); setInstruction(''); onChanged()
     } catch { toast.error('Failed to regenerate') } finally { setBusy(false) }
   }

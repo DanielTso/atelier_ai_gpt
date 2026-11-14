@@ -68,13 +68,37 @@ describe('toXlsx', () => {
   })
 
   it('guards formula-like text but leaves plain numbers and a lone dash alone (audit B18)', async () => {
-    const buf = await toXlsx([{ name: 'S', rows: [['h1', 'h2', 'h3', 'h4', 'h5', 'h6'], ['-12.5', '=SUM(A1)', '-', '+1 555', '@cmd', '+42']] }])
+    const buf = await toXlsx([{ name: 'S', rows: [['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'h7', 'h8'], ['-12.5', '=SUM(A1)', '-', '+1 555', '@cmd', '+42', '\t=1', '\r=1']] }])
     const row = (await load(buf)).getWorksheet('S')!.getRow(2)
-    expect(row.getCell(1).value).toBe('-12.5')
+    // "-12.5 is numeric": a plain number is never guarded (here it even becomes a number cell).
+    expect(row.getCell(1).value).toBe(-12.5)
     expect(row.getCell(2).value).toBe(`'=SUM(A1)`)
     expect(row.getCell(3).value).toBe('-')
     expect(row.getCell(4).value).toBe(`'+1 555`)
     expect(row.getCell(5).value).toBe(`'@cmd`)
     expect(row.getCell(6).value).toBe('+42')
+    expect(row.getCell(7).value).toBe(`'\t=1`)
+    // The XML round-trip normalizes CR to LF; what matters is the guard apostrophe.
+    expect(String(row.getCell(8).value)).toMatch(/^'\s=1$/)
+  })
+
+  it('stores a numeric string that round-trips exactly as a real number, and nothing else', async () => {
+    const buf = await toXlsx([{ name: 'S', rows: [['a', 'b', 'c', 'd', 'e', 'f'], ['-12.5', '42', '00123', '1e3', '1.50', 'Infinity']] }])
+    const row = (await load(buf)).getWorksheet('S')!.getRow(2)
+    expect(row.getCell(1).value).toBe(-12.5)
+    expect(row.getCell(2).value).toBe(42)
+    expect(row.getCell(3).value).toBe('00123')
+    expect(row.getCell(4).value).toBe('1e3')
+    expect(row.getCell(5).value).toBe('1.50')
+    expect(row.getCell(6).value).toBe('Infinity')
+  })
+
+  it('keeps empty (null) cells and names a sheet that has no name', async () => {
+    // @ts-expect-error null cells and a missing name arrive from parsed JSON (edit/regenerate)
+    const buf = await toXlsx([{ rows: [['Item', 'Qty'], ['Rebar', null]] }])
+    const ws = (await load(buf)).worksheets[0]!
+    expect(ws.name).toBe('Sheet1')
+    expect(ws.getRow(2).getCell(1).value).toBe('Rebar')
+    expect(ws.getRow(2).getCell(2).value).toBeNull()
   })
 })

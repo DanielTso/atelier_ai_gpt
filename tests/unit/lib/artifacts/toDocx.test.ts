@@ -70,6 +70,22 @@ describe('toDocx', () => {
     expect(numId(paragraphWith(xml, 'second a'))).not.toBe(a)
   })
 
+  it('gives every ordered list its own abstract numbering, and the parent keeps its numId after a sublist', async () => {
+    const zip = await JSZip.loadAsync(await toDocx('1. one\n2. two\n   1. sub a\n   2. sub b\n3. three\n\nBetween.\n\n1. again'))
+    const xml = await zip.file('word/document.xml')!.async('string')
+    const numbering = await zip.file('word/numbering.xml')!.async('string')
+    // numId -> abstractNumId, from each <w:num> in numbering.xml
+    const abstractOf = new Map([...numbering.matchAll(/<w:num w:numId="(\d+)"><w:abstractNumId w:val="(\d+)"\/>/g)].map(m => [m[1]!, m[2]!]))
+    const parent = numId(paragraphWith(xml, 'one'))!
+    const sub = numId(paragraphWith(xml, 'sub a'))!
+    const later = numId(paragraphWith(xml, 'again'))!
+    expect(numId(paragraphWith(xml, 'three'))).toBe(parent)
+    expect(numId(paragraphWith(xml, 'sub b'))).toBe(sub)
+    const abstracts = [parent, sub, later].map(id => abstractOf.get(id))
+    expect(abstracts.every(Boolean)).toBe(true)
+    expect(new Set(abstracts).size).toBe(3)
+  })
+
   it('keeps every line of a code block (audit B17)', async () => {
     const xml = await documentXml('```\nline one\nline two\nline three\n```')
     for (const line of ['line one', 'line two', 'line three']) expect(xml).toContain(`>${line}<`)

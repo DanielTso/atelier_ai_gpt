@@ -9,6 +9,8 @@ const { mockGetVersions, mockRestore } = vi.hoisted(() => ({
   mockGetVersions: vi.fn(async () => [] as unknown[]),
   mockRestore: vi.fn(async () => ({ version: 1 })),
 }))
+const { mockToastError } = vi.hoisted(() => ({ mockToastError: vi.fn() }))
+vi.mock('sonner', () => ({ toast: { error: (...a: unknown[]) => mockToastError(...a), success: vi.fn() } }))
 vi.mock('@/app/actions', () => ({
   getArtifactVersions: (...a: unknown[]) => mockGetVersions(...(a as [])),
   restoreArtifactVersion: (...a: unknown[]) => mockRestore(...(a as [])),
@@ -81,6 +83,28 @@ describe('ArtifactWorkspace', () => {
     fireEvent.click(screen.getByText('Revise'))
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/artifacts/1/regenerate', expect.objectContaining({ method: 'POST' })))
     await waitFor(() => expect(onChanged).toHaveBeenCalled())
+  })
+
+  it("shows the server's reason when a regenerate is refused (e.g. cut off at the token cap)", async () => {
+    const reason = 'The regenerated artifact was cut off because it is too long. Nothing was saved; try a smaller change.'
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 422, json: async () => ({ error: reason }) })) as never)
+    const onChanged = vi.fn()
+    render(<ArtifactWorkspace artifact={artifact()} onClose={vi.fn()} onChanged={onChanged} />)
+    fireEvent.change(screen.getByLabelText('Regenerate instruction'), { target: { value: 'rewrite everything' } })
+    fireEvent.click(screen.getByText('Revise'))
+    await waitFor(() => expect(mockToastError).toHaveBeenCalledWith(reason))
+    expect(onChanged).not.toHaveBeenCalled()
+  })
+
+  it("shows the server's reason when a saved edit is refused", async () => {
+    const reason = 'Invalid content shape for a xlsx artifact.'
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 422, json: async () => ({ error: reason }) })) as never)
+    const onChanged = vi.fn()
+    render(<ArtifactWorkspace artifact={artifact()} onClose={vi.fn()} onChanged={onChanged} />)
+    fireEvent.click(screen.getByText('Edit'))
+    fireEvent.click(screen.getByText('Save version'))
+    await waitFor(() => expect(mockToastError).toHaveBeenCalledWith(reason))
+    expect(onChanged).not.toHaveBeenCalled()
   })
 
   it('lists versions and restores an older one', async () => {

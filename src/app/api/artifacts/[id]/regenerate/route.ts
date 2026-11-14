@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAnthropic } from '@ai-sdk/anthropic'
-import { generateText } from 'ai'
+import { streamText } from 'ai'
 import { getArtifactById, addArtifactVersion } from '@/app/actions'
 import { getAnthropicApiKey } from '@/lib/settings'
 import { isStorageConfigured, uploadBuffer, signedArtifactUrl, removeObjects } from '@/lib/storage'
@@ -11,13 +11,14 @@ import type { ArtifactType, SheetSpec } from '@/lib/artifacts/types'
 import { artifactRegenerateRequestSchema } from '@/lib/validation'
 import { apiError } from '@/lib/errors'
 import { recordUsage } from '@/lib/usage'
-import { resolveRequestedModel } from '@/lib/models/registry'
+import { resolveTier } from '@/lib/models/registry'
 import { ARTIFACT_MAX_OUTPUT_TOKENS } from '@/lib/artifacts/limits'
 import { artifactContentShapeError } from '@/lib/artifacts/shape'
 
 // The newest Sonnet in the live registry (prior C8: a hardcoded id silently fell
-// back to the default model once it left the catalog). resolveRequestedModel()
-// resolves a tier and never throws.
+// back to the default model once it left the catalog). resolveTier() is the
+// registry's tier lookup; it never throws (an absent family falls back to the
+// default Anthropic model).
 const REGEN_TIER = 'sonnet'
 
 // A full rewrite at the chat route's output cap can run for minutes.
@@ -55,9 +56,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       ? `You are revising a ${artifact.format ?? 'code'} source file titled "${title}". Current content:\n\n${artifact.content ?? ''}\n\nApply this instruction: ${body.data.instruction}\n\nReturn ONLY the full updated source file — no prose, no code fences.`
       : `You are revising a document artifact titled "${title}". Current content is Markdown:\n\n${artifact.content ?? ''}\n\nApply this instruction: ${body.data.instruction}\n\nReturn ONLY the full updated Markdown — no commentary, no code fences.`
 
-    const { modelId } = await resolveRequestedModel(REGEN_TIER)
+    const modelId = await resolveTier(REGEN_TIER)
     const anthropic = createAnthropic({ apiKey })
-    const { text, finishReason, totalUsage } = await generateText({ model: anthropic(modelId), prompt, maxOutputTokens: ARTIFACT_MAX_OUTPUT_TOKENS })
+    // Streamed, then awaited whole: a non-streamed response at a 32k output cap
+    // can outlast the HTTP client's 300 s headers timeout, which would fail the
+    // request after the tokens were spent and drop its usage row.
+    const stream = streamText({ model: anthropic(modelId), prompt, maxOutputTokens: ARTIFACT_MAX_OUTPUT_TOKENS })
+    const [text, finishReason, totalUsage] = await Promise.all([stream.text, stream.finishReason, stream.totalUsage])
 
     // Usage capture (spec C6) — real Claude spend, recorded best-effort as soon
     // as tokens are spent (a parse/render failure below doesn't un-spend them).

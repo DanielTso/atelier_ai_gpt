@@ -51,6 +51,12 @@ describe('renderArtifact', () => {
     await expect(renderArtifact('html', 't', [{ name: 'T', rows: [['a']] }])).rejects.toThrow(/string/i)
   })
 
+  it('renders sheets with empty (null) cells and a missing name, as toXlsx allows', async () => {
+    // @ts-expect-error null cells and a missing name arrive from parsed JSON (edit/regenerate)
+    const out = await renderArtifact('xlsx', 't', [{ rows: [['Item', 'Qty'], ['Rebar', null], ['Flag', true]] }])
+    expect(out.buffer.subarray(0, 4)).toEqual(PK)
+  })
+
   it('throws on sheets that are not {name, rows} objects', async () => {
     // @ts-expect-error deliberately malformed (the regenerate route parses model JSON)
     await expect(renderArtifact('xlsx', 't', [{ name: 'T', rows: 'nope' }])).rejects.toThrow(/sheet/i)
