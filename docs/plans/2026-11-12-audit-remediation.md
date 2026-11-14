@@ -349,6 +349,7 @@ Model: implementer Sonnet; review Opus (accuracy against code).
 **Files:** `README.md` (rewrite to current state: K1–K9), `CLAUDE.md` (K11–K14, K16–K20 and the "three keys" line; K10/K15 are done by C9/A2), `docs/architecture/*.md` (K24–K31 that earlier tasks didn't already fix; add the 39 undocumented modules to `source-map.md` as one line each), `docs/PERSONAS.md` (done in C8 — verify), `docs/AUTH.md` (done in A3 — verify); Create `.env.example` (every env var the code reads, with defaults and a comment; values are placeholders).
 
 - [ ] **Step 1:** For each K item, edit the claim to the "Correct" value in `deadcode-docs.md`. Re-check it against the current code (earlier phases changed some of it).
+- [ ] **Step 1b:** Add a Mermaid architecture diagram (`docs/architecture/overview.md`, linked from README and CLAUDE.md's deep-dive table): browser → Next.js (proxy gate, App Router pages, `/api/*`, server actions) → Supabase Postgres + Storage, Anthropic (chat), Gemini (embeddings, images, housekeeping), Tavily (web ingest). Text-based so agents can keep it current.
 - [ ] **Step 2:** `git grep -n "SESSION_HANDOFF.md" -- README.md PLAN.md` points at the current dated handoff.
 - [ ] **Step 3:** `.env.example`: `git grep -hoE "process\.env\.[A-Z0-9_]+" -- src | sort -u` is a subset of its keys.
 - [ ] **Step 4: Commit** `docs: correct stale claims and add env example`
@@ -455,13 +456,21 @@ Model: implementer Opus; review Opus.
 
 **Phase A review follow-ups (fold into the named tasks):** D2 — add `X-DNS-Prefetch-Control` to the CLAUDE.md security-headers line; D1 — drop the unused `LOGIN_MAX_FAILURES` alias in `src/lib/rateLimit.ts` and re-check whether the `eslint-plugin-react-hooks` 7.0.1 override in `package.json` can follow `eslint-config-next`'s `^7.1.0`; any dependency change in C9/D1 must restore the nested vitest esbuild lockfile entries (`C:\tmp\a1-restore-esbuild.cjs`, then move the entry after `@vitest/mocker`) and pass both `npm ci --dry-run` and `npx -y npm@10 ci --dry-run`.
 
+**Phase B review follow-ups (added 2026-11-13; fold into the named tasks):**
+- **C1:** semantic retrieval's exclusion set must be the ids actually sent (`recentTail`), not the full posted history, or messages beyond the 60-message cap drop out of every layer (B2 review).
+- **C7:** `handleMoveChat` has the restore race B4 fixed: move the chat between `chats`/`standaloneChats` in the same tick (like `moveRestoredChat`) or set both lists together. Also: `handleConfirmDeleteProject` calls `navSync.suppressNextPush()` before nulling ids; comment that a failed list load counts as loaded; a palette-wiring render test (U7); `saveMessageAttachments` maps rows one-to-one (or throws), never `flatMap`-drops, so index pairing can't shift; tag each extraction with the chat it started in and ignore late results after a switch (U10 leftover); a page-level test that an oversized send creates no chat and keeps the input.
+- **C8:** Regenerate must not double-insert the user row. `saveUserTurn` inserts any last message with a non-DB id, so skip it when `trigger === 'regenerate-message'` / `replaceMessageDbId` is set. Delete the `eslint-disable` on `handleOpenProjectSettings` once it's wired.
+- **E1:** the server links `generate_image` tool-result `storagePath`s to the assistant row it inserted (removes the client's ~1.2 s `getAssistantReplyId` retry and the two-tab pick-up risk; covers tab-close on media turns); artifact inserts, `recordUsage` and `message_embeddings` take `project_id` from the chat row at INSERT time (a chat moved mid-turn); re-sign or proxy expired attachment URLs in a long-open tab; downscale images whose long edge is over 8000 px even under 1 MB; reword the 403 message to cover "model not enabled"; optionally resolve the provider before inserting the user row; `recentTail` steps back to a user message.
+- **E2:** archived sidebar rows are not keyboard-reachable (F11).
+- **D1:** the client still sends the ignored `projectId` in the embed and memory-suggest bodies; drop it from the client and the schemas.
+
 **Phase E gate.**
 
 ---
 
 ## Final gate
 
-1. Whole-branch review on **Fable** of `60fdb40..HEAD`. Brief: the audit index, the Review Focus list, the owner decisions. The reviewer verifies each finding ID is fixed or explicitly marked moot, and runs the full gate itself.
+1. Whole-branch review on **Fable** of `60fdb40..HEAD`. Brief: the audit index, the Review Focus list, the owner decisions. The reviewer verifies each finding ID is fixed or explicitly marked moot, and runs the full gate itself. Flag explicitly: B1's reply persistence relies on `streamText`'s **`experimental_transform`** (ai@6.0.230). Any AI SDK upgrade must re-verify it, and the handoff must say so.
 2. Update `CHANGELOG.md` (`## [Unreleased]` with Security / Fixed / Removed / Docs sections keyed by finding ID) and write `docs/handoffs/SESSION_HANDOFF_<date>.md`.
 3. **No push.**
 
@@ -479,6 +488,7 @@ Model: implementer Opus; review Opus.
 3. Push → deploy, then live smoke:
    - Review Focus 1–4 on production
    - the Stop-mid-stream single `usage_events` row (handoff item 7)
+   - B1 turn persistence: switch chats mid-reply, press Stop, and close the tab mid-reply; each partial reply is saved to the chat it was sent from (unit-verified only; `after()` keep-alive on Vercel is untested live)
    - live CSP header check
 4. Run `backfillMissingEmbeddings` against production (handoff item 4), after measuring the gap with a read-only count.
 5. Add the Vercel WAF rate-limit rule on `POST /api/auth`.
