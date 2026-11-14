@@ -69,6 +69,45 @@ describe('generate_artifact tool', () => {
     expect(mockCreate).not.toHaveBeenCalled()
   })
 
+  describe('content shape must match the type (audit B14)', () => {
+    const schemaOf = async () => {
+      const make = await load()
+      return make({ chatId: 3, projectId: 1 }).inputSchema as unknown as { safeParse: (v: unknown) => { success: boolean; error?: { issues: { path: PropertyKey[]; message: string }[] } } }
+    }
+
+    it('rejects xlsx with string content in the schema, with a message the model can act on', async () => {
+      const r = (await schemaOf()).safeParse({ type: 'xlsx', title: 'S', format: 'sheets', content: '| a | b |\n| - | - |' })
+      expect(r.success).toBe(false)
+      expect(r.error!.issues[0]!.path).toEqual(['content'])
+      expect(r.error!.issues[0]!.message).toMatch(/array/i)
+    })
+
+    it('rejects docx/pdf/pptx/html with sheet-array content in the schema', async () => {
+      const schema = await schemaOf()
+      for (const type of ['docx', 'pdf', 'pptx', 'html'] as const) {
+        const r = schema.safeParse({ type, title: 'D', format: 'markdown', content: [{ name: 'T', rows: [['a']] }] })
+        expect(r.success, type).toBe(false)
+        expect(r.error!.issues[0]!.path).toEqual(['content'])
+      }
+    })
+
+    it('accepts the matching shapes', async () => {
+      const schema = await schemaOf()
+      expect(schema.safeParse({ type: 'xlsx', title: 'S', format: 'sheets', content: [{ name: 'T', rows: [['a', 1]] }] }).success).toBe(true)
+      expect(schema.safeParse({ type: 'docx', title: 'D', format: 'markdown', content: '# Hi' }).success).toBe(true)
+    })
+
+    it('returns an in-band error from execute without rendering, uploading or saving', async () => {
+      const make = await load()
+      const tool = make({ chatId: 3, projectId: 1 })
+      const out = await tool.execute!({ type: 'xlsx', title: 'S', format: 'sheets', content: 'a string' }, {} as never)
+      expect(out).toEqual({ error: expect.stringMatching(/array/i) })
+      expect(mockRender).not.toHaveBeenCalled()
+      expect(mockUpload).not.toHaveBeenCalled()
+      expect(mockCreate).not.toHaveBeenCalled()
+    })
+  })
+
   it('removes the uploaded object if the DB insert fails (no orphan blob)', async () => {
     mockCreate.mockRejectedValue(new Error('db down'))
     const make = await load()

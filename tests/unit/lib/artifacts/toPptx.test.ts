@@ -1,5 +1,6 @@
 // tests/unit/lib/artifacts/toPptx.test.ts
 import { describe, it, expect } from 'vitest'
+import JSZip from 'jszip'
 import { toPptx, paginate, MAX_LINES_PER_SLIDE } from '@/lib/artifacts/toPptx'
 
 describe('paginate', () => {
@@ -46,5 +47,17 @@ describe('toPptx', () => {
     const buf = await toPptx('# Links\n\nSee the [docs](https://example.com).')
     expect(buf.subarray(0, 2).toString('latin1')).toBe('PK')
     expect(buf.length).toBeGreaterThan(0)
+  })
+
+  it('keeps nested bullets (indented) and a list inside a blockquote (audit B7)', async () => {
+    const buf = await toPptx('# Plan\n\n- parent A\n  - child A1\n- parent B\n\n> - quoted item')
+    const zip = await JSZip.loadAsync(buf)
+    const xml = await zip.file('ppt/slides/slide1.xml')!.async('string')
+    for (const t of ['parent A', 'child A1', 'parent B', 'quoted item']) expect(xml).toContain(`>${t}<`)
+    // The child's paragraph carries indent level 1; the parents stay at level 0.
+    const childPara = (xml.match(/<a:p>[\s\S]*?<\/a:p>/g) ?? []).find(p => p.includes('>child A1<'))!
+    expect(childPara).toMatch(/lvl="1"/)
+    const parentPara = (xml.match(/<a:p>[\s\S]*?<\/a:p>/g) ?? []).find(p => p.includes('>parent A<'))!
+    expect(parentPara).not.toMatch(/lvl="[1-9]"/)
   })
 })

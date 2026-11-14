@@ -6,6 +6,7 @@ import { BRAND, SIZE, pdfRgb } from './style'
 const PAGE = { w: 612, h: 792 } // US Letter (points)
 const MARGIN = 54
 const MAX_W = PAGE.w - MARGIN * 2
+const LIST_INDENT = 16
 
 // pdf-lib StandardFonts are WinAnsi-encoded and throw on non-Latin-1 input.
 // Map common smart punctuation to ASCII, collapse whitespace (a paragraph's
@@ -15,8 +16,8 @@ const MAX_W = PAGE.w - MARGIN * 2
 // (surrogate pairs) when substituted with '?'. Exported for tests.
 export function winAnsi(s: string): string {
   return s
-    .replace(/[''‚′]/g, "'")
-    .replace(/[""„″]/g, '"')
+    .replace(/[‘’‚′]/g, "'")
+    .replace(/[“”„″]/g, '"')
     .replace(/[–—]/g, '-')
     .replace(/…/g, '...')
     .replace(/[•‣◦]/g, '-')
@@ -60,21 +61,23 @@ export async function toPdf(markdown: string): Promise<Buffer> {
   for (const b of blocks) {
     if (b.type === 'heading') {
       const size = b.level === 1 ? SIZE.h1 : b.level === 2 ? SIZE.h2 : SIZE.h3
-      const color = b.level === 1 ? pdfRgb(BRAND.navy) : b.level === 2 ? pdfRgb(BRAND.steelBlue) : pdfRgb(BRAND.ink)
+      const color = b.level === 1 ? pdfRgb(BRAND.clay) : b.level === 2 ? pdfRgb(BRAND.terracotta) : pdfRgb(BRAND.ink)
       for (const line of wrap(plain(b.inlines), bold, size, MAX_W)) {
         ensure(size + 8); y -= size + 6; text(line, MARGIN, size, bold, color)
       }
       y -= 4
     } else if (b.type === 'list') {
-      b.items.forEach((item, idx) => {
-        const marker = b.ordered ? `${idx + 1}.` : '-'
-        const wrapped = wrap(plain(item), font, SIZE.body, MAX_W - 16)
+      for (const item of b.items) {
+        // Nested items indent one step per level (capped so deep nesting keeps a usable width).
+        const x = MARGIN + Math.min(item.level, 6) * LIST_INDENT
+        const marker = item.ordered ? `${item.number}.` : '-'
+        const wrapped = wrap(plain(item.inlines), font, SIZE.body, MAX_W - (x - MARGIN) - LIST_INDENT)
         wrapped.forEach((line, li) => {
           ensure(SIZE.body + 4); y -= SIZE.body + 4
-          text(li === 0 ? marker : ' ', MARGIN, SIZE.body, font, pdfRgb(BRAND.slateText))
-          text(line, MARGIN + 16, SIZE.body, font, pdfRgb(BRAND.ink))
+          if (li === 0) text(marker, x, SIZE.body, font, pdfRgb(BRAND.slateText))
+          text(line, x + LIST_INDENT, SIZE.body, font, pdfRgb(BRAND.ink))
         })
-      })
+      }
       y -= 4
     } else if (b.type === 'table') {
       const colCount = b.header.length || 1
@@ -100,9 +103,9 @@ export async function toPdf(markdown: string): Promise<Buffer> {
         }
         const rowTop = y
         const rowBottom = y - rowH
-        const navyColor = pdfRgb(BRAND.navy)
+        const clayColor = pdfRgb(BRAND.clay)
         const softMistColor = pdfRgb(BRAND.softMist)
-        if (isHeader) page.drawRectangle({ x: MARGIN, y: rowBottom, width: MAX_W, height: rowH, color: rgb(navyColor[0], navyColor[1], navyColor[2]) })
+        if (isHeader) page.drawRectangle({ x: MARGIN, y: rowBottom, width: MAX_W, height: rowH, color: rgb(clayColor[0], clayColor[1], clayColor[2]) })
         else if (band) page.drawRectangle({ x: MARGIN, y: rowBottom, width: MAX_W, height: rowH, color: rgb(softMistColor[0], softMistColor[1], softMistColor[2]) })
         const color = isHeader ? pdfRgb(BRAND.white) : pdfRgb(BRAND.ink)
         let x = MARGIN

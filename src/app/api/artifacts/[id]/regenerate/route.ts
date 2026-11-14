@@ -11,8 +11,17 @@ import type { ArtifactType, SheetSpec } from '@/lib/artifacts/types'
 import { artifactRegenerateRequestSchema } from '@/lib/validation'
 import { apiError } from '@/lib/errors'
 import { recordUsage } from '@/lib/usage'
+import { resolveRequestedModel } from '@/lib/models/registry'
+import { ARTIFACT_MAX_OUTPUT_TOKENS } from '@/lib/artifacts/limits'
+import { artifactContentShapeError } from '@/lib/artifacts/shape'
 
-const REGEN_MODEL = 'claude-sonnet-5'
+// The newest Sonnet in the live registry (prior C8: a hardcoded id silently fell
+// back to the default model once it left the catalog). resolveRequestedModel()
+// resolves a tier and never throws.
+const REGEN_TIER = 'sonnet'
+
+// A full rewrite at the chat route's output cap can run for minutes.
+export const maxDuration = 800
 
 // POST /api/artifacts/:id/regenerate — ask Claude to revise the artifact's source
 // per an instruction, re-render, and append a new version.
@@ -46,12 +55,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       ? `You are revising a ${artifact.format ?? 'code'} source file titled "${title}". Current content:\n\n${artifact.content ?? ''}\n\nApply this instruction: ${body.data.instruction}\n\nReturn ONLY the full updated source file — no prose, no code fences.`
       : `You are revising a document artifact titled "${title}". Current content is Markdown:\n\n${artifact.content ?? ''}\n\nApply this instruction: ${body.data.instruction}\n\nReturn ONLY the full updated Markdown — no commentary, no code fences.`
 
+    const { modelId } = await resolveRequestedModel(REGEN_TIER)
     const anthropic = createAnthropic({ apiKey })
-    const { text, totalUsage } = await generateText({ model: anthropic(REGEN_MODEL), prompt, maxOutputTokens: 8000 })
+    const { text, finishReason, totalUsage } = await generateText({ model: anthropic(modelId), prompt, maxOutputTokens: ARTIFACT_MAX_OUTPUT_TOKENS })
 
     // Usage capture (spec C6) — real Claude spend, recorded best-effort as soon
     // as tokens are spent (a parse/render failure below doesn't un-spend them).
-    void recordUsage({ chatId: artifact.chatId, projectId: artifact.projectId ?? null, purpose: 'artifact-regenerate', model: REGEN_MODEL, usage: totalUsage }).catch(() => {})
+    void recordUsage({ chatId: artifact.chatId, projectId: artifact.projectId ?? null, purpose: 'artifact-regenerate', model: modelId, usage: totalUsage }).catch(() => {})
+
+    // Output that hit the token cap is a cut-off document. Saving it would make a
+    // truncated file the current version (audit B6), so refuse and keep the old one.
+    if (finishReason === 'length') {
+      return NextResponse.json({ error: 'The regenerated artifact was cut off because it is too long. Nothing was saved; try a smaller change.' }, { status: 422 })
+    }
 
     // Strip accidental code fences, then coerce to the artifact's format.
     const raw = text.trim().replace(/^```[a-zA-Z]*\n?/, '').replace(/\n?```$/, '').trim()
@@ -60,6 +76,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       const match = raw.match(/\[[\s\S]*\]/)
       if (!match) return NextResponse.json({ error: 'Could not parse regenerated spreadsheet.' }, { status: 422 })
       try { content = JSON.parse(match[0]) } catch { return NextResponse.json({ error: 'Could not parse regenerated spreadsheet.' }, { status: 422 }) }
+      // Parsed model JSON is unvalidated: check it is really {name, rows} sheets.
+      if (artifactContentShapeError('xlsx', content)) return NextResponse.json({ error: 'Could not parse regenerated spreadsheet.' }, { status: 422 })
     } else {
       if (!raw) return NextResponse.json({ error: 'Regeneration produced empty content.' }, { status: 422 })
       content = raw

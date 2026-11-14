@@ -45,6 +45,17 @@ describe('renderArtifact', () => {
     expect(out.buffer.toString('utf-8')).toBe(html)
   })
 
+  it('throws on a content shape that does not match the type instead of rendering an empty file (audit B14)', async () => {
+    await expect(renderArtifact('xlsx', 't', '| a | b |')).rejects.toThrow(/array/i)
+    await expect(renderArtifact('docx', 't', [{ name: 'T', rows: [['a']] }])).rejects.toThrow(/string/i)
+    await expect(renderArtifact('html', 't', [{ name: 'T', rows: [['a']] }])).rejects.toThrow(/string/i)
+  })
+
+  it('throws on sheets that are not {name, rows} objects', async () => {
+    // @ts-expect-error deliberately malformed (the regenerate route parses model JSON)
+    await expect(renderArtifact('xlsx', 't', [{ name: 'T', rows: 'nope' }])).rejects.toThrow(/sheet/i)
+  })
+
   it('throws on an unknown type', async () => {
     // @ts-expect-error invalid type
     await expect(renderArtifact('txt', 't', 'x')).rejects.toThrow()

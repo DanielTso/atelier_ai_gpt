@@ -1,13 +1,12 @@
 import { tool } from 'ai'
 import { z } from 'zod'
 import { renderArtifact } from './render'
+import { artifactSheetsSchema, artifactContentShapeError } from './shape'
 import { artifactStoragePath } from './path'
 import { CODE_LANGUAGE_IDS } from './code'
 import { uploadBuffer, createSignedDownloadUrl, removeObjects, ARTIFACT_URL_TTL_SECONDS } from '@/lib/storage'
 import { createArtifact } from '@/app/actions'
 import type { ArtifactType } from './types'
-
-const sheetSpec = z.object({ name: z.string(), rows: z.array(z.array(z.union([z.string(), z.number()]))) })
 
 export function createGenerateArtifactTool(ctx: { chatId: number; projectId: number | null }) {
   return tool({
@@ -25,14 +24,22 @@ export function createGenerateArtifactTool(ctx: { chatId: number; projectId: num
       format: z.enum(['markdown', 'sheets', 'html', 'code']),
       language: z.enum(CODE_LANGUAGE_IDS).optional()
         .describe('Required for type "code": the source language (drives file extension + preview highlighting)'),
-      content: z.union([z.string(), z.array(sheetSpec)]),
-    }).refine(v => v.type !== 'code' || (v.language != null && typeof v.content === 'string'), {
-      // Without the string check, an array here would silently render an EMPTY
-      // source file (render.ts coerces non-string code content to '').
-      message: 'code artifacts require a language and string content',
+      content: z.union([z.string(), artifactSheetsSchema]),
+    }).refine(v => v.type !== 'code' || v.language != null, {
+      message: 'code artifacts require a language',
       path: ['language'],
+    }).refine(v => (v.type === 'xlsx') === Array.isArray(v.content), {
+      // xlsx ⇔ an array of sheets; every other type ⇔ a string. A mismatch used to
+      // render an EMPTY file and report success (audit B14). Failing validation
+      // hands this message back to the model as the tool result, so it can retry.
+      message: 'Content shape does not match the type: xlsx needs content as an array of sheets ({name, rows}); docx, pdf, pptx, html and code need content as a string.',
+      path: ['content'],
     }),
     execute: async ({ type, title, format, content, language }) => {
+      // Same check for a caller that skipped schema validation: an in-band error,
+      // never a blank file.
+      const shapeError = artifactContentShapeError(type as ArtifactType, content)
+      if (shapeError) return { error: shapeError }
       try {
         const { buffer, contentType, ext } = await renderArtifact(type as ArtifactType, title, content, language)
         // Persist the source so the artifact can be previewed/edited/regenerated.

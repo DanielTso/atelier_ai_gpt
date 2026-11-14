@@ -6,7 +6,7 @@ describe('parseMarkdown', () => {
   it('parses inline bold inside list items without leaking raw markers', () => {
     const [list] = parseMarkdown('- bullet with **strong** text')
     if (list.type !== 'list') throw new Error('expected list')
-    const runs = list.items[0]!
+    const runs = list.items[0]!.inlines
     expect(runs.some(r => r.bold && r.text === 'strong')).toBe(true)
     expect(runs.map(r => r.text).join('')).not.toContain('*')
   })
@@ -61,6 +61,38 @@ describe('parseMarkdown', () => {
     const link = p.inlines.find(i => i.href)
     expect(link?.href).toBe('https://x.test')
     expect(link?.bold).toBe(true)
+  })
+})
+
+describe('nested lists (audit B7)', () => {
+  const text = (inls: { text: string }[]) => inls.map(i => i.text).join('')
+
+  it('keeps nested bullets as items with a level, in document order', () => {
+    const [list] = parseMarkdown('- parent A\n  - child A1\n  - child A2\n- parent B')
+    if (list.type !== 'list') throw new Error('expected list')
+    expect(list.items.map(it => [text(it.inlines), it.level])).toEqual([
+      ['parent A', 0], ['child A1', 1], ['child A2', 1], ['parent B', 0],
+    ])
+  })
+
+  it('numbers each ordered list from its own start, including a nested one', () => {
+    const [list] = parseMarkdown('3. three\n4. four\n   1. sub one\n   2. sub two')
+    if (list.type !== 'list') throw new Error('expected list')
+    expect(list.items.map(it => [text(it.inlines), it.level, it.number, it.startsList])).toEqual([
+      ['three', 0, 3, true], ['four', 0, 4, false], ['sub one', 1, 1, true], ['sub two', 1, 2, false],
+    ])
+  })
+
+  it('keeps a list inside a blockquote', () => {
+    const blocks = parseMarkdown('> quote line\n> - item in quote')
+    expect(blocks.map(b => b.type)).toEqual(['paragraph', 'list'])
+    const list = blocks[1]!
+    if (list.type !== 'list') throw new Error('expected list')
+    expect(text(list.items[0]!.inlines)).toBe('item in quote')
+  })
+
+  it('keeps nested items in plain text, indented by level', () => {
+    expect(mdToPlainText('- parent\n  - child')).toBe('parent\n  child')
   })
 })
 

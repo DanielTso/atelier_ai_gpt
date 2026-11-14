@@ -7,6 +7,7 @@ import { resolveRequestedModel } from '@/lib/models/registry';
 import { apiError } from '@/lib/errors';
 import { chatRequestSchema } from '@/lib/validation';
 import { createGenerateArtifactTool } from '@/lib/artifacts/tool';
+import { ARTIFACT_MAX_OUTPUT_TOKENS } from '@/lib/artifacts/limits';
 import { createGenerateImageTool } from '@/lib/image/tool';
 import { createReadDocumentTool } from '@/lib/documents/tool';
 import { isStorageConfigured } from '@/lib/storage';
@@ -353,7 +354,7 @@ export async function POST(req: Request) {
       // provider default (~4k) truncates the call mid-JSON and the build silently
       // never executes (seen live: "Building document…" stuck forever). 32k covers
       // a large page + prose across every Claude model in the picker.
-      maxOutputTokens: 32000,
+      maxOutputTokens: ARTIFACT_MAX_OUTPUT_TOKENS,
       // Cancel the upstream generation when the CONNECTION goes away (Stop button,
       // tab close, network drop) — otherwise Anthropic keeps generating, and
       // billing, to maxOutputTokens for a response nobody receives. The recorder

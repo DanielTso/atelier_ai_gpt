@@ -15,10 +15,19 @@ function decodeEntities(s: string): string {
     .replace(/&gt;/g, '>')
     .replace(/&amp;/g, '&')
 }
+
+/** One list entry, flattened in document order. `level` is the nesting depth
+ *  (0 = top level; a sub-bullet is 1, and so on) so every renderer can indent
+ *  it. `ordered`/`number` describe the item's OWN list (a nested list can
+ *  differ from its parent); `number` honours the list's start value, and
+ *  `startsList` marks the first item of each list or sublist (DOCX gives
+ *  every ordered list its own numbering instance from it). */
+export type ListItem = { inlines: Inline[]; level: number; ordered: boolean; number: number; startsList: boolean }
+
 export type Block =
   | { type: 'heading'; level: number; inlines: Inline[] }
   | { type: 'paragraph'; inlines: Inline[] }
-  | { type: 'list'; ordered: boolean; items: Inline[][] }
+  | { type: 'list'; ordered: boolean; items: ListItem[] }
   | { type: 'table'; header: Inline[][]; rows: Inline[][][] }
   | { type: 'code'; text: string }
 
@@ -58,7 +67,7 @@ export function mdToPlainText(md: string): string {
   const flat = (inls: Inline[]) => inls.map(i => i.text).join('')
   const out = parseMarkdown(md).map(b => {
     if (b.type === 'heading' || b.type === 'paragraph') return flat(b.inlines)
-    if (b.type === 'list') return b.items.map(flat).join('\n')
+    if (b.type === 'list') return b.items.map(it => '  '.repeat(it.level) + flat(it.inlines)).join('\n')
     if (b.type === 'table') return [b.header, ...b.rows].map(r => r.map(flat).join(' ')).join('\n')
     return b.text
   }).join('\n').trim()
@@ -69,8 +78,25 @@ function cellInlines(cell: Tokens.TableCell): Inline[] {
   return inlines(cell.tokens)
 }
 
+// Flatten a list and every list nested inside its items. marked puts a nested
+// list as a `list` token among the item's tokens; inlines() would drop it (it
+// has neither .tokens nor .text), so split it out and recurse one level deeper.
+function listItems(list: Tokens.List, level: number): ListItem[] {
+  const start = list.ordered && typeof list.start === 'number' ? list.start : 1
+  const out: ListItem[] = []
+  list.items.forEach((it, i) => {
+    const own = it.tokens.filter(t => t.type !== 'list')
+    out.push({ inlines: inlines(own), level, ordered: list.ordered, number: start + i, startsList: i === 0 })
+    for (const t of it.tokens) if (t.type === 'list') out.push(...listItems(t as Tokens.List, level + 1))
+  })
+  return out
+}
+
 export function parseMarkdown(md: string): Block[] {
-  const tokens = marked.lexer(md ?? '')
+  return parseTokens(marked.lexer(md ?? ''))
+}
+
+function parseTokens(tokens: Token[]): Block[] {
   const blocks: Block[] = []
   for (const t of tokens) {
     switch (t.type) {
@@ -82,7 +108,7 @@ export function parseMarkdown(md: string): Block[] {
         break
       case 'list': {
         const list = t as Tokens.List
-        blocks.push({ type: 'list', ordered: list.ordered, items: list.items.map(it => inlines(it.tokens)) })
+        blocks.push({ type: 'list', ordered: list.ordered, items: listItems(list, 0) })
         break
       }
       case 'table': {
@@ -101,7 +127,9 @@ export function parseMarkdown(md: string): Block[] {
       case 'hr':
         break
       case 'blockquote': {
-        blocks.push({ type: 'paragraph', inlines: inlines((t as Tokens.Blockquote).tokens) })
+        // A quote holds block tokens (paragraphs, lists, tables…): parse them as
+        // blocks so a list inside a quote keeps its items.
+        blocks.push(...parseTokens((t as Tokens.Blockquote).tokens))
         break
       }
       default: {

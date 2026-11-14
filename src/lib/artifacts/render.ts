@@ -4,6 +4,7 @@ import { toDocx } from './toDocx'
 import { toPdf } from './toPdf'
 import { toPptx } from './toPptx'
 import { codeLanguage } from './code'
+import { artifactContentShapeError } from './shape'
 
 const CONTENT_TYPE: Record<Exclude<ArtifactType, 'code'>, string> = {
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -19,24 +20,28 @@ export async function renderArtifact(
   content: string | SheetSpec[],
   language?: string
 ): Promise<RenderedArtifact> {
+  // A mismatched shape used to be coerced to EMPTY content and saved as a blank
+  // file reported as success (audit B14). Refuse it instead.
+  const shapeError = artifactContentShapeError(type, content)
+  if (shapeError) throw new Error(shapeError)
   let buffer: Buffer
   if (type === 'xlsx') {
-    buffer = await toXlsx(Array.isArray(content) ? content : [])
+    buffer = await toXlsx(content as SheetSpec[])
   } else if (type === 'docx') {
-    buffer = await toDocx(typeof content === 'string' ? content : '')
+    buffer = await toDocx(content as string)
   } else if (type === 'pdf') {
-    buffer = await toPdf(typeof content === 'string' ? content : '')
+    buffer = await toPdf(content as string)
   } else if (type === 'pptx') {
-    buffer = await toPptx(typeof content === 'string' ? content : '')
+    buffer = await toPptx(content as string)
   } else if (type === 'html') {
     // HTML needs no conversion — the model's HTML string IS the artifact.
-    buffer = Buffer.from(typeof content === 'string' ? content : '', 'utf-8')
+    buffer = Buffer.from(content as string, 'utf-8')
   } else if (type === 'code') {
     const lang = codeLanguage(language)
     if (!lang) throw new Error(`Unknown code artifact language: ${language}`)
     // Passthrough like HTML — the model's source string IS the file.
     return {
-      buffer: Buffer.from(typeof content === 'string' ? content : '', 'utf-8'),
+      buffer: Buffer.from(content as string, 'utf-8'),
       contentType: 'text/plain; charset=utf-8',
       ext: lang.ext,
     }

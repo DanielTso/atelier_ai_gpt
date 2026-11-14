@@ -1,15 +1,18 @@
 // src/lib/artifacts/style.ts
-// Brand palette mirrored from globals.css @theme. Stored as #-less uppercase hex
+// Brand palette mirrored from the warm-minimal tokens in globals.css (re-theme
+// of 2026-06-25). globals.css keeps the old token NAMES with warm values; here
+// they are named for what they are: terracotta = --brand-steel-blue (the
+// accent), clay = --brand-navy (deep warm clay). Stored as #-less uppercase hex
 // because docx and pptxgenjs both want bare hex; exceljs wants ARGB; pdf-lib wants 0..1.
 export const BRAND = {
-  navy: '1F3447',
-  steelBlue: '4F7396',
-  ink: '16202A',
-  slateText: '6F7781',
-  softMist: 'F3F1EC',
-  mutedLine: 'E3DDD2',
+  terracotta: 'C96442',
+  clay: '6B4A38',
+  ink: '20201E',
+  slateText: '78776E',
+  softMist: 'F2EFE9',
+  mutedLine: 'E8E6DF',
   white: 'FFFFFF',
-  success: '3F7252',
+  success: '4F7A4A',
   warning: 'A06D2E',
 } as const
 

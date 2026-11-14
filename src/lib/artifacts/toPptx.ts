@@ -40,9 +40,20 @@ function bodyLines(body: Block[]): Line[] {
   const lines: Line[] = []
   for (const b of body) {
     if (b.type === 'list') {
-      for (const item of b.items) lines.push({ text: plain(item), options: { bullet: b.ordered ? { type: 'number' } : true, color: BRAND.ink, fontSize: 16, fontFace: FONT.office } as Record<string, unknown> })
+      // Nested items keep their depth as a paragraph indent level (audit B7);
+      // ordered items carry their own number so a list's start value survives.
+      for (const item of b.items) {
+        lines.push({
+          text: plain(item.inlines),
+          options: {
+            bullet: item.ordered ? { type: 'number', numberStartAt: item.number } : true,
+            ...(item.level > 0 && { indentLevel: Math.min(item.level, 8) }),
+            color: BRAND.ink, fontSize: item.level > 0 ? 14 : 16, fontFace: FONT.office,
+          },
+        })
+      }
     } else if (b.type === 'heading') {
-      lines.push({ text: plain(b.inlines), options: { bold: true, color: BRAND.steelBlue, fontSize: 18, fontFace: FONT.office, paraSpaceBefore: 6 } })
+      lines.push({ text: plain(b.inlines), options: { bold: true, color: BRAND.terracotta, fontSize: 18, fontFace: FONT.office, paraSpaceBefore: 6 } })
     } else if (b.type === 'paragraph') {
       lines.push({ text: plain(b.inlines), options: { color: BRAND.ink, fontSize: 16, fontFace: FONT.office } })
     } else if (b.type === 'table') {
@@ -63,7 +74,7 @@ export async function toPptx(markdown: string): Promise<Buffer> {
   const renderSlide = (title: string, lines: Line[]) => {
     const s = pptx.addSlide()
     s.background = { color: BRAND.white }
-    s.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: '100%', h: 0.9, fill: { color: BRAND.navy } })
+    s.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: '100%', h: 0.9, fill: { color: BRAND.clay } })
     s.addText(title || 'Slide', { x: 0.4, y: 0.1, w: 12, h: 0.7, fontFace: FONT.office, fontSize: 24, bold: true, color: BRAND.white, valign: 'middle' })
     if (lines.length) {
       s.addText(lines.map(l => ({ text: l.text, options: { ...l.options, breakLine: true } })), { x: 0.5, y: 1.1, w: 12.3, h: 6, valign: 'top' })

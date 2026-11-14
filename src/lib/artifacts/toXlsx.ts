@@ -3,12 +3,41 @@ import type { SheetSpec } from './types'
 import { BRAND, FONT, argb } from './style'
 import { mdToPlainText } from './markdown'
 
+// A signed or unsigned plain number ("-12.5", "+42", "1e3"): never a formula.
+const PLAIN_NUMBER = /^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$/
+
 // Excel can't render Markdown — convert any Markdown markup in a string cell to plain
 // text (so "## A", "**bold**" don't show their raw markers), then apply the formula guard.
+// The guard prefixes an apostrophe, which shows in the cell, so it only applies to text
+// that could be read as a formula: a leading = + - @ that is not a plain number or a
+// lone "-" (audit B18).
 function cleanCell(value: unknown): unknown {
   if (typeof value !== 'string' || value.length === 0) return value
   const text = /[*_`#~]/.test(value) ? mdToPlainText(value) : value
-  return /^[=+\-@\t\r]/.test(text) ? `'${text}` : text
+  const formulaLike = /^[=+\-@]/.test(text) && text !== '-' && !PLAIN_NUMBER.test(text)
+  return formulaLike ? `'${text}` : text
+}
+
+const SHEET_NAME_MAX = 31
+
+// Excel sheet names: no [ ] : * ? / \, no leading/trailing apostrophe, not empty,
+// at most 31 chars, unique ignoring case, and not the reserved "History". exceljs
+// throws on any of these, which used to fail the whole artifact (audit B18).
+export function sheetNames(names: string[]): string[] {
+  const used = new Set<string>()
+  return names.map((raw, i) => {
+    const cleaned = String(raw ?? '').replace(/[[\]:*?/\\]/g, '').trim().slice(0, SHEET_NAME_MAX)
+    let base = cleaned.replace(/^'+|'+$/g, '').trim()
+    if (!base) base = `Sheet${i + 1}`
+    else if (base.toLowerCase() === 'history') base = `${base} 1`
+    let name = base
+    for (let n = 2; used.has(name.toLowerCase()); n++) {
+      const suffix = ` (${n})`
+      name = `${base.slice(0, SHEET_NAME_MAX - suffix.length).trimEnd()}${suffix}`
+    }
+    used.add(name.toLowerCase())
+    return name
+  })
 }
 
 const BORDER = { style: 'thin' as const, color: { argb: argb(BRAND.mutedLine) } }
@@ -20,8 +49,9 @@ export async function toXlsx(sheets: SheetSpec[]): Promise<Buffer> {
   const wb = new ExcelJS.Workbook()
   const specs = sheets.length ? sheets : [{ name: 'Sheet1', rows: [] }]
 
-  for (const spec of specs) {
-    const ws = wb.addWorksheet(spec.name || 'Sheet1')
+  const names = sheetNames(specs.map(s => s.name))
+  for (const [si, spec] of specs.entries()) {
+    const ws = wb.addWorksheet(names[si])
     const rows = spec.rows ?? []
 
     rows.forEach((row, i) => {
@@ -34,7 +64,7 @@ export async function toXlsx(sheets: SheetSpec[]): Promise<Buffer> {
         added.font = { bold: true, color: { argb: argb(BRAND.white) }, name: FONT.office }
         added.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true }
         added.eachCell({ includeEmpty: true }, cell => {
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: argb(BRAND.navy) } }
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: argb(BRAND.clay) } }
         })
       } else if (i % 2 === 0) {
         added.eachCell({ includeEmpty: true }, cell => {
