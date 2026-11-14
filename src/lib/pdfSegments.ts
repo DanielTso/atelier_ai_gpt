@@ -23,15 +23,16 @@ async function buildSegment(src: PDFDocument, firstPage: number, lastPage: numbe
 
 // Emit the range [firstPage, lastPage] into `segments`; if its serialized
 // bytes exceed the cap, halve recursively. A single page still over the cap is
-// skipped and reported via `onSkip` — the caller surfaces it as partial (no
-// silent loss). Shared by splitPdfIntoSegments and splitPdfPageRuns.
+// skipped and reported via `onSkip(page)` with its absolute page number — the
+// caller records it in failedPages and surfaces it as partial (no silent loss,
+// audit X9). Shared by splitPdfIntoSegments and splitPdfPageRuns.
 async function emitRange(
   src: PDFDocument,
   firstPage: number,
   lastPage: number,
   maxSegmentBytes: number,
   segments: PdfSegment[],
-  onSkip: () => void,
+  onSkip: (page: number) => void,
 ): Promise<void> {
   const bytes = await buildSegment(src, firstPage, lastPage)
   if (bytes.length <= maxSegmentBytes) {
@@ -40,7 +41,7 @@ async function emitRange(
   }
   if (firstPage === lastPage) {
     console.warn(`[pdfSegments] page ${firstPage} exceeds ${maxSegmentBytes} bytes — skipped`)
-    onSkip()
+    onSkip(firstPage)
     return
   }
   const mid = Math.floor((firstPage + lastPage) / 2)
@@ -52,7 +53,7 @@ export async function splitPdfIntoSegments(
   buffer: Buffer,
   pagesPerSegment: number,
   opts: { maxPages?: number; maxSegmentBytes?: number } = {},
-): Promise<{ segments: PdfSegment[]; pageCount: number; skippedPages: number }> {
+): Promise<{ segments: PdfSegment[]; pageCount: number; skippedPages: number[]; cappedPages: number[] }> {
   const maxSegmentBytes = opts.maxSegmentBytes ?? DEFAULT_MAX_SEGMENT_BYTES
   const src = await PDFDocument.load(new Uint8Array(buffer), { ignoreEncryption: true })
   const pageCount = src.getPageCount()
@@ -60,12 +61,14 @@ export async function splitPdfIntoSegments(
   const per = Math.max(1, pagesPerSegment)
 
   const segments: PdfSegment[] = []
-  let skippedPages = 0
+  const skippedPages: number[] = []
 
   for (let first = 1; first <= limit; first += per) {
-    await emitRange(src, first, Math.min(first + per - 1, limit), maxSegmentBytes, segments, () => { skippedPages++ })
+    await emitRange(src, first, Math.min(first + per - 1, limit), maxSegmentBytes, segments, page => { skippedPages.push(page) })
   }
-  return { segments, pageCount, skippedPages }
+  // Pages past the page cap are never sent; reported so the caller can list them.
+  const cappedPages = Array.from({ length: pageCount - limit }, (_, i) => limit + 1 + i)
+  return { segments, pageCount, skippedPages, cappedPages }
 }
 
 // Build segments from an arbitrary 1-based page list: dedupe + sort + drop
@@ -76,7 +79,7 @@ export async function splitPdfPageRuns(
   buffer: Buffer,
   pages: number[],
   opts: { pagesPerSegment?: number; maxSegmentBytes?: number } = {},
-): Promise<{ segments: PdfSegment[]; skippedPages: number }> {
+): Promise<{ segments: PdfSegment[]; skippedPages: number[] }> {
   const maxSegmentBytes = opts.maxSegmentBytes ?? DEFAULT_MAX_SEGMENT_BYTES
   const per = Math.max(1, opts.pagesPerSegment ?? 20)
   const src = await PDFDocument.load(new Uint8Array(buffer), { ignoreEncryption: true })
@@ -84,7 +87,7 @@ export async function splitPdfPageRuns(
   const wanted = [...new Set(pages)].filter(p => p >= 1 && p <= pageCount).sort((a, b) => a - b)
 
   const segments: PdfSegment[] = []
-  let skippedPages = 0
+  const skippedPages: number[] = []
   // walk contiguous runs
   let i = 0
   while (i < wanted.length) {
@@ -93,7 +96,7 @@ export async function splitPdfPageRuns(
     const first = wanted[i]
     const last = wanted[j]
     for (let start = first; start <= last; start += per) {
-      await emitRange(src, start, Math.min(start + per - 1, last), maxSegmentBytes, segments, () => { skippedPages++ })
+      await emitRange(src, start, Math.min(start + per - 1, last), maxSegmentBytes, segments, page => { skippedPages.push(page) })
     }
     i = j + 1
   }

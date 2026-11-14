@@ -15,7 +15,7 @@ describe('splitPdfIntoSegments', () => {
   it('splits 5 pages into 2-page segments with a remainder', async () => {
     const { segments, pageCount, skippedPages } = await splitPdfIntoSegments(await makePdf(5), 2)
     expect(pageCount).toBe(5)
-    expect(skippedPages).toBe(0)
+    expect(skippedPages).toEqual([])
     expect(segments.map(s => [s.firstPage, s.lastPage])).toEqual([[1, 2], [3, 4], [5, 5]])
     // each segment is a real, loadable PDF with the right page count
     const seg0 = await PDFDocument.load(segments[0].bytes)
@@ -28,10 +28,16 @@ describe('splitPdfIntoSegments', () => {
     expect(segments.map(s => [s.firstPage, s.lastPage])).toEqual([[1, 1]])
   })
 
-  it('applies the page cap before splitting', async () => {
-    const { segments, pageCount } = await splitPdfIntoSegments(await makePdf(5), 2, { maxPages: 3 })
+  it('applies the page cap before splitting and reports the capped pages', async () => {
+    const { segments, pageCount, cappedPages } = await splitPdfIntoSegments(await makePdf(5), 2, { maxPages: 3 })
     expect(pageCount).toBe(5)
     expect(segments.map(s => [s.firstPage, s.lastPage])).toEqual([[1, 2], [3, 3]])
+    expect(cappedPages).toEqual([4, 5])
+  })
+
+  it('reports no capped pages when the document is under the cap', async () => {
+    const { cappedPages } = await splitPdfIntoSegments(await makePdf(3), 2, { maxPages: 3 })
+    expect(cappedPages).toEqual([])
   })
 
   it('recursively halves an oversize segment down to single pages', async () => {
@@ -41,21 +47,21 @@ describe('splitPdfIntoSegments', () => {
     const { segments, skippedPages } = await splitPdfIntoSegments(await makePdf(4), 4, {
       maxSegmentBytes: onePageBytes + 200, // 4-page segment is over; single pages are under
     })
-    expect(skippedPages).toBe(0)
+    expect(skippedPages).toEqual([])
     expect(segments.map(s => [s.firstPage, s.lastPage])).toEqual([[1, 1], [2, 2], [3, 3], [4, 4]])
   })
 
-  it('skips (and counts) single pages that exceed the byte cap', async () => {
+  it('skips single pages that exceed the byte cap and reports their absolute numbers', async () => {
     const { segments, skippedPages } = await splitPdfIntoSegments(await makePdf(3), 2, { maxSegmentBytes: 10 })
     expect(segments).toEqual([])
-    expect(skippedPages).toBe(3)
+    expect(skippedPages).toEqual([1, 2, 3])
   })
 })
 
 describe('splitPdfPageRuns', () => {
   it('groups contiguous pages into run segments', async () => {
     const { segments, skippedPages } = await splitPdfPageRuns(await makePdf(10), [2, 3, 7, 8, 9])
-    expect(skippedPages).toBe(0)
+    expect(skippedPages).toEqual([])
     expect(segments.map(s => [s.firstPage, s.lastPage])).toEqual([[2, 3], [7, 9]])
   })
 
@@ -69,9 +75,9 @@ describe('splitPdfPageRuns', () => {
     expect(segments.map(s => [s.firstPage, s.lastPage])).toEqual([[2, 2], [4, 5]])
   })
 
-  it('applies the byte cap with skip accounting', async () => {
-    const { segments, skippedPages } = await splitPdfPageRuns(await makePdf(4), [1, 2], { maxSegmentBytes: 10 })
+  it('applies the byte cap and reports skipped pages by absolute number (audit X9)', async () => {
+    const { segments, skippedPages } = await splitPdfPageRuns(await makePdf(8), [3, 4, 7], { maxSegmentBytes: 10 })
     expect(segments).toEqual([])
-    expect(skippedPages).toBe(2)
+    expect(skippedPages).toEqual([3, 4, 7])
   })
 })

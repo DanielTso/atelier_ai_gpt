@@ -2,12 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getDocumentById, updateDocumentStatus, claimDocumentForProcessing, createDocumentRevision, commitDocumentReplacement } from '@/app/actions'
 import { ensureEmbeddingModel } from '@/lib/embeddings'
 import { chunkText } from '@/lib/chunking'
-import { buildPageMap, pageRangeFor } from '@/lib/pageMap'
+import { buildPageMap, pageRangeFor, spliceHybridPages } from '@/lib/pageMap'
 import { embedContents } from '@/lib/embedChunks'
 import { ingestText } from '@/lib/ingest'
 import { MAX_FILE_SIZE, DOCUMENT_MAX_CHARS, getExtension, isImageUpload, isSupported, extractTextFromBuffer } from '@/lib/fileExtraction'
 import type { ExtractionResult } from '@/lib/fileExtraction'
-import { extractViaVision, extractViaVisionImage, extractPagesViaVision, visionRunHeader } from '@/lib/visionExtraction'
+import { extractViaVision, extractViaVisionImage, extractPagesViaVision } from '@/lib/visionExtraction'
 import { downloadToBuffer, uploadBuffer, removeObjects, sanitizeStorageName } from '@/lib/storage'
 import { generatePdfThumbnail, generateImageThumbnail } from '@/lib/thumbnails'
 import { processDocumentRequestSchema } from '@/lib/validation'
@@ -174,20 +174,12 @@ export async function POST(request: NextRequest) {
             const hybrid = await extractPagesViaVision(buffer, sparse)
             failedPages = [...failedPages, ...hybrid.failedPages]
             if (hybrid.segments.length > 0) {
-              const byStart = new Map(hybrid.segments.map(s => [s.firstPage, s]))
-              const covered = new Set(hybrid.segments.flatMap(s =>
-                Array.from({ length: s.lastPage - s.firstPage + 1 }, (_, k) => s.firstPage + k)))
-              const parts: string[] = []
-              extraction.pageTexts.forEach((t, i) => {
-                const page = i + 1
-                const seg = byStart.get(page)
-                if (seg) parts.push(`${visionRunHeader(seg.firstPage, seg.lastPage)}\n${seg.text}`)
-                else if (!covered.has(page)) parts.push(t)
-              })
-              textContent = parts.join('\n')
+              // Every page gets a "# Page n" anchor, text-path pages included, so
+              // each chunk is stamped with its real page (audit X1).
+              textContent = spliceHybridPages(extraction.pageTexts, hybrid.segments)
               extractionMethod = 'hybrid'
             }
-            if (hybrid.failed > 0 || hybrid.truncated || hybrid.skippedPages > 0) extraction = { ...extraction, partial: true }
+            if (hybrid.failed > 0 || hybrid.truncated || hybrid.skippedPages.length > 0) extraction = { ...extraction, partial: true }
           } catch (e) {
             console.warn('[documents/process] hybrid extraction failed:', e instanceof Error ? e.message : e)
           }

@@ -10,9 +10,9 @@ vi.mock('@/lib/pdfSegments', () => ({
       { bytes: new Uint8Array(), firstPage: 1, lastPage: 2 },
       { bytes: new Uint8Array(), firstPage: 3, lastPage: 4 },
     ],
-    pageCount: 4, skippedPages: 0,
+    pageCount: 4, skippedPages: [], cappedPages: [],
   }),
-  splitPdfPageRuns: async () => ({ segments: [], skippedPages: 0 }),
+  splitPdfPageRuns: async () => ({ segments: [], skippedPages: [] }),
 }))
 
 describe('extractViaVision failed pages', () => {
@@ -50,7 +50,8 @@ describe('extractViaVision provenance headers', () => {
       .mockResolvedValueOnce({ text: '# Page 3\nok2', finishReason: 'stop' })
     const { extractViaVision } = await import('@/lib/visionExtraction')
     const r = await extractViaVision(Buffer.from(''))
-    expect(r.text).toContain('[pages 1–2 · vision]\n# Page 1')
-    expect(r.text).toContain('[pages 3–4 · vision]\n# Page 3')
+    // The anchor leads, so a page's provenance header belongs to its own page
+    // for pageMap and read_document windows (audit X1/X11).
+    expect(r.text).toBe('# Page 1\n[pages 1–2 · vision]\nok\n\n# Page 3\n[pages 3–4 · vision]\nok2')
   })
 })

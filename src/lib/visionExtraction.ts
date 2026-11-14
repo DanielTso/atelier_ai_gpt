@@ -5,6 +5,12 @@ import { splitPdfIntoSegments, splitPdfPageRuns } from './pdfSegments'
 import type { PdfSegment } from './pdfSegments'
 import { mapWithConcurrency } from './concurrency'
 import type { ExtractionResult } from './fileExtraction'
+import { visionRunHeader, visionRunText } from './pageMap'
+
+// The header now lives with the other page-anchor helpers (pageMap.ts, which
+// pure modules and tests can import without the provider/DB chain); re-exported
+// so existing importers keep working.
+export { visionRunHeader }
 
 const IMAGE_PROMPT =
   'You are reading a single page of a construction document (plan/drawing/schedule). ' +
@@ -42,12 +48,7 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 const segPages = (seg: { firstPage: number; lastPage: number }) =>
   Array.from({ length: seg.lastPage - seg.firstPage + 1 }, (_, i) => seg.firstPage + i)
 
-/** Provenance header prepended to vision-derived text runs so it lands inside
- * chunk content and flows into retrieval context (same pattern as web ingest's
- * Source: header). */
-export function visionRunHeader(first: number, last: number): string {
-  return first === last ? `[page ${first} · vision]` : `[pages ${first}–${last} · vision]`
-}
+const sortedUnique = (pages: number[]) => [...new Set(pages)].sort((a, b) => a - b)
 
 /** One generateText call per segment (inline PDF file part), bounded-concurrent
  * with retry/backoff. A segment that fails after retries yields text ''. Shared
@@ -117,20 +118,24 @@ export async function extractViaVision(buffer: Buffer): Promise<ExtractionResult
   const apiKey = await getGeminiApiKey()
   if (!apiKey) return { text: '', pageCount: null, pagesExtracted: null, partial: false }
   const c = cfg()
-  const { segments, pageCount, skippedPages } = await splitPdfIntoSegments(buffer, c.segmentPages, {
+  const { segments, pageCount, skippedPages, cappedPages } = await splitPdfIntoSegments(buffer, c.segmentPages, {
     maxPages: c.maxPages, maxSegmentBytes: c.segmentMaxBytes,
   })
-  if (pageCount > c.maxPages) console.warn(`[visionExtraction] capping at ${c.maxPages}/${pageCount} pages`)
+  if (cappedPages.length > 0) console.warn(`[visionExtraction] capping at ${pageCount - cappedPages.length}/${pageCount} pages`)
   const { results, truncated } = await extractSegments(segments, c, apiKey)
 
   const ok = results.filter(r => r.text)
-  const failedPages = results.filter(r => !r.text).flatMap(r => segPages(r.seg))
+  // Every page with no text in the result: failed segments, oversize pages the
+  // splitter skipped, and pages past the page cap (audit X9).
+  const failedPages = sortedUnique([
+    ...results.filter(r => !r.text).flatMap(r => segPages(r.seg)), ...skippedPages, ...cappedPages,
+  ])
   const pagesExtracted = ok.reduce((n, r) => n + (r.seg.lastPage - r.seg.firstPage + 1), 0)
   return {
-    text: ok.map(r => `${visionRunHeader(r.seg.firstPage, r.seg.lastPage)}\n${r.text}`).join('\n\n'),
+    text: ok.map(r => visionRunText(r.seg.firstPage, r.seg.lastPage, r.text)).join('\n\n'),
     pageCount,
     pagesExtracted,
-    partial: truncated || skippedPages > 0 || pagesExtracted < pageCount,
+    partial: truncated || skippedPages.length > 0 || pagesExtracted < pageCount,
     failedPages,
   }
 }
@@ -140,16 +145,17 @@ export async function extractViaVision(buffer: Buffer): Promise<ExtractionResult
 export async function extractPagesViaVision(
   buffer: Buffer,
   pages: number[],
-): Promise<{ segments: { firstPage: number; lastPage: number; text: string }[]; failed: number; failedPages: number[]; truncated: boolean; skippedPages: number }> {
+): Promise<{ segments: { firstPage: number; lastPage: number; text: string }[]; failed: number; failedPages: number[]; truncated: boolean; skippedPages: number[] }> {
   const apiKey = await getGeminiApiKey()
-  if (!apiKey || pages.length === 0) return { segments: [], failed: 0, failedPages: [], truncated: false, skippedPages: 0 }
+  if (!apiKey || pages.length === 0) return { segments: [], failed: 0, failedPages: [], truncated: false, skippedPages: [] }
   const c = cfg()
   const { segments, skippedPages } = await splitPdfPageRuns(buffer, pages, {
     pagesPerSegment: c.segmentPages, maxSegmentBytes: c.segmentMaxBytes,
   })
   const { results, truncated } = await extractSegments(segments, c, apiKey)
   const ok = results.filter(r => r.text)
-  const failedPages = results.filter(r => !r.text).flatMap(r => segPages(r.seg))
+  // Failed segments and oversize pages the splitter skipped (audit X9).
+  const failedPages = sortedUnique([...results.filter(r => !r.text).flatMap(r => segPages(r.seg)), ...skippedPages])
   return {
     segments: ok.map(r => ({ firstPage: r.seg.firstPage, lastPage: r.seg.lastPage, text: r.text })),
     failed: results.length - ok.length,

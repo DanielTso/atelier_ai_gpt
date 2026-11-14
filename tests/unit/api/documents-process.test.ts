@@ -55,7 +55,7 @@ describe('POST /api/documents/process', () => {
     m.generateImageThumbnail.mockResolvedValue(Buffer.from('thumb'))
     m.extractViaVision.mockResolvedValue(extRes(''))
     m.extractViaVisionImage.mockResolvedValue(extRes(''))
-    m.extractPagesViaVision.mockResolvedValue({ segments: [], failed: 0, failedPages: [], truncated: false, skippedPages: 0 })
+    m.extractPagesViaVision.mockResolvedValue({ segments: [], failed: 0, failedPages: [], truncated: false, skippedPages: [] })
     m.visionRunHeader.mockImplementation((first: number, last: number) => first === last ? `[page ${first} · vision]` : `[pages ${first}–${last} · vision]`)
   })
 
@@ -336,7 +336,7 @@ describe('POST /api/documents/process', () => {
     m.extractTextFromBuffer.mockResolvedValue(extRes('D'.repeat(4000), {
       pageCount: 3, pageTexts: ['D'.repeat(2000), 'thin', 'E'.repeat(2000)],
     }))
-    m.extractPagesViaVision.mockResolvedValue({ segments: [{ firstPage: 2, lastPage: 2, text: 'VISION NOTES BODY' }], failed: 0, failedPages: [], truncated: false, skippedPages: 0 })
+    m.extractPagesViaVision.mockResolvedValue({ segments: [{ firstPage: 2, lastPage: 2, text: 'VISION NOTES BODY' }], failed: 0, failedPages: [], truncated: false, skippedPages: [] })
     const POST = await importRoute()
     const res = await POST(req(40) as never)
     expect(res.status).toBe(200)
@@ -350,6 +350,8 @@ describe('POST /api/documents/process', () => {
     expect(spliced).toContain('VISION NOTES BODY')
     expect(spliced).toContain('E'.repeat(2000))
     expect(spliced).not.toContain('thin')
+    // Audit X1: text-path pages carry anchors too, so pageMap stamps every chunk.
+    expect(spliced).toBe(`# Page 1\n${'D'.repeat(2000)}\n# Page 2\n[page 2 · vision]\nVISION NOTES BODY\n# Page 3\n${'E'.repeat(2000)}`)
   })
 
   it('hybrid: splice preserves page order (vision body lands between its neighbor pages)', async () => {
@@ -359,7 +361,7 @@ describe('POST /api/documents/process', () => {
     m.extractTextFromBuffer.mockResolvedValue(extRes('D'.repeat(4000), {
       pageCount: 3, pageTexts: ['D'.repeat(2000), 'thin', 'E'.repeat(2000)],
     }))
-    m.extractPagesViaVision.mockResolvedValue({ segments: [{ firstPage: 2, lastPage: 2, text: 'VISION NOTES BODY' }], failed: 0, failedPages: [], truncated: false, skippedPages: 0 })
+    m.extractPagesViaVision.mockResolvedValue({ segments: [{ firstPage: 2, lastPage: 2, text: 'VISION NOTES BODY' }], failed: 0, failedPages: [], truncated: false, skippedPages: [] })
     const POST = await importRoute()
     const res = await POST(req(44) as never)
     expect(res.status).toBe(200)
@@ -377,7 +379,7 @@ describe('POST /api/documents/process', () => {
     m.extractTextFromBuffer.mockResolvedValue(extRes('D'.repeat(4000), {
       pageCount: 3, pageTexts: ['D'.repeat(2000), 'thin', 'E'.repeat(2000)],
     }))
-    m.extractPagesViaVision.mockResolvedValue({ segments: [], failed: 1, failedPages: [2], truncated: false, skippedPages: 0 })
+    m.extractPagesViaVision.mockResolvedValue({ segments: [], failed: 1, failedPages: [2], truncated: false, skippedPages: [] })
     const POST = await importRoute()
     const res = await POST(req(41) as never)
     expect(res.status).toBe(200)
@@ -390,12 +392,12 @@ describe('POST /api/documents/process', () => {
     m.extractTextFromBuffer.mockResolvedValue(extRes('D'.repeat(4000), {
       pageCount: 3, pageTexts: ['D'.repeat(2000), 'thin', 'E'.repeat(2000)],
     }))
-    m.extractPagesViaVision.mockResolvedValue({ segments: [], failed: 0, failedPages: [], truncated: false, skippedPages: 1 })
+    m.extractPagesViaVision.mockResolvedValue({ segments: [], failed: 0, failedPages: [2], truncated: false, skippedPages: [2] })
     const POST = await importRoute()
     const res = await POST(req(42) as never)
     expect(res.status).toBe(200)
     const call = m.commitDocumentIngest.mock.calls.find((c: unknown[]) => c[1] === 'ready')
-    expect(call?.[2]).toMatchObject({ extractionMethod: 'text', extractionPartial: true })
+    expect(call?.[2]).toMatchObject({ extractionMethod: 'text', extractionPartial: true, failedPages: [2] })
   })
 
   it('hybrid: failedPages from the vision splice threads into the status write', async () => {
@@ -403,7 +405,7 @@ describe('POST /api/documents/process', () => {
     m.extractTextFromBuffer.mockResolvedValue(extRes('D'.repeat(4000), {
       pageCount: 3, pageTexts: ['D'.repeat(2000), 'thin', 'E'.repeat(2000)],
     }))
-    m.extractPagesViaVision.mockResolvedValue({ segments: [], failed: 1, failedPages: [2], truncated: false, skippedPages: 0 })
+    m.extractPagesViaVision.mockResolvedValue({ segments: [], failed: 1, failedPages: [2], truncated: false, skippedPages: [] })
     const POST = await importRoute()
     const res = await POST(req(43) as never)
     expect(res.status).toBe(200)

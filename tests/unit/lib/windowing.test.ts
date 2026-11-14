@@ -39,3 +39,53 @@ describe('sliceWindow', () => {
     expect(w.nextOffset).toBe(70)
   })
 })
+
+// Audit X11: a window cut at a raw offset ended mid-page, and the next window
+// started with the tail of that page while reporting the following page.
+describe('sliceWindow page boundaries (audit X11)', () => {
+  // Three 40-char pages: anchors at 0, 40, 80.
+  const doc = ['# Page 1\n' + 'a'.repeat(30), '# Page 2\n' + 'b'.repeat(30), '# Page 3\n' + 'c'.repeat(30)].join('\n')
+
+  it('ends window 1 at a page boundary and starts window 2 with its anchor', () => {
+    const w1 = sliceWindow(doc, { maxChars: 100 })
+    expect(w1.endOffset).toBe(80)
+    expect(w1.text.endsWith('b'.repeat(30) + '\n')).toBe(true)
+    expect(w1.nextOffset).toBe(80)
+    expect(w1.firstPage).toBe(1)
+    expect(w1.lastPage).toBe(2)
+    const w2 = sliceWindow(doc, { offset: w1.nextOffset!, maxChars: 100 })
+    expect(w2.text.startsWith('# Page 3')).toBe(true)
+    expect(w2.firstPage).toBe(3)
+    expect(w2.nextOffset).toBeNull()
+  })
+
+  it('backs off from a fromPage start too', () => {
+    const w = sliceWindow(doc, { fromPage: 2, maxChars: 60 })
+    expect(w.text).toBe('# Page 2\n' + 'b'.repeat(30) + '\n')
+    expect(w.nextOffset).toBe(80)
+  })
+
+  it('cuts at the raw cap when one page alone exceeds it', () => {
+    const w = sliceWindow(doc, { maxChars: 20 })
+    expect(w.endOffset).toBe(20)
+    expect(w.firstPage).toBe(1)
+    expect(w.lastPage).toBe(1)
+  })
+
+  it('a continuation inside an oversize page ends at the next anchor and reports its own page', () => {
+    const w = sliceWindow(doc, { offset: 20, maxChars: 50 })
+    expect(w.startOffset).toBe(20)
+    expect(w.endOffset).toBe(40)
+    expect(w.firstPage).toBe(1)
+    expect(w.lastPage).toBe(1)
+    const mid = sliceWindow(doc, { offset: 50, maxChars: 10 })
+    expect(mid.firstPage).toBe(2)
+    expect(mid.lastPage).toBe(2)
+  })
+
+  it('does not shrink a window to a preamble before the first anchor', () => {
+    const pre = '[pages 1–2 · vision]\n# Page 1\n' + 'a'.repeat(200) + '\n# Page 2\nbbb'
+    const w = sliceWindow(pre, { maxChars: 100 })
+    expect(w.endOffset).toBe(100)
+  })
+})
