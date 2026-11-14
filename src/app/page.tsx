@@ -8,7 +8,8 @@ import { useEffect, useLayoutEffect, useState, useRef, useCallback, useMemo } fr
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { extractText } from "@/lib/messageParts"
-import { getProjects, getProjectFileCounts, createProject, getAllProjectChats, createChat, getChatMessages, deleteProject, updateProjectName, updateProjectContext, updateChatTitle, getStandaloneChats, createStandaloneChat, deleteChat, moveChatToProject, archiveChat, restoreChat, getArchivedChats, getChatWithContext, updateChatSystemPrompt, getProjectDefaults, recordPersonaUsage, getProjectChatPreviews, getChatAttachments, getSetting, setSetting } from "./actions"
+import { getProjects, getProjectFileCounts, createProject, getAllProjectChats, createChat, getChatMessages, deleteProject, updateProjectName, updateProjectContext, updateChatTitle, getStandaloneChats, createStandaloneChat, deleteChat, moveChatToProject, archiveChat, restoreChat, getArchivedChats, getChatWithContext, updateChatSystemPrompt, getProjectDefaults, recordPersonaUsage, getProjectChatPreviews, getChatAttachments, getSetting, setSetting, deleteMessage } from "./actions"
+import { resolveMessageDbId } from "@/lib/chatTurn"
 import { Sidebar } from "@/components/chat/sidebar"
 import type { SidebarActions, AppView } from "@/components/chat/sidebar"
 import { HomeGreeting } from "@/components/chat/HomeGreeting"
@@ -311,6 +312,7 @@ export default function Home() {
     messages,
     setMessages,
     sendToChat,
+    regenerateInChat,
     isChatBusy,
     updateChatMessages,
     peekChatMessages,
@@ -457,6 +459,25 @@ export default function Home() {
   }, [])
   const refreshModels = useCallback(() => fetchModels({ fresh: true }), [fetchModels])
 
+  // Settings → Model Defaults → "Default system prompt" (D4/U9): written to a new
+  // chat created with no persona or custom prompt (persona → custom → default).
+  // Held in a ref, loaded on mount and again after every settings save, so the
+  // create path reads it synchronously — no extra round-trip, no extra await
+  // between creating the chat and handing it the message.
+  const defaultSystemPromptRef = useRef<string | null>(null)
+  const loadDefaultSystemPrompt = useCallback(async () => {
+    try {
+      const value = await getSetting('default-system-prompt')
+      defaultSystemPromptRef.current = value && value.trim() ? value : null
+    } catch {
+      // Best-effort: keep the last known value.
+    }
+  }, [])
+  const handleSettingsChanged = useCallback(() => {
+    void refreshModels()
+    void loadDefaultSystemPrompt()
+  }, [refreshModels, loadDefaultSystemPrompt])
+
   const loadProjects = useCallback(async () => {
     try {
       const [p, counts] = await Promise.all([getProjects(), getProjectFileCounts().catch(() => ({}))])
@@ -593,7 +614,8 @@ export default function Home() {
     loadAllProjectChats()
     loadArchivedChats()
     fetchModels()
-  }, [loadProjects, loadStandaloneChats, loadAllProjectChats, loadArchivedChats, fetchModels])
+    loadDefaultSystemPrompt()
+  }, [loadProjects, loadStandaloneChats, loadAllProjectChats, loadArchivedChats, fetchModels, loadDefaultSystemPrompt])
 
   // Validate persisted activeChatId/activeProjectId after data loads. Also cleans
   // stale deep links (useUrlNavSync restores ids from the URL optimistically);
@@ -922,29 +944,20 @@ export default function Home() {
     if (!targetChatId) {
       try {
         const projectId = activeProjectIdRef.current
-        if (projectId != null) {
-          const [newC] = await createChat(projectId, "New Chat")
-          setChats(prev => [newC, ...prev])
-          if (currentSystemPrompt) {
-            await updateChatSystemPrompt(newC.id, currentSystemPrompt).catch(() => {})
-          }
-          skipLoadOnceRef.current = newC.id
-          setActiveChatId(newC.id)
-          activeChatIdRef.current = newC.id
-          targetChatId = newC.id
-        } else {
-          const [newC] = await createStandaloneChat("New Chat")
-          setStandaloneChats(prev => [newC, ...prev])
-          // Persist the composer's selected persona prompt (if any) so it survives the
-          // post-create reload and applies to the first message — mirrors the project branch.
-          if (currentSystemPrompt) {
-            await updateChatSystemPrompt(newC.id, currentSystemPrompt).catch(() => {})
-          }
-          skipLoadOnceRef.current = newC.id
-          setActiveChatId(newC.id)
-          activeChatIdRef.current = newC.id
-          targetChatId = newC.id
+        const [newC] = projectId != null ? await createChat(projectId, "New Chat") : await createStandaloneChat("New Chat")
+        if (projectId != null) setChats(prev => [newC, ...prev])
+        else setStandaloneChats(prev => [newC, ...prev])
+        // Persist the chat's system prompt — the composer's persona/custom prompt,
+        // else the default system prompt (D4/U9) — so it survives the post-create
+        // reload and applies to the first message.
+        const systemPrompt = currentSystemPrompt || defaultSystemPromptRef.current
+        if (systemPrompt) {
+          await updateChatSystemPrompt(newC.id, systemPrompt).catch(() => {})
         }
+        skipLoadOnceRef.current = newC.id
+        setActiveChatId(newC.id)
+        activeChatIdRef.current = newC.id
+        targetChatId = newC.id
         setNewChatCompose(false)
       } catch (e) {
         console.error(e)
@@ -1021,6 +1034,9 @@ export default function Home() {
     try {
       const [newC] = await createChat(projectId, "New Chat")
       setChats(prev => [newC, ...prev])
+      // No persona (picked or project default) and no custom prompt → the
+      // default system prompt (D4/U9).
+      systemPrompt = systemPrompt || defaultSystemPromptRef.current
       if (systemPrompt) {
         await updateChatSystemPrompt(newC.id, systemPrompt).catch(() => {})
         setCurrentSystemPrompt(systemPrompt)
@@ -1326,15 +1342,55 @@ export default function Home() {
     }
   }, [activeChatId, applyGroundedDefault, getPersonaByPrompt])
 
-  // Kept on purpose: the per-project defaults dialog is reopened through a page
-  // prop in audit task C8 (its old sidebar entry point was dead).
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // "Project settings" (per-project default persona + model, D1): opened from the
+  // project chat header menu, the project landing header menu and the Projects
+  // view card menu.
   const handleOpenProjectSettings = useCallback((projectId: number) => {
     const project = projects.find(p => p.id === projectId)
     if (project) {
       dialogs.projectDefaults.open({ id: project.id, name: project.name })
     }
   }, [projects, dialogs.projectDefaults])
+
+  // Message Delete (D2). The DB row id is resolved from the transcript
+  // (resolveMessageDbId): a loaded message's own id, a session reply's turn
+  // metadata, or a session user message's id on the reply after it. MessagesList
+  // only offers Delete when that id is known and no turn is in flight.
+  const handleDeleteMessage = useCallback(async (messageId: string) => {
+    const chatId = activeChatIdRef.current
+    const index = messages.findIndex(m => m.id === messageId)
+    const dbId = resolveMessageDbId(messages, index)
+    if (chatId == null || dbId == null || isChatBusy(chatId)) return
+    try {
+      await deleteMessage(dbId)
+    } catch (e) {
+      console.error('Delete message failed:', e)
+      toast.error("Couldn't delete the message")
+      return
+    }
+    updateChatMessages(chatId, prev => prev.filter(m => m.id !== messageId))
+    toast.success('Message deleted')
+  }, [messages, isChatBusy, updateChatMessages])
+
+  // Regenerate (D2): the last assistant reply only. The SDK drops it from the
+  // store and re-posts the transcript up to the user message; the request carries
+  // `regenerate: true` + the replaced reply's DB id, and /api/chat deletes that row
+  // before answering, so the chat keeps exactly one reply. The model, effort and
+  // grounded mode are the composer's current ones, like any send.
+  const handleRegenerate = useCallback((messageId: string) => {
+    const chatId = activeChatIdRef.current
+    if (chatId == null || isChatBusy(chatId) || sendingRef.current) return
+    const index = messages.findIndex(m => m.id === messageId)
+    if (index === -1 || index !== messages.length - 1 || messages[index].role !== 'assistant') return
+    const replaceMessageDbId = resolveMessageDbId(messages, index)
+    if (replaceMessageDbId == null) return
+    // No images ride on a regenerate; anything left for this chat must not be
+    // attached to the existing user row.
+    pendingImagesRef.current.delete(chatId)
+    groundedAtSendRef.current.set(chatId, groundedRef.current)
+    clearFollowUps()
+    void regenerateInChat(chatId, messageId, { regenerate: true, replaceMessageDbId })
+  }, [messages, isChatBusy, regenerateInChat, clearFollowUps])
 
   const handleOpenProjectDocuments = useCallback((projectId: number) => {
     const project = projects.find(p => p.id === projectId)
@@ -1470,6 +1526,7 @@ export default function Home() {
             onDeleteProject={handleRequestDeleteProject}
             onRenameProject={handleRequestRenameProject}
             onNewProject={handleCreateProject}
+            onOpenProjectSettings={handleOpenProjectSettings}
           />
         ) : activeView === 'artifacts' ? (
           <ArtifactsView
@@ -1484,8 +1541,10 @@ export default function Home() {
               chatId={activeChatId}
               chatTitle={currentChatTitle}
               onTitleChange={handleUpdateChatTitle}
+              projectId={currentChatProjectId}
               projectName={currentChatProjectName}
               onProjectClick={currentChat?.projectId ? () => { setActiveView('home'); handleSelectProject(currentChat.projectId!); setActiveChatId(null); } : undefined}
+              onOpenProjectSettings={handleOpenProjectSettings}
             />
 
             {/* Messages */}
@@ -1500,6 +1559,8 @@ export default function Home() {
                 isLoading={isLoading}
                 activeChatId={activeChatId}
                 selectedModel={selectedModel}
+                onDeleteMessage={handleDeleteMessage}
+                onRegenerate={handleRegenerate}
                 artifacts={artifacts}
                 onOpenArtifact={setActiveArtifactId}
                 messagesLoading={messagesLoading}
@@ -1619,6 +1680,7 @@ export default function Home() {
             onDeleteProject={handleRequestDeleteProject}
             onBack={() => { setActiveView('projects'); setActiveChatId(null); setActiveProjectId(null) }}
             onRename={() => handleRequestRenameProject(activeProjectId)}
+            onOpenProjectSettings={handleOpenProjectSettings}
             chatActions={sidebarActions}
             excludedDocIds={excludedDocIds}
             onExcludedChange={setExcludedDocIds}
@@ -1740,7 +1802,7 @@ export default function Home() {
         open={dialogs.settings.isOpen}
         onOpenChange={dialogs.settings.setOpen}
         models={models}
-        onSettingsChanged={refreshModels}
+        onSettingsChanged={handleSettingsChanged}
         fontSize={fontSize}
         onFontSizeChange={setFontSize}
         messageDensity={messageDensity}

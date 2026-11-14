@@ -29,6 +29,12 @@ export const chatRequestSchema = z.object({
   // excludedDocumentIds scopes retrieval/manifest/read_document per chat.
   grounded: z.boolean().optional(),
   excludedDocumentIds: z.array(z.number().int().positive()).max(200).optional(),
+  // Regenerate (audit D2): the AI SDK sends `trigger: 'regenerate-message'`; the
+  // client adds `regenerate: true` and the DB id of the reply being replaced,
+  // which the route deletes before answering again (see /api/chat).
+  trigger: z.enum(['submit-message', 'regenerate-message']).optional(),
+  regenerate: z.boolean().optional(),
+  replaceMessageDbId: z.number().int().positive().optional(),
 })
 
 export const summarizeRequestSchema = z.object({

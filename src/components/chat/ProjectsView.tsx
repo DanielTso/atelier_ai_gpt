@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Search, Plus, MoreVertical, Pencil, Trash2, ChevronDown, FolderPlus, FileText, Pin } from 'lucide-react'
+import { Search, Plus, MoreVertical, Pencil, Trash2, ChevronDown, FolderPlus, FileText, Pin, SlidersHorizontal } from 'lucide-react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { useLocalStorage } from '@/hooks/useLocalStorage'
 
@@ -21,6 +21,8 @@ interface ProjectsViewProps {
   onDeleteProject: (id: number) => void
   onRenameProject: (id: number) => void
   onNewProject: () => void
+  /** Opens the per-project defaults dialog (default persona and model). */
+  onOpenProjectSettings?: (id: number) => void
 }
 
 type SortKey = 'recent' | 'name'
@@ -44,6 +46,7 @@ export function ProjectsView({
   onDeleteProject,
   onRenameProject,
   onNewProject,
+  onOpenProjectSettings,
 }: ProjectsViewProps) {
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<SortKey>('recent')
@@ -226,6 +229,15 @@ export function ProjectsView({
                           <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
                           Rename
                         </DropdownMenu.Item>
+                        {onOpenProjectSettings && (
+                          <DropdownMenu.Item
+                            onClick={() => onOpenProjectSettings(p.id)}
+                            className="flex items-center gap-2.5 px-3 py-2 text-sm rounded-lg cursor-pointer hover:bg-accent outline-none transition-colors"
+                          >
+                            <SlidersHorizontal className="h-3.5 w-3.5 text-muted-foreground" />
+                            Project settings
+                          </DropdownMenu.Item>
+                        )}
                         <DropdownMenu.Item
                           onClick={() => onDeleteProject(p.id)}
                           className="flex items-center gap-2.5 px-3 py-2 text-sm rounded-lg cursor-pointer text-destructive hover:bg-destructive/10 outline-none transition-colors"

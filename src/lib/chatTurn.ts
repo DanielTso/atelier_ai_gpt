@@ -14,8 +14,11 @@ import type { TextStreamPart, ToolSet } from 'ai'
  * - On the `finish` chunk: `assistantMessageDbId` is the saved row, or null when
  *   the turn produced nothing to save.
  * - A stopped/failed turn never receives `finish`; the server still saves the
- *   partial reply, and the client looks the row up (see `useChatPersistence`).
- * - `userMessageDbId` is null when the request's last message was already a DB row
+ *   partial reply, and the client looks the row up (see `useChatPersistence`),
+ *   then writes the found id into the reply's metadata.
+ * - `userMessageDbId` is the user row this reply answers: the row the request
+ *   inserted, or, on a regenerate, the existing row (nothing is inserted). It is
+ *   null when the request's last message was already a DB row on an ordinary send
  *   (nothing was inserted for it).
  */
 export type TurnMetadata = {
@@ -51,6 +54,31 @@ const INT4_MAX = 2147483647
  */
 export function isDbMessageId(id: unknown): boolean {
   return typeof id === 'string' && /^[1-9]\d{0,9}$/.test(id) && Number(id) <= INT4_MAX
+}
+
+/**
+ * The DB row id of `messages[index]` in a client transcript, or null when it is
+ * not known (yet). Client ids are never rewritten to DB ids, so:
+ *
+ * - a message loaded from the DB carries its row id as its own id;
+ * - a reply sent this session carries it in its turn metadata (for a stopped
+ *   turn, once `useChatPersistence` has looked it up);
+ * - a user message sent this session has no metadata of its own — its row id
+ *   rides on the metadata of the reply right after it. With no reply after it
+ *   (stopped before the first token, or failed before the stream) it is unknown
+ *   until the chat is reopened.
+ */
+export function resolveMessageDbId(
+  messages: ReadonlyArray<{ id: string; role: string; metadata?: unknown }>,
+  index: number,
+): number | null {
+  const message = messages[index]
+  if (!message) return null
+  if (isDbMessageId(message.id)) return Number(message.id)
+  if (message.role === 'assistant') return readTurnMetadata(message)?.assistantMessageDbId ?? null
+  const next = messages[index + 1]
+  if (message.role === 'user' && next?.role === 'assistant') return readTurnMetadata(next)?.userMessageDbId ?? null
+  return null
 }
 
 /**

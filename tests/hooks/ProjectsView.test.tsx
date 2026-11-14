@@ -69,6 +69,15 @@ describe('ProjectsView', () => {
     expect(onSelectProject).not.toHaveBeenCalled()
   })
 
+  it('opens the project settings from the kebab menu', () => {
+    const onOpenProjectSettings = vi.fn()
+    const { onSelectProject } = renderView({ onOpenProjectSettings })
+    openMenu('Drover_HUB')
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Project settings' }))
+    expect(onOpenProjectSettings).toHaveBeenCalledWith(3)
+    expect(onSelectProject).not.toHaveBeenCalled()
+  })
+
   it('requests rename from the kebab menu', () => {
     const { onRenameProject } = renderView()
     openMenu('Drover_HUB')

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
-import { createAssistantTurnRecorder, isDbMessageId, readTurnMetadata } from '@/lib/chatTurn'
+import type { UIMessage } from 'ai'
+import { createAssistantTurnRecorder, isDbMessageId, readTurnMetadata, resolveMessageDbId } from '@/lib/chatTurn'
 
 // Stream parts as streamText hands them to an `experimental_transform` (verified
 // against ai@6.0.230: text deltas carry `.text`, tool results `.toolName`/`.output`).
@@ -68,6 +69,41 @@ describe('readTurnMetadata', () => {
     expect(readTurnMetadata({ metadata: 'nope' })).toBeNull()
     expect(readTurnMetadata({ metadata: { projectId: 5 } })).toBeNull()
     expect(readTurnMetadata({ metadata: { chatId: '3' } })).toBeNull()
+  })
+})
+
+describe('resolveMessageDbId', () => {
+  const msg = (id: string, role: 'user' | 'assistant', metadata?: unknown) =>
+    ({ id, role, parts: [{ type: 'text', text: id }], ...(metadata ? { metadata } : {}) }) as UIMessage
+  const meta = (userMessageDbId: number | null, assistantMessageDbId: number | null) =>
+    ({ chatId: 1, projectId: null, userMessageDbId, assistantMessageDbId })
+
+  it('reads a message loaded from the DB off its own id', () => {
+    const messages = [msg('41', 'user'), msg('42', 'assistant')]
+    expect(resolveMessageDbId(messages, 0)).toBe(41)
+    expect(resolveMessageDbId(messages, 1)).toBe(42)
+  })
+
+  it('reads a reply sent this session off its turn metadata', () => {
+    const messages = [msg('userSdkId0000001', 'user'), msg('asstSdkId0000001', 'assistant', meta(50, 51))]
+    expect(resolveMessageDbId(messages, 1)).toBe(51)
+  })
+
+  it('reads a user message sent this session off the metadata of the reply after it', () => {
+    const messages = [msg('userSdkId0000001', 'user'), msg('asstSdkId0000001', 'assistant', meta(50, 51))]
+    expect(resolveMessageDbId(messages, 0)).toBe(50)
+  })
+
+  it('returns null while a stopped reply has no row id yet', () => {
+    const messages = [msg('userSdkId0000001', 'user'), msg('asstSdkId0000001', 'assistant', meta(50, null))]
+    expect(resolveMessageDbId(messages, 1)).toBeNull()
+  })
+
+  it('returns null for a session user message with no reply after it, and for an index out of range', () => {
+    const messages = [msg('userSdkId0000001', 'user')]
+    expect(resolveMessageDbId(messages, 0)).toBeNull()
+    expect(resolveMessageDbId(messages, 5)).toBeNull()
+    expect(resolveMessageDbId(messages, -1)).toBeNull()
   })
 })
 

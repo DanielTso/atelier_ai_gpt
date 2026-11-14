@@ -141,9 +141,11 @@ export function recentTail<M extends UIMessage>(
  * when that user message was sent too. Messages trimmed off the front are NOT
  * listed: they are in no other layer, so retrieval may still surface them.
  *
- * Known edge: a stopped or failed reply never gets `assistantMessageDbId` in the
- * client's metadata (no `finish` chunk), so its saved row is not listed here and
- * can be sent and also retrieved once it is embedded.
+ * Known edge: a stopped or failed reply gets no `assistantMessageDbId` from the
+ * stream (no `finish` chunk). The client writes it into the metadata once its
+ * `getAssistantReplyId` lookup finds the row; until then, or if the lookup finds
+ * nothing, its saved row is not listed here and can be sent and also retrieved
+ * once it is embedded.
  */
 export function sentMessageDbIds(sent: UIMessage[], currentUserMessageDbId: number | null): number[] {
   const ids = new Set<number>()

@@ -1172,6 +1172,121 @@ describe('POST /api/chat — server-side turn persistence', () => {
     })
   })
 
+  describe('regenerate-replaces-last-reply', () => {
+    /** A chat holding one finished turn: a user row and its assistant reply. */
+    async function chatWithTurn() {
+      const [chat] = await createStandaloneChat('Chat')
+      const [user] = await testDb.insert(messagesTable).values({ chatId: chat.id, role: 'user', content: 'Question' }).returning()
+      const [reply] = await testDb.insert(messagesTable).values({ chatId: chat.id, role: 'assistant', content: 'Old answer' }).returning()
+      return { chat, user, reply }
+    }
+
+    it('deletes the replaced reply and leaves exactly one assistant row (history loaded from the DB)', async () => {
+      const { chat, user, reply } = await chatWithTurn()
+      const response = await postTurn({
+        messages: [userMessage('Question', String(user.id))],
+        chatId: chat.id,
+        trigger: 'regenerate-message',
+        regenerate: true,
+        replaceMessageDbId: reply.id,
+      })
+      expect(response.status).toBe(200)
+      const chunks = await readChunks(response)
+
+      const rows = await settledRows(chat.id)
+      expect(rows.map(r => [r.role, r.content])).toEqual([['user', 'Question'], ['assistant', 'Full answer.']])
+      expect(rows.some(r => r.id === reply.id)).toBe(false)
+      // The reply answers the existing user row; nothing new was inserted for it.
+      expect(chunks.find(c => c.type === 'finish')?.messageMetadata).toEqual({
+        chatId: chat.id,
+        projectId: null,
+        userMessageDbId: user.id,
+        assistantMessageDbId: rows[1].id,
+      })
+    })
+
+    it('does not insert a second user row when the user message carries a client id (sent this session)', async () => {
+      const { chat, reply } = await chatWithTurn()
+      const response = await postTurn({
+        messages: [userMessage('Question')],
+        chatId: chat.id,
+        trigger: 'regenerate-message',
+        regenerate: true,
+        replaceMessageDbId: reply.id,
+      })
+      await response.text()
+
+      const rows = await settledRows(chat.id)
+      expect(rows.map(r => [r.role, r.content])).toEqual([['user', 'Question'], ['assistant', 'Full answer.']])
+    })
+
+    it('records exactly one usage row for the regenerate request', async () => {
+      const { chat, user, reply } = await chatWithTurn()
+      const response = await postTurn({
+        messages: [userMessage('Question', String(user.id))],
+        chatId: chat.id,
+        regenerate: true,
+        replaceMessageDbId: reply.id,
+      })
+      await response.text()
+      await settledRows(chat.id)
+      await vi.waitFor(() => expect(mockRecordUsage).toHaveBeenCalledTimes(1))
+      expect(mockRecordUsage.mock.calls[0][0]).toMatchObject({ chatId: chat.id, purpose: 'chat' })
+    })
+
+    it('refuses (409) to replace a reply that is no longer the newest message, and writes nothing', async () => {
+      const { chat, user, reply } = await chatWithTurn()
+      await testDb.insert(messagesTable).values({ chatId: chat.id, role: 'user', content: 'Follow-up' })
+      const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      try {
+        const response = await postTurn({
+          messages: [userMessage('Question', String(user.id))],
+          chatId: chat.id,
+          regenerate: true,
+          replaceMessageDbId: reply.id,
+        })
+        expect(response.status).toBe(409)
+      } finally {
+        errSpy.mockRestore()
+      }
+      expect(mockCreateProvider).not.toHaveBeenCalled()
+      expect((await rowsFor(chat.id)).map(r => r.content)).toEqual(['Question', 'Old answer', 'Follow-up'])
+    })
+
+    it('refuses (409) when the posted user message is not the one the reply answers', async () => {
+      const { chat, reply } = await chatWithTurn()
+      const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      try {
+        const response = await postTurn({
+          messages: [userMessage('Question', String(reply.id + 50))],
+          chatId: chat.id,
+          regenerate: true,
+          replaceMessageDbId: reply.id,
+        })
+        expect(response.status).toBe(409)
+      } finally {
+        errSpy.mockRestore()
+      }
+      expect((await rowsFor(chat.id)).map(r => r.content)).toEqual(['Question', 'Old answer'])
+    })
+
+    it('rejects (400) a regenerate without the id of the reply to replace', async () => {
+      const { chat, user } = await chatWithTurn()
+      const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      try {
+        const response = await postTurn({
+          messages: [userMessage('Question', String(user.id))],
+          chatId: chat.id,
+          trigger: 'regenerate-message',
+        })
+        expect(response.status).toBe(400)
+      } finally {
+        errSpy.mockRestore()
+      }
+      expect((await rowsFor(chat.id)).map(r => r.content)).toEqual(['Question', 'Old answer'])
+    })
+  })
+
   describe('rejects-unknown-chat', () => {
     it('returns 404 and writes nothing when the chat does not exist', async () => {
       const [chat] = await createStandaloneChat('Real chat')

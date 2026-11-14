@@ -61,6 +61,18 @@ function openChatMenu(index: number) {
   fireEvent.pointerUp(triggers[index])
 }
 
+describe('ProjectLandingPage header menu', () => {
+  it('opens the project settings from the header menu', () => {
+    const onOpenProjectSettings = vi.fn()
+    renderPage({ onOpenProjectSettings })
+    const trigger = screen.getByRole('button', { name: 'Project options for Drover_HUB' })
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false })
+    fireEvent.pointerUp(trigger)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Project settings' }))
+    expect(onOpenProjectSettings).toHaveBeenCalledWith(3)
+  })
+})
+
 describe('ProjectLandingPage chat rows', () => {
   it('renders a context-menu trigger per chat row', () => {
     renderPage()

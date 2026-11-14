@@ -11,7 +11,7 @@ import {
 } from '@/app/actions'
 import { extractText } from '@/lib/messageParts'
 import { extractGeneratedImageOutputs } from '@/lib/generatedImages'
-import { readTurnMetadata, type TurnMetadata } from '@/lib/chatTurn'
+import { isDbMessageId, readTurnMetadata, type TurnMetadata } from '@/lib/chatTurn'
 import { SUMMARIZATION_THRESHOLD, SUMMARIZE_EVERY, SUMMARIZE_RETRY_AFTER } from '@/hooks/useSummarization'
 import type { AttachedImage } from '@/lib/fileAttachments'
 import { replaceFilePartUrls } from '@/lib/chatRequestSize'
@@ -138,6 +138,11 @@ export function useChatPersistence(opts: UseChatPersistenceOpts) {
     const pendingImages = takePendingImages(chatId)
     if (userMessageDbId == null || handledUserRowsRef.current.has(userMessageDbId)) return
     handledUserRowsRef.current.add(userMessageDbId)
+    // A regenerate reports the EXISTING user row. When the posted user message came
+    // from the DB, its row was saved and embedded on an earlier visit: nothing to
+    // redo. (One sent this session was handled on its own turn — the set above.)
+    const lastUser = messages ? [...messages].reverse().find(m => m.role === 'user') : undefined
+    if (lastUser && isDbMessageId(lastUser.id)) return
 
     // Save image attachments if any were pending
     if (pendingImages.length > 0) {
@@ -170,7 +175,6 @@ export function useChatPersistence(opts: UseChatPersistenceOpts) {
     }
 
     // Async embed the user message (best-effort)
-    const lastUser = messages ? [...messages].reverse().find(m => m.role === 'user') : undefined
     const userText = lastUser ? extractText(lastUser.parts) : ''
     if (userText.trim()) {
       postEmbed({ messageId: userMessageDbId, chatId, projectId, content: userText })
@@ -230,6 +234,15 @@ export function useChatPersistence(opts: UseChatPersistenceOpts) {
       let assistantMessageDbId = turn.assistantMessageDbId
       if (assistantMessageDbId == null && userMessageDbId != null && (isAbort || isError || isDisconnect)) {
         assistantMessageDbId = await lookUpAssistantReplyId(chatId, userMessageDbId)
+        // Record the found id on the reply itself, so everything that reads a
+        // session message's row id from its metadata (message Delete/Regenerate,
+        // the next request's semantic-exclusion list) sees it too.
+        const foundId = assistantMessageDbId
+        if (foundId != null) {
+          updateChatMessages(chatId, prev => prev.map(m => m.id === message.id
+            ? { ...m, metadata: { ...turn, assistantMessageDbId: foundId } satisfies TurnMetadata }
+            : m))
+        }
       }
 
       if (assistantMessageDbId != null) {

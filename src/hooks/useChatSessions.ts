@@ -171,6 +171,23 @@ class ChatSessionRegistry {
     }
   }
 
+  /**
+   * Regenerate reply `messageId` in `chatId`'s own session: the SDK drops it from
+   * the store and re-posts the transcript up to the user message before it, with
+   * `trigger: 'regenerate-message'` and `body` merged into the request. Resolves
+   * when the new turn ends.
+   */
+  async regenerate(chatId: number, messageId: string, body: Record<string, unknown>): Promise<void> {
+    const key = chatSessionKey(chatId)
+    const session = this.session(chatId)
+    this.sending.add(key)
+    try {
+      await session.regenerate({ messageId, body })
+    } finally {
+      this.sending.delete(key)
+    }
+  }
+
   /** The session for a chat, created on first use with an empty transcript. */
   session(chatId: number | null): Chat<UIMessage> {
     const key = chatSessionKey(chatId)
@@ -240,6 +257,12 @@ export function useChatSessions({ activeChatId, getRequestBody, onTurnStart, onT
     [registry],
   )
 
+  /** Regenerate reply `messageId` through `chatId`'s own session (see ChatSessionRegistry.regenerate). */
+  const regenerateInChat = useCallback(
+    (chatId: number, messageId: string, body: Record<string, unknown>) => registry.regenerate(chatId, messageId, body),
+    [registry],
+  )
+
   /** True while `chatId` has a turn in flight (possibly in the background). */
   const isChatBusy = useCallback((chatId: number) => registry.isBusy(chatSessionKey(chatId)), [registry])
 
@@ -262,6 +285,7 @@ export function useChatSessions({ activeChatId, getRequestBody, onTurnStart, onT
     /** Stop the ACTIVE chat's turn. Background turns are never stopped. */
     stop,
     sendToChat,
+    regenerateInChat,
     isChatBusy,
     updateChatMessages,
     peekChatMessages,

@@ -41,7 +41,9 @@ Personas live in the composer's persona picker (the chip next to the model selec
 
 **Per message/chat:** open the persona picker in the composer and choose. The persona sets the system prompt for the chat, pre-selects its model, and sets the effort pill. **Your explicit picks always win** — if you choose a persona and then change the model or effort manually, your choice sticks (a project default loading late will never silently revert it).
 
-**Per project:** every project can set a **default persona and model** (project header ⋮ → Project settings, or the Projects view). New chats in that project start with those defaults — e.g. a claims project that always opens on Claims & Delay Analyst. The composer picker still overrides per chat.
+**Per project:** every project can set a **default persona and model** under **Project settings**, in three places: the project page's header ⋮ menu, a project card's ⋮ menu in the Projects view, and the ⋮ menu at the right of a project chat's header. New chats in that project start with those defaults — e.g. a claims project that always opens on Claims & Delay Analyst. The composer picker still overrides per chat.
+
+**Default system prompt:** Settings → **Model Defaults** → "Default system prompt" is applied to a new chat that starts with no persona prompt and no custom prompt. Precedence when a chat is created: the persona's prompt (picked in the composer, or the project's default persona) → a custom prompt typed in the composer → the default system prompt. Explicitly picking any persona, General Assistant included, sets its prompt and so wins; the default applies only when nothing was picked (the chip then shows General Assistant without its prompt being written). The prompt is written to the chat when its first message is sent; changing the setting later does not touch existing chats.
 
 **Effort pill:** effort (`low → max`) controls Claude's adaptive-thinking budget. It follows the persona but is independently adjustable in the composer. Note: Haiku doesn't accept an effort setting (the Brief persona simply runs fast).
 
@@ -64,7 +66,7 @@ The field list is fixed in code (`CONTRACT_ABSTRACT_FIELDS` in `src/hooks/usePer
 
 ## Custom personas
 
-Settings → **Model Defaults** tab → add a persona: name, icon, prompt, model, effort. Custom personas appear in the picker alongside built-ins and can be set as project defaults. They're stored locally in your browser (`localStorage`), not in the database — so they're per-device for now.
+Settings → **Model Defaults** tab → add a persona: **name, icon, prompt** and a **Grounded answers** toggle. There is no model or effort field: a custom persona runs on the house default (the `sonnet` tier at `medium` effort), and you can still change both in the composer per chat. Custom personas can be deleted from the same list but not edited — to change one, delete it and add it again. They appear in the picker alongside built-ins and can be set as project defaults. They're stored locally in your browser (`localStorage`), not in the database — so they're per-device for now.
 
 ## How personas interact with project documents
 

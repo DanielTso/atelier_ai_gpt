@@ -29,6 +29,7 @@ import {
   saveGeneratedImage,
   getChatAttachments,
   deleteChat,
+  deleteMessage,
 } from '@/app/actions'
 
 describe('attachment storage lifecycle', () => {
@@ -213,5 +214,20 @@ describe('attachment storage lifecycle', () => {
     expect(mockRemoveObjects).toHaveBeenCalledOnce()
     const [paths] = mockRemoveObjects.mock.calls[0] as unknown as [string[]]
     expect(paths).toEqual([`attachments/${chatId}/${messageId}/0-p.png`])
+  })
+
+  it('configured → deleteMessage removes that message\'s stored objects and its attachment rows', async () => {
+    await saveMessageAttachments(messageId, chatId, [
+      { filename: 'p.png', mediaType: 'image/png', dataUrl: 'data:image/png;base64,QUJD', fileSize: 3 },
+    ])
+    const [other] = await saveMessage(chatId, 'assistant', 'Kept')
+    await saveMessageAttachments(other.id, chatId, [
+      { filename: 'k.png', mediaType: 'image/png', dataUrl: 'data:image/png;base64,QUJD', fileSize: 3 },
+    ])
+
+    expect(await deleteMessage(messageId)).toBe(true)
+
+    expect(mockRemoveObjects).toHaveBeenCalledExactlyOnceWith([`attachments/${chatId}/${messageId}/0-p.png`])
+    expect((await getChatAttachments(chatId)).map(a => a.messageId)).toEqual([other.id])
   })
 })

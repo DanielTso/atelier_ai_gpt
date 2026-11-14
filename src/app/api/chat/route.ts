@@ -1,5 +1,5 @@
 import { streamText, convertToModelMessages, stepCountIs, APICallError, type UIMessage, type LanguageModelUsage } from 'ai';
-import { getChatWithContext, getProjectContext, getProjectDocuments, saveMessage } from '@/app/actions';
+import { deleteMessage, getChatWithContext, getProjectContext, getProjectDocuments, getRegenerateTarget, saveMessage } from '@/app/actions';
 import { buildProjectPreamble } from '@/lib/projectPreamble';
 import { retrieveContext } from '@/lib/retrieval';
 import { createProvider } from '@/lib/providers';
@@ -138,7 +138,7 @@ export async function POST(req: Request) {
     if (!body.success) {
       return apiError(body.error, 'Invalid request body', 400);
     }
-    const { messages, model, chatId, effort, grounded, excludedDocumentIds } = body.data;
+    const { messages, model, chatId, effort, grounded, excludedDocumentIds, trigger, regenerate, replaceMessageDbId } = body.data;
 
     // This route persists the turn to the request's chat (below), so the chat is
     // validated first: an unknown id is a 404 with nothing written, not a
@@ -148,14 +148,37 @@ export async function POST(req: Request) {
       return apiError(new Error(`chat ${chatId} does not exist`), 'Chat not found', 404);
     }
 
+    const lastMessage = messages[messages.length - 1];
+
+    // Regenerate (audit D2): answer the chat's last user message again, replacing
+    // the reply it already has. The client has dropped that reply from its store
+    // and posts the transcript ending at the user message, plus the replaced row's
+    // id. The user message is already saved, so nothing is inserted for it (even
+    // when it carries a client id — it was sent this session) and its row is
+    // reported as the turn's `userMessageDbId`. The old reply is deleted below,
+    // before the model is called, so the new one is saved in its place.
+    const isRegenerate = regenerate === true || trigger === 'regenerate-message' || replaceMessageDbId != null;
+    let regenerateUserRowId: number | null = null;
+    if (isRegenerate) {
+      if (!chat || replaceMessageDbId == null || lastMessage.role !== 'user') {
+        return apiError(new Error('regenerate needs a chat, replaceMessageDbId and a trailing user message'), 'Invalid regenerate request', 400);
+      }
+      regenerateUserRowId = await getRegenerateTarget(chat.id, replaceMessageDbId);
+      const postedRowId = isDbMessageId(lastMessage.id) ? Number(lastMessage.id) : null;
+      if (regenerateUserRowId == null || (postedRowId != null && postedRowId !== regenerateUserRowId)) {
+        return apiError(new Error(`message ${replaceMessageDbId} cannot be regenerated in chat ${chat.id}`), 'This reply can no longer be regenerated', 409);
+      }
+    }
+
     // Turn persistence, user half (audit U1/F1/F3). The user's message is saved
     // HERE, to the request's chat, before any model work — so it is durable no
     // matter what the client does next, and its row id can ride on the stream's
     // first chunk. Only the newest message is ever inserted, and only when it is
     // not already a DB row: after a reload the client's history carries
-    // stringified `messages.id`s, and re-saving those was the F3 duplicate.
-    const lastMessage = messages[messages.length - 1];
+    // stringified `messages.id`s, and re-saving those was the F3 duplicate. A
+    // regenerate inserts nothing (see above).
     const saveUserTurn = async (): Promise<number | null> => {
+      if (isRegenerate) return regenerateUserRowId;
       if (!chat || lastMessage.role !== 'user' || isDbMessageId(lastMessage.id)) return null;
       const [row] = await saveMessage(chat.id, 'user', messageText(lastMessage));
       return row?.id ?? null;
@@ -177,6 +200,15 @@ export async function POST(req: Request) {
     // message that was never stored.
     const [userMessageDbId, { modelName, model: selectedModel, tools: providerTools, providerOptions }] =
       await Promise.all([saveUserTurn(), resolveProvider()]);
+
+    // Regenerate: delete the replaced reply (and its attachments' Storage objects)
+    // now — after the provider resolved, so a missing key does not cost the user
+    // the reply they had, and before the model runs, so a stopped turn's reply
+    // lookup (getAssistantReplyId: the row right after the user row) can only find
+    // the NEW reply. False means a concurrent regenerate deleted it first.
+    if (isRegenerate && replaceMessageDbId != null && !(await deleteMessage(replaceMessageDbId))) {
+      return apiError(new Error(`message ${replaceMessageDbId} was already replaced`), 'This reply can no longer be regenerated', 409);
+    }
 
     // Build context with hybrid approach: system prompt + semantic context + summary + recent messages.
     //

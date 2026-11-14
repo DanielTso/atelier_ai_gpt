@@ -211,9 +211,14 @@ export async function saveMessage(chatId: number, role: string, content: string)
   return rows
 }
 
-export async function deleteMessage(id: number) {
+// Removes one message: its attachments' Storage objects first, then the row (its
+// attachment rows and embedding cascade). Resolves true when a row was deleted and
+// false when it was already gone — `/api/chat`'s regenerate path reads false as
+// "another request replaced this reply first".
+export async function deleteMessage(id: number): Promise<boolean> {
   await removeAttachmentObjects(eq(messageAttachments.messageId, id))
-  await db.delete(messages).where(eq(messages.id, id))
+  const deleted = await db.delete(messages).where(eq(messages.id, id)).returning({ id: messages.id })
+  return deleted.length > 0
 }
 
 export async function getChatMessages(chatId: number, limit: number = 100) {
@@ -246,6 +251,24 @@ export async function getAssistantReplyId(chatId: number, userMessageId: number)
     .orderBy(asc(messages.id))
     .limit(1)
   return next?.role === 'assistant' ? next.id : null
+}
+
+/**
+ * Regenerate guard for `/api/chat`: the user row that `assistantMessageId` answers,
+ * or null when that reply may not be replaced. Only the chat's NEWEST message can
+ * be regenerated; it must be an assistant reply in this chat, and the row right
+ * before it must be the user message it answers. A stale client (another tab added
+ * a turn, or the reply was already replaced) gets null instead of deleting the
+ * wrong row.
+ */
+export async function getRegenerateTarget(chatId: number, assistantMessageId: number): Promise<number | null> {
+  const [newest, previous] = await db.select({ id: messages.id, role: messages.role })
+    .from(messages)
+    .where(eq(messages.chatId, chatId))
+    .orderBy(desc(messages.id))
+    .limit(2)
+  if (!newest || newest.id !== assistantMessageId || newest.role !== 'assistant') return null
+  return previous?.role === 'user' ? previous.id : null
 }
 
 // A chat's children carry their own project_id (for project-scoped retrieval,

@@ -456,6 +456,36 @@ describe('useChatPersistence', () => {
     expect(mockIncrementUsageMessageCount).toHaveBeenCalledExactlyOnceWith(3)
   })
 
+  it('writes the looked-up row id into the stopped reply\'s metadata, so Delete and Regenerate can find it', async () => {
+    mockGetAssistantReplyId.mockResolvedValue(77)
+    const opts = makeOpts()
+    const { result } = renderHook(() => useChatPersistence(opts))
+    const message = makeMessage({ id: 'stopped-1', text: 'Partial', metadata: meta({ chatId: 3, userMessageDbId: 30, assistantMessageDbId: null }) })
+
+    await act(async () => { await result.current.onTurnFinish(makeTurn(message, { isAbort: true })) })
+    await settle()
+
+    const updaters = opts.updateChatMessages.mock.calls.filter(([chatId]) => chatId === 3).map(([, updater]) => updater)
+    const other = { id: 'other', role: 'user', parts: [] } as unknown as UIMessage
+    const patched = updaters.reduce((list, updater) => updater(list), [other, message] as UIMessage[])
+    expect(patched[0]).toBe(other)
+    expect(patched[1].metadata).toEqual({ chatId: 3, projectId: null, userMessageDbId: 30, assistantMessageDbId: 77 })
+  })
+
+  it('skips the user-message steps on a regenerate — the posted user message is an existing DB row', async () => {
+    const image = { name: 'site.png', mediaType: 'image/png', dataUrl: 'data:image/png;base64,AAA', size: 3 } as AttachedImage
+    const opts = makeOpts({ pendingImages: new Map([[1, [image]]]) })
+    const { result } = renderHook(() => useChatPersistence(opts))
+    const loadedUser = { id: '100', role: 'user', parts: [{ type: 'text', text: 'Question' }] } as unknown as UIMessage
+
+    act(() => result.current.onTurnStart({ metadata: meta({ assistantMessageDbId: null }), messages: [loadedUser] }))
+    await settle()
+
+    expect(opts.takePendingImages).toHaveBeenCalledWith(1)
+    expect(mockSaveMessageAttachments).not.toHaveBeenCalled()
+    expect(fetchBodies('/api/embed')).toEqual([])
+  })
+
   it('skips the assistant-row steps when a stopped turn\'s reply was never saved, but keeps the chat-level ones', async () => {
     vi.useFakeTimers()
     try {

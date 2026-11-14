@@ -14,6 +14,7 @@ import {
   getChatMessages,
   deleteMessage,
   getAssistantReplyId,
+  getRegenerateTarget,
 } from '@/app/actions'
 
 describe('message actions', () => {
@@ -59,6 +60,44 @@ describe('message actions', () => {
     await deleteMessage(msg.id)
     const msgs = await getChatMessages(chatId)
     expect(msgs).toHaveLength(0)
+  })
+
+  it('reports whether a row was deleted', async () => {
+    const [msg] = await saveMessage(chatId, 'assistant', 'Reply')
+    expect(await deleteMessage(msg.id)).toBe(true)
+    expect(await deleteMessage(msg.id)).toBe(false)
+  })
+
+  describe('getRegenerateTarget', () => {
+    it('returns the user row the newest assistant reply answers', async () => {
+      const [user] = await saveMessage(chatId, 'user', 'Question')
+      const [reply] = await saveMessage(chatId, 'assistant', 'Answer')
+      expect(await getRegenerateTarget(chatId, reply.id)).toBe(user.id)
+    })
+
+    it('refuses a reply that is not the newest message of the chat', async () => {
+      await saveMessage(chatId, 'user', 'Question')
+      const [reply] = await saveMessage(chatId, 'assistant', 'Answer')
+      await saveMessage(chatId, 'user', 'Follow-up')
+      expect(await getRegenerateTarget(chatId, reply.id)).toBeNull()
+    })
+
+    it('refuses a user message', async () => {
+      const [user] = await saveMessage(chatId, 'user', 'Question')
+      expect(await getRegenerateTarget(chatId, user.id)).toBeNull()
+    })
+
+    it('refuses a reply with no user message before it', async () => {
+      const [reply] = await saveMessage(chatId, 'assistant', 'Orphan')
+      expect(await getRegenerateTarget(chatId, reply.id)).toBeNull()
+    })
+
+    it('refuses a reply that belongs to another chat', async () => {
+      const [other] = await createChat((await createProject('Q'))[0].id, 'Other')
+      await saveMessage(other.id, 'user', 'Question')
+      const [reply] = await saveMessage(other.id, 'assistant', 'Answer')
+      expect(await getRegenerateTarget(chatId, reply.id)).toBeNull()
+    })
   })
 
   describe('getAssistantReplyId', () => {

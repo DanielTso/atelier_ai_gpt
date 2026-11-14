@@ -31,8 +31,9 @@ export function MessageActions({
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
         <button
+          aria-label="Message actions"
           className={cn(
-            "p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity",
+            "p-1 rounded opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100 transition-opacity",
             "hover:bg-accent text-muted-foreground hover:text-foreground"
           )}
         >
@@ -82,7 +83,7 @@ export function MessageActions({
               <DropdownMenu.Item
                 className={cn(
                   "flex items-center gap-2 px-3 py-2 text-sm rounded-md cursor-pointer outline-none",
-                  "text-red-400 hover:bg-red-500/10",
+                  "text-destructive hover:bg-destructive/10",
                   "transition-colors"
                 )}
                 onSelect={onDelete}

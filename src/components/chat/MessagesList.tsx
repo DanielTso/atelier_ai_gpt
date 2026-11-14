@@ -13,6 +13,7 @@ import { SmoothStreamingWrapper } from "./SmoothStreamingWrapper"
 import { MessageActions } from "./MessageActions"
 import { ThinkingStatus } from "./ThinkingStatus"
 import { deriveAssistantStage, assistantHasVisibleContent } from "@/lib/chatStage"
+import { resolveMessageDbId } from "@/lib/chatTurn"
 import { ToolProgressCard, isToolCardPart, extractInlineArtifactIds } from "./ToolProgressCard"
 import { formatMessageTime, formatFullTime } from "@/lib/formatTime"
 import { parseFileMetadata, stripFilePrefix, getFileTypeLabel, type FileMetadata } from "@/lib/fileAttachments"
@@ -38,7 +39,10 @@ interface MessagesListProps {
   isLoading: boolean
   activeChatId: number | null
   selectedModel: string
+  /** Delete a message (by its UI id). Offered only once its DB row id is known. */
   onDeleteMessage?: (id: string) => void
+  /** Regenerate a reply (by its UI id). Offered on the last assistant reply only. */
+  onRegenerate?: (id: string) => void
   artifacts?: ArtifactSummary[]
   onOpenArtifact?: (id: number) => void
   /** True while the chat's history is fetching — skeletons hold the layout. */
@@ -357,6 +361,7 @@ export const MessagesList = memo(function MessagesList({
   activeChatId,
   selectedModel,
   onDeleteMessage,
+  onRegenerate,
   artifacts,
   onOpenArtifact,
   messagesLoading = false,
@@ -470,6 +475,14 @@ export const MessagesList = memo(function MessagesList({
               m.role === 'assistant' && isGroundedTurn(m.id) &&
               documentsById.size > 0 && !hasCiteMarker(getMessageText(m))
 
+            // Delete / Regenerate act on the DB row, so they are offered only when
+            // its id is known (see resolveMessageDbId), and never while a reply is
+            // in flight. Regenerate: the last reply only, and only when it answers a
+            // user message (the server refuses anything else, e.g. after that
+            // user message was deleted).
+            const canAct = !isLoading && resolveMessageDbId(messages, index) != null
+            const canRegenerate = canAct && m.role === 'assistant' && index === messages.length - 1 && messages[index - 1]?.role === 'user'
+
             return (
             <motion.div
               key={m.id}
@@ -524,7 +537,8 @@ export const MessagesList = memo(function MessagesList({
                   <MessageActions
                     messageText={getMessageText(m)}
                     messageRole={m.role as 'user' | 'assistant'}
-                    onDelete={onDeleteMessage ? () => onDeleteMessage(m.id) : undefined}
+                    onDelete={onDeleteMessage && canAct ? () => onDeleteMessage(m.id) : undefined}
+                    onRegenerate={onRegenerate && canRegenerate ? () => onRegenerate(m.id) : undefined}
                   />
                 </div>
               </div>

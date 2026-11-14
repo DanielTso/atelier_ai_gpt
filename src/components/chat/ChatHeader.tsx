@@ -1,22 +1,29 @@
 "use client"
 
 import { memo, useState, useRef, useEffect } from "react"
-import { MessageSquare, Edit2, Check, X, Folder, ChevronRight, Zap } from "lucide-react"
+import { MessageSquare, Edit2, Check, X, Folder, ChevronRight, Zap, MoreVertical, SlidersHorizontal } from "lucide-react"
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
 
 interface ChatHeaderProps {
   chatId: number | null
   chatTitle: string | undefined
   onTitleChange?: (id: number, title: string) => void
+  /** The chat's OWN project (null for a quick chat). */
+  projectId?: number | null
   projectName?: string | null
   onProjectClick?: () => void
+  /** Opens the per-project defaults dialog — offered on project chats only. */
+  onOpenProjectSettings?: (projectId: number) => void
 }
 
 export const ChatHeader = memo(function ChatHeader({
   chatId,
   chatTitle,
   onTitleChange,
+  projectId,
   projectName,
   onProjectClick,
+  onOpenProjectSettings,
 }: ChatHeaderProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [editedTitle, setEditedTitle] = useState(chatTitle || "")
@@ -121,6 +128,34 @@ export const ChatHeader = memo(function ChatHeader({
           </div>
         )}
       </div>
+      {/* Project chat menu: the chat's project settings (per-project defaults). */}
+      {chatId && projectId != null && onOpenProjectSettings && (
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger asChild>
+            <button
+              aria-label={`Project options for ${projectName ?? 'this project'}`}
+              className="ml-2 p-2 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors shrink-0"
+            >
+              <MoreVertical className="h-4 w-4" />
+            </button>
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Portal>
+            <DropdownMenu.Content
+              align="end"
+              sideOffset={6}
+              className="min-w-[160px] glass-panel rounded-xl p-1.5 shadow-2xl border border-border z-50 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:slide-in-from-top-1 duration-150"
+            >
+              <DropdownMenu.Item
+                onClick={() => onOpenProjectSettings(projectId)}
+                className="flex items-center gap-2.5 px-3 py-2 text-sm rounded-lg cursor-pointer hover:bg-accent outline-none transition-colors"
+              >
+                <SlidersHorizontal className="h-3.5 w-3.5 text-muted-foreground" />
+                Project settings
+              </DropdownMenu.Item>
+            </DropdownMenu.Content>
+          </DropdownMenu.Portal>
+        </DropdownMenu.Root>
+      )}
     </header>
   )
 })

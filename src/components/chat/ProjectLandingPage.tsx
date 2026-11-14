@@ -2,7 +2,7 @@
 
 import { memo, type ReactNode } from "react"
 import { motion } from "framer-motion"
-import { ArrowLeft, MessageSquare, Pin, MoreVertical, Pencil, Trash2 } from "lucide-react"
+import { ArrowLeft, MessageSquare, Pin, MoreVertical, Pencil, Trash2, SlidersHorizontal } from "lucide-react"
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
 import { cn } from "@/lib/utils"
 import { useLocalStorage } from "@/hooks/useLocalStorage"
@@ -27,6 +27,8 @@ interface ProjectLandingPageProps {
   onDeleteProject: (id: number) => void
   onBack: () => void
   onRename: () => void
+  /** Opens the per-project defaults dialog (default persona and model). */
+  onOpenProjectSettings?: (id: number) => void
   /** Rename/move/archive/delete for the chat rows — same handlers the sidebar uses. */
   chatActions: ChatRowActions
   /** Source-scoping for grounded retrieval — EXCLUDED document ids + setter. */
@@ -53,6 +55,7 @@ export const ProjectLandingPage = memo(function ProjectLandingPage({
   onDeleteProject,
   onBack,
   onRename,
+  onOpenProjectSettings,
   chatActions,
   excludedDocIds,
   onExcludedChange,
@@ -114,6 +117,15 @@ export const ProjectLandingPage = memo(function ProjectLandingPage({
                   <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
                   Rename
                 </DropdownMenu.Item>
+                {onOpenProjectSettings && (
+                  <DropdownMenu.Item
+                    onClick={() => onOpenProjectSettings(project.id)}
+                    className="flex items-center gap-2.5 px-3 py-2 text-sm rounded-lg cursor-pointer hover:bg-accent outline-none transition-colors"
+                  >
+                    <SlidersHorizontal className="h-3.5 w-3.5 text-muted-foreground" />
+                    Project settings
+                  </DropdownMenu.Item>
+                )}
                 <DropdownMenu.Item
                   onClick={() => onDeleteProject(project.id)}
                   className="flex items-center gap-2.5 px-3 py-2 text-sm rounded-lg cursor-pointer text-destructive hover:bg-destructive/10 outline-none transition-colors"
