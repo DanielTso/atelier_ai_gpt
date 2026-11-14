@@ -14,6 +14,11 @@ describe('safeNextPath', () => {
       '/\r/evil.com',
       '//evil.com',
       '/\\evil.com',
+      '/.//evil.com',
+      '/%2e//evil.com',
+      '/%2E%2E//evil.com',
+      '/x/..//evil.com',
+      '/./\\evil.com',
       'https://evil.com',
       'javascript:alert(1)',
     ]) {
@@ -26,6 +31,18 @@ describe('safeNextPath', () => {
     for (const q of ['next=/%09/evil.com', 'next=/%0A/evil.com', 'next=/%0D/evil.com', 'next=%2F%2Fevil.com']) {
       const next = new URLSearchParams(q).get('next')
       expect(safeNextPath(next, ORIGIN), q).toBe('/')
+    }
+  })
+
+  it('never returns a path that resolves off-origin', () => {
+    for (const next of [
+      '/.//evil.com', '/%2e//evil.com', '/x/..//evil.com', '/./\\evil.com', '/a/../b?c=1#d',
+      '/?chat=5', '//evil.com', '/\t/evil.com', 'https://evil.com/x',
+    ]) {
+      const out = safeNextPath(next, ORIGIN)
+      expect(out.startsWith('/') && !out.startsWith('//'), JSON.stringify(next)).toBe(true)
+      // What router.replace() does with it: resolve against the current page.
+      expect(new URL(out, ORIGIN + '/login?next=x').origin, JSON.stringify(next)).toBe(ORIGIN)
     }
   })
 

@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   AUTH_COOKIE_NAME, mintAuthToken, checkPassword, isAuthEnabled, verifyAuthCookie,
-  signFilePath, verifyFilePathSig, authConfigError,
+  signFilePath, verifyFilePathSig, authConfigError, _resetAuthWarnings,
 } from '@/lib/auth'
-import { _resetLoginThrottle, LOGIN_MAX_FAILURES } from '@/lib/rateLimit'
+import { _resetLoginThrottle, LOGIN_MAX_ATTEMPTS } from '@/lib/rateLimit'
 import { POST, DELETE } from '@/app/api/auth/route'
 
 const ORIG = { pw: process.env.APP_ACCESS_PASSWORD, secret: process.env.AUTH_SECRET }
@@ -105,7 +105,7 @@ describe('POST /api/auth — parallel burst', () => {
     vi.resetModules()
   })
 
-  it('evaluates at most LOGIN_MAX_FAILURES guesses from one IP when 50 arrive at once', async () => {
+  it('evaluates at most LOGIN_MAX_ATTEMPTS guesses from one IP when 50 arrive at once', async () => {
     vi.resetModules()
     const checkSpy = vi.fn()
     vi.doMock('@/lib/auth', async (importOriginal) => {
@@ -121,9 +121,9 @@ describe('POST /api/auth — parallel burst', () => {
     )
     const statuses = results.map((r) => r.status)
 
-    expect(checkSpy.mock.calls.length).toBeLessThanOrEqual(LOGIN_MAX_FAILURES)
-    expect(statuses.filter((s) => s === 401).length).toBeLessThanOrEqual(LOGIN_MAX_FAILURES)
-    expect(statuses.filter((s) => s === 429).length).toBeGreaterThanOrEqual(50 - LOGIN_MAX_FAILURES)
+    expect(checkSpy.mock.calls.length).toBeLessThanOrEqual(LOGIN_MAX_ATTEMPTS)
+    expect(statuses.filter((s) => s === 401).length).toBeLessThanOrEqual(LOGIN_MAX_ATTEMPTS)
+    expect(statuses.filter((s) => s === 429).length).toBeGreaterThanOrEqual(50 - LOGIN_MAX_ATTEMPTS)
     expect(statuses.every((s) => s === 401 || s === 429)).toBe(true)
   })
 })
@@ -153,7 +153,7 @@ describe('POST /api/auth', () => {
 
   it('throttles after too many failures from the same client', async () => {
     const ip = { 'x-forwarded-for': '203.0.113.7' }
-    for (let i = 0; i < LOGIN_MAX_FAILURES; i++) {
+    for (let i = 0; i < LOGIN_MAX_ATTEMPTS; i++) {
       const r = await POST(req({ password: 'nope' }, ip))
       expect(r.status).toBe(401)
     }
@@ -165,7 +165,7 @@ describe('POST /api/auth', () => {
 
   it('a successful login clears the failure counter', async () => {
     const ip = { 'x-forwarded-for': '203.0.113.8' }
-    for (let i = 0; i < LOGIN_MAX_FAILURES - 1; i++) {
+    for (let i = 0; i < LOGIN_MAX_ATTEMPTS - 1; i++) {
       await POST(req({ password: 'nope' }, ip))
     }
     const ok = await POST(req({ password: 'hunter2' }, ip))
@@ -179,7 +179,7 @@ describe('POST /api/auth', () => {
     // Off Vercel, x-real-ip may be whatever the client sent. The proxy-appended
     // rightmost X-Forwarded-For hop is the trusted value, so rotating x-real-ip must
     // not mint a fresh throttle key.
-    for (let i = 0; i < LOGIN_MAX_FAILURES; i++) {
+    for (let i = 0; i < LOGIN_MAX_ATTEMPTS; i++) {
       const r = await POST(req({ password: 'nope' }, { 'x-real-ip': `10.0.0.${i}`, 'x-forwarded-for': '198.51.100.5' }))
       expect(r.status).toBe(401)
     }
@@ -188,7 +188,7 @@ describe('POST /api/auth', () => {
   })
 
   it('falls back to x-real-ip when there is no X-Forwarded-For', async () => {
-    for (let i = 0; i < LOGIN_MAX_FAILURES; i++) {
+    for (let i = 0; i < LOGIN_MAX_ATTEMPTS; i++) {
       const r = await POST(req({ password: 'nope' }, { 'x-real-ip': '198.51.100.9' }))
       expect(r.status).toBe(401)
     }
@@ -199,7 +199,7 @@ describe('POST /api/auth', () => {
   it('keys on the rightmost (proxy-appended) X-Forwarded-For entry, not the spoofable leftmost', async () => {
     // No x-real-ip; the real client is the RIGHTMOST entry the proxy appends. A
     // rotating client-controlled leftmost must NOT mint a fresh throttle key.
-    for (let i = 0; i < LOGIN_MAX_FAILURES; i++) {
+    for (let i = 0; i < LOGIN_MAX_ATTEMPTS; i++) {
       const r = await POST(req({ password: 'nope' }, { 'x-forwarded-for': `${i}.${i}.${i}.${i}, 203.0.113.50` }))
       expect(r.status).toBe(401)
     }
@@ -217,11 +217,15 @@ describe('POST /api/auth', () => {
   it('refuses to log in (503) in production when AUTH_SECRET is unset', async () => {
     vi.stubEnv('NODE_ENV', 'production')
     delete process.env.AUTH_SECRET
+    _resetAuthWarnings()
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     try {
       const res = await POST(req({ password: 'hunter2' }))
       expect(res.status).toBe(503)
       expect(res.headers.get('set-cookie')).toBeNull()
+      expect(errSpy).toHaveBeenCalledTimes(1)
+      expect(String(errSpy.mock.calls[0][0])).toContain('AUTH_SECRET')
+      expect(String(errSpy.mock.calls[0][0])).not.toContain('hunter2')
     } finally {
       errSpy.mockRestore()
       vi.unstubAllEnvs()

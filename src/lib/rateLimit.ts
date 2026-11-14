@@ -12,7 +12,9 @@
 // failure, so all of them were evaluated against the real password.
 
 /** Attempts allowed per key per window (a successful login clears the count). */
-export const LOGIN_MAX_FAILURES = 10
+export const LOGIN_MAX_ATTEMPTS = 10
+/** @deprecated Old name from when only failures were counted; use LOGIN_MAX_ATTEMPTS. */
+export const LOGIN_MAX_FAILURES = LOGIN_MAX_ATTEMPTS
 export const LOGIN_WINDOW_MS = 15 * 60 * 1000 // 15 minutes
 
 type AttemptRecord = { count: number; resetAt: number }
@@ -30,7 +32,7 @@ function pruneExpired(now: number) {
  * Reserve one login attempt for this key. Synchronous on purpose: call it BEFORE the
  * first await so concurrent requests see each other's reservations. Returns
  * `allowed: false` (and how long until the window resets) once the key has used
- * LOGIN_MAX_FAILURES attempts in the current window; a blocked call is not counted.
+ * LOGIN_MAX_ATTEMPTS attempts in the current window; a blocked call is not counted.
  */
 export function reserveLoginAttempt(
   key: string,
@@ -42,7 +44,7 @@ export function reserveLoginAttempt(
     attempts.set(key, { count: 1, resetAt: now + LOGIN_WINDOW_MS })
     return { allowed: true, retryAfterSec: 0 }
   }
-  if (rec.count >= LOGIN_MAX_FAILURES) {
+  if (rec.count >= LOGIN_MAX_ATTEMPTS) {
     return { allowed: false, retryAfterSec: Math.ceil((rec.resetAt - now) / 1000) }
   }
   rec.count += 1
