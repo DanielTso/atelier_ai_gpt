@@ -13,6 +13,7 @@ import {
   saveMessage,
   getChatMessages,
   deleteMessage,
+  getAssistantReplyId,
 } from '@/app/actions'
 
 describe('message actions', () => {
@@ -58,5 +59,32 @@ describe('message actions', () => {
     await deleteMessage(msg.id)
     const msgs = await getChatMessages(chatId)
     expect(msgs).toHaveLength(0)
+  })
+
+  describe('getAssistantReplyId', () => {
+    it('returns the assistant row saved right after the given user message', async () => {
+      const [user] = await saveMessage(chatId, 'user', 'Question')
+      const [reply] = await saveMessage(chatId, 'assistant', 'Partial answer')
+      expect(await getAssistantReplyId(chatId, user.id)).toBe(reply.id)
+    })
+
+    it('returns null while the reply has not been saved', async () => {
+      const [user] = await saveMessage(chatId, 'user', 'Question')
+      expect(await getAssistantReplyId(chatId, user.id)).toBeNull()
+    })
+
+    it('never returns a later turn reply for a turn that saved none', async () => {
+      const [first] = await saveMessage(chatId, 'user', 'Stopped before any text')
+      await saveMessage(chatId, 'user', 'Second question')
+      await saveMessage(chatId, 'assistant', 'Second answer')
+      expect(await getAssistantReplyId(chatId, first.id)).toBeNull()
+    })
+
+    it('ignores other chats', async () => {
+      const [other] = await createChat((await createProject('Q'))[0].id, 'Other')
+      const [user] = await saveMessage(chatId, 'user', 'Question')
+      await saveMessage(other.id, 'assistant', 'Reply in another chat')
+      expect(await getAssistantReplyId(chatId, user.id)).toBeNull()
+    })
   })
 })

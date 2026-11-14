@@ -4,13 +4,11 @@ import { AlertCircle, Menu } from "lucide-react"
 import { MotionConfig, AnimatePresence, motion } from "framer-motion"
 import { viewVariants } from "@/lib/motion"
 import { useTheme } from "next-themes"
-import { useChat } from "@ai-sdk/react"
-import { DefaultChatTransport } from "ai"
 import { useEffect, useLayoutEffect, useState, useRef, useCallback, useMemo } from "react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { extractText } from "@/lib/messageParts"
-import { getProjects, getProjectFileCounts, createProject, getAllProjectChats, createChat, getChatMessages, saveMessage, deleteProject, updateProjectName, updateProjectContext, updateChatTitle, getStandaloneChats, createStandaloneChat, deleteChat, moveChatToProject, archiveChat, restoreChat, getArchivedChats, getChatWithContext, updateChatSystemPrompt, getProjectDefaults, recordPersonaUsage, getProjectChatPreviews, saveMessageAttachments, getChatAttachments, getSetting, setSetting } from "./actions"
+import { getProjects, getProjectFileCounts, createProject, getAllProjectChats, createChat, getChatMessages, deleteProject, updateProjectName, updateProjectContext, updateChatTitle, getStandaloneChats, createStandaloneChat, deleteChat, moveChatToProject, archiveChat, restoreChat, getArchivedChats, getChatWithContext, updateChatSystemPrompt, getProjectDefaults, recordPersonaUsage, getProjectChatPreviews, getChatAttachments, getSetting, setSetting } from "./actions"
 import { Sidebar } from "@/components/chat/sidebar"
 import type { SidebarActions, AppView } from "@/components/chat/sidebar"
 import { HomeGreeting } from "@/components/chat/HomeGreeting"
@@ -41,7 +39,7 @@ import { PersonaSuggestionBanner } from "@/components/chat/PersonaSuggestionBann
 import { ProjectLandingPage } from "@/components/chat/ProjectLandingPage"
 import type { AttachedFile, AttachedImage } from "@/lib/fileAttachments"
 import { buildFileMessage } from "@/lib/fileAttachments"
-import type { FileUIPart, UIMessage } from "ai"
+import type { FileUIPart } from "ai"
 import type { Model, ArtifactSummary, ChatPreview, DocumentSummary } from "@/types"
 import { useChatTitle } from "@/hooks/useChatTitle"
 import { useFollowUps } from "@/hooks/useFollowUps"
@@ -50,7 +48,8 @@ import { toolPartName } from "@/lib/chatStage"
 import { useSummarization } from "@/hooks/useSummarization"
 import { useAutoCollapseSidebar } from "@/hooks/useAutoCollapseSidebar"
 import { useDialogs } from "@/hooks/useDialogs"
-import { useChatPersistence } from "@/hooks/useChatPersistence"
+import { useChatPersistence, type FinishedTurn, type StartedTurn } from "@/hooks/useChatPersistence"
+import { useChatSessions, type TurnFinish, type TurnStart } from "@/hooks/useChatSessions"
 import { useUrlNavSync } from "@/hooks/useUrlNavSync"
 
 // Types matching DB schema roughly
@@ -65,18 +64,25 @@ export default function Home() {
   const [input, setInput] = useState("")
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([])
-  const pendingImagesRef = useRef<AttachedImage[]>([])
+  // Images attached to a chat's in-flight user message, keyed by chat id: turns in
+  // different chats can overlap, and each turn's images belong to ITS user row.
+  // Claimed by the turn pipeline once the server reports that row's id.
+  const pendingImagesRef = useRef<Map<number, AttachedImage[]>>(new Map())
+  const takePendingImages = useCallback((chatId: number) => {
+    const images = pendingImagesRef.current.get(chatId) ?? []
+    pendingImagesRef.current.delete(chatId)
+    return images
+  }, [])
   const scrollRef = useRef<HTMLDivElement>(null)
 
   // Use ref to always get current model in transport body function
   const selectedModelRef = useRef(selectedModel)
   selectedModelRef.current = selectedModel
 
-  // Dedup ref for message saving
-  const lastSavedMessageIdRef = useRef<string | null>(null)
-  // Dedup ref for the assistant-message save — guards against a double-firing onFinish
-  // (error+retry / remount) persisting, embedding, and rendering the reply twice.
-  const lastSavedAssistantIdRef = useRef<string | null>(null)
+  // Dedup for the post-turn pipeline — guards against a double-firing onFinish
+  // (error+retry / remount) attaching, embedding, and counting a turn twice. A set
+  // of assistant message ids: turns from different chats can finish interleaved.
+  const processedTurnIdsRef = useRef<Set<string>>(new Set())
   // One-shot flag: suppress the next loadMessages for a chat we just created in
   // handleSendMessage, so the deferred-create optimistic + streaming state isn't
   // clobbered by an empty/partial DB snapshot.
@@ -237,6 +243,10 @@ export default function Home() {
   // historical/reloaded messages can never show it.
   const groundedTurnIdsRef = useRef<Set<string>>(new Set())
   const isGroundedTurn = useCallback((id: string) => groundedTurnIdsRef.current.has(id), [])
+  // Whether each chat's in-flight turn was SENT grounded. A turn can finish after
+  // the user has moved on (and the pill has been reset), so the finish handler
+  // must not read the composer's current state.
+  const groundedAtSendRef = useRef<Map<number, boolean>>(new Map())
 
   // Project-level source scoping (review F1): EXCLUDED document ids, persisted per
   // PROJECT ('project-doc-scope-<id>'). The checkboxes live on the project landing
@@ -249,16 +259,14 @@ export default function Home() {
   const excludedDocIdsRef = useRef(excludedDocIds)
   excludedDocIdsRef.current = excludedDocIds
 
-  // Create transport with body as function to always get current values
-  const transport = useMemo(() => new DefaultChatTransport({
-    api: '/api/chat',
-    body: () => ({
-      model: selectedModelRef.current,
-      chatId: activeChatIdRef.current,
-      effort: selectedEffortRef.current,
-      grounded: groundedRef.current,
-      excludedDocumentIds: excludedDocIdsRef.current,
-    }),
+  // Composer-level fields of the /api/chat body, read from refs at send time so
+  // they are always current. `chatId` is deliberately NOT here: useChatSessions
+  // derives it from the chat session a message is sent through.
+  const getChatRequestBody = useCallback(() => ({
+    model: selectedModelRef.current,
+    effort: selectedEffortRef.current,
+    grounded: groundedRef.current,
+    excludedDocumentIds: excludedDocIdsRef.current,
   }), [])
 
   // Auto-memory: per-chat message count at the last suggestion pass. Gating on a
@@ -272,26 +280,38 @@ export default function Home() {
   // Context-window management (auto-summarize older messages past the threshold).
   const triggerSummarization = useSummarization(selectedModelRef)
 
-  // onFinish ref: allows useChatPersistence to be called after useChat (which provides
-  // setMessages/setArtifacts) while still passing a stable onFinish to useChat itself.
-  const onFinishRef = useRef<({ message }: { message: UIMessage }) => Promise<void>>(async () => {})
+  // Turn-handler ref: allows useChatPersistence to be called after useChatSessions (which
+  // provides updateChatMessages) while still passing it stable onTurnStart/onTurnFinish.
+  const turnHandlersRef = useRef<{
+    onTurnStart: (turn: StartedTurn) => void
+    onTurnFinish: (turn: FinishedTurn) => Promise<void>
+  }>({ onTurnStart: () => {}, onTurnFinish: async () => {} })
 
+  // One chat session (store + in-flight request) per chat — see useChatSessions.
+  // `messages`/`status`/`stop` are the ACTIVE chat's; a turn left streaming in
+  // another chat keeps running in its own session and reports here when it ends.
   const {
     messages,
     setMessages,
-    sendMessage,
+    sendToChat,
+    isChatBusy,
+    updateChatMessages,
     stop,
     status,
     error: chatError
-  } = useChat({
-    transport,
-    onFinish: useCallback((args: { message: UIMessage }) => {
+  } = useChatSessions({
+    activeChatId,
+    getRequestBody: getChatRequestBody,
+    onTurnStart: useCallback((turn: TurnStart) => turnHandlersRef.current.onTurnStart(turn), []),
+    onTurnFinish: useCallback((turn: TurnFinish) => {
       // Record grounded completions BEFORE the persistence pipeline (review F3):
       // the floor caption may render as soon as the stream settles.
-      if (args.message.role === 'assistant' && groundedRef.current) {
-        groundedTurnIdsRef.current.add(args.message.id)
+      const sentGrounded = groundedAtSendRef.current.get(turn.chatId) === true
+      groundedAtSendRef.current.delete(turn.chatId)
+      if (turn.message.role === 'assistant' && sentGrounded) {
+        groundedTurnIdsRef.current.add(turn.message.id)
       }
-      return onFinishRef.current(args)
+      return turnHandlersRef.current.onTurnFinish(turn)
     }, []),
   })
 
@@ -325,21 +345,23 @@ export default function Home() {
     }
   }, [messages, activeChatId])
 
-  // Message-persistence pipeline: save → embed → summarize → memory-suggest → title → artifact-refetch.
-  // Must be called AFTER useChat so setMessages / setArtifacts are in scope.
-  const onFinish = useChatPersistence({
+  // Turn pipeline: attachments + user embed at turn start; then, when the turn ends,
+  // image linking → embed → summarize → memory-suggest → title → artifact-refetch.
+  // /api/chat saves both messages; every id comes from its turn metadata.
+  // Must be called AFTER useChatSessions so updateChatMessages / setArtifacts are in scope.
+  const turnHandlers = useChatPersistence({
     activeChatIdRef,
-    activeProjectIdRef,
-    lastSavedAssistantIdRef,
+    processedTurnIdsRef,
     lastSuggestedAtRef,
     lastSummarizedCountRef,
-    setMessages,
+    updateChatMessages,
     setArtifacts,
+    takePendingImages,
     triggerSummarization,
     maybeGenerateTitle,
   })
-  // Keep the ref current every render so useChat always calls the latest handler.
-  onFinishRef.current = onFinish
+  // Keep the ref current every render so a turn always calls the latest handlers.
+  turnHandlersRef.current = turnHandlers
 
   const isLoading = status === 'streaming' || status === 'submitted'
 
@@ -480,6 +502,10 @@ export default function Home() {
       // Re-check after the artifact fetch's awaits: don't overwrite the live message
       // list if the user switched chats (or the deferred-create stream started) meanwhile.
       if (activeChatIdRef.current !== cid) return
+      // A turn is in flight in this chat (the user left mid-stream and came back, or
+      // sent while this load was pending): its session holds the live transcript, and
+      // the DB snapshot — which has no reply yet — must not replace it.
+      if (isChatBusy(cid)) return
 
       // Convert DB messages to AI SDK UIMessage format with parts
       setMessages(msgs.map(m => {
@@ -512,7 +538,7 @@ export default function Home() {
       console.error(e)
       setError("Failed to load messages.")
     }
-  }, [setMessages])
+  }, [setMessages, isChatBusy])
 
   const refreshChatPreviews = useCallback(async () => {
     if (activeProjectId) {
@@ -565,7 +591,7 @@ export default function Home() {
   useEffect(() => {
     if (activeChatId) {
       // Skip the DB message-load exactly once for a chat we just created in
-      // handleSendMessage: useChat already holds the authoritative optimistic user
+      // handleSendMessage: its chat session already holds the authoritative optimistic user
       // message + streaming reply, so loading the empty/partial snapshot would clobber
       // them. Subsequent opens of the same chat load normally.
       if (skipLoadOnceRef.current === activeChatId) {
@@ -579,12 +605,15 @@ export default function Home() {
         // are untouched — they run their own reset + persona-default paths.
         resetGroundedPick()
         applyGroundedDefault(false)
-        // Clear the previous chat's content immediately: without this a chat→chat
-        // switch renders the OLD chat's messages under the new chat's key while
-        // the fetch is in flight (and the loading skeleton never shows).
-        setMessages([])
+        // Each chat has its own session, so this never touches another chat's
+        // transcript — and switching never stops a stream. A chat reopened while
+        // its turn is still streaming keeps its live transcript (loadMessages then
+        // refreshes only the artifacts); any other chat starts empty and shows
+        // the loading skeleton until its history lands.
+        const turnInFlight = isChatBusy(activeChatId)
+        if (!turnInFlight) setMessages([])
         setArtifacts([])
-        setMessagesLoading(true)
+        setMessagesLoading(!turnInFlight)
         loadMessages(activeChatId).finally(() => {
           // A stale finish must not clear the loading state of the chat we switched to.
           if (activeChatIdRef.current === activeChatId) setMessagesLoading(false)
@@ -598,7 +627,9 @@ export default function Home() {
         if (activeChatIdRef.current === activeChatId) setCurrentSystemPrompt(chat?.systemPrompt ?? null)
       })
     } else {
-      setMessages([])
+      // No chat: the "home" session is never sent through, so its transcript is
+      // always empty — there is nothing to clear (and a reply still streaming in
+      // the chat just left stays in that chat's own session).
       setCurrentSystemPrompt(null)
       setArtifacts([])
     }
@@ -772,46 +803,17 @@ export default function Home() {
     applyGroundedDefault(!!defaultPersona.grounded)
   }, [resetGroundedPick, applyGroundedDefault, defaultPersona.grounded])
 
-  const handleSendMessage = async () => {
-    if ((!input.trim() && attachedFiles.length === 0 && attachedImages.length === 0) || isLoading) return
-
-    // No chat yet → create it now (deferred create). In a project compose, create the
-    // chat in that project and persist the (default) system prompt; otherwise a quick
-    // standalone chat. Either way nothing is persisted until this first message.
-    if (!activeChatId) {
-      try {
-        const projectId = activeProjectIdRef.current
-        if (projectId != null) {
-          const [newC] = await createChat(projectId, "New Chat")
-          setChats(prev => [newC, ...prev])
-          if (currentSystemPrompt) {
-            await updateChatSystemPrompt(newC.id, currentSystemPrompt).catch(() => {})
-          }
-          skipLoadOnceRef.current = newC.id
-          setActiveChatId(newC.id)
-          activeChatIdRef.current = newC.id
-        } else {
-          const [newC] = await createStandaloneChat("New Chat")
-          setStandaloneChats(prev => [newC, ...prev])
-          // Persist the composer's selected persona prompt (if any) so it survives the
-          // post-create reload and applies to the first message — mirrors the project branch.
-          if (currentSystemPrompt) {
-            await updateChatSystemPrompt(newC.id, currentSystemPrompt).catch(() => {})
-          }
-          skipLoadOnceRef.current = newC.id
-          setActiveChatId(newC.id)
-          activeChatIdRef.current = newC.id
-        }
-        setNewChatCompose(false)
-      } catch (e) {
-        console.error(e)
-        setError("Failed to create chat.")
-        return
-      }
-    }
-
-    // Capture images in ref before clearing state
-    pendingImagesRef.current = [...attachedImages]
+  // Shared tail of every send path: snapshot the composer, clear it, and send the
+  // message through the TARGET chat's own session. The chat id is passed in rather
+  // than read from state — a chat created a moment ago (deferred create) is not the
+  // "active" one in this render yet, and the turn must be bound to it regardless:
+  // its session starts with an empty transcript, and /api/chat saves both messages
+  // to that chat.
+  const sendComposerMessage = useCallback(async (chatId: number) => {
+    // Images wait for the server to report the saved user row (turn pipeline).
+    if (attachedImages.length > 0) pendingImagesRef.current.set(chatId, [...attachedImages])
+    else pendingImagesRef.current.delete(chatId)
+    groundedAtSendRef.current.set(chatId, groundedRef.current)
 
     const userMessage = attachedFiles.length > 0
       ? buildFileMessage(input.trim(), attachedFiles)
@@ -829,10 +831,54 @@ export default function Home() {
     setAttachedImages([])
 
     if (fileParts.length > 0) {
-      await sendMessage({ text: userMessage, files: fileParts })
+      await sendToChat(chatId, { text: userMessage, files: fileParts })
     } else {
-      await sendMessage({ text: userMessage })
+      await sendToChat(chatId, { text: userMessage })
     }
+  }, [input, attachedFiles, attachedImages, sendToChat])
+
+  const handleSendMessage = async () => {
+    if ((!input.trim() && attachedFiles.length === 0 && attachedImages.length === 0) || isLoading) return
+
+    // No chat yet → create it now (deferred create). In a project compose, create the
+    // chat in that project and persist the (default) system prompt; otherwise a quick
+    // standalone chat. Either way nothing is persisted until this first message.
+    let targetChatId = activeChatId
+    if (!targetChatId) {
+      try {
+        const projectId = activeProjectIdRef.current
+        if (projectId != null) {
+          const [newC] = await createChat(projectId, "New Chat")
+          setChats(prev => [newC, ...prev])
+          if (currentSystemPrompt) {
+            await updateChatSystemPrompt(newC.id, currentSystemPrompt).catch(() => {})
+          }
+          skipLoadOnceRef.current = newC.id
+          setActiveChatId(newC.id)
+          activeChatIdRef.current = newC.id
+          targetChatId = newC.id
+        } else {
+          const [newC] = await createStandaloneChat("New Chat")
+          setStandaloneChats(prev => [newC, ...prev])
+          // Persist the composer's selected persona prompt (if any) so it survives the
+          // post-create reload and applies to the first message — mirrors the project branch.
+          if (currentSystemPrompt) {
+            await updateChatSystemPrompt(newC.id, currentSystemPrompt).catch(() => {})
+          }
+          skipLoadOnceRef.current = newC.id
+          setActiveChatId(newC.id)
+          activeChatIdRef.current = newC.id
+          targetChatId = newC.id
+        }
+        setNewChatCompose(false)
+      } catch (e) {
+        console.error(e)
+        setError("Failed to create chat.")
+        return
+      }
+    }
+
+    await sendComposerMessage(targetChatId)
   }
 
   const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -897,6 +943,7 @@ export default function Home() {
       }
     }
 
+    let newChatId: number
     try {
       const [newC] = await createChat(projectId, "New Chat")
       setChats(prev => [newC, ...prev])
@@ -907,6 +954,7 @@ export default function Home() {
       skipLoadOnceRef.current = newC.id
       setActiveChatId(newC.id)
       activeChatIdRef.current = newC.id
+      newChatId = newC.id
       setNewChatCompose(false)
     } catch (e) {
       console.error(e)
@@ -914,29 +962,8 @@ export default function Home() {
       return
     }
 
-    // Capture images in ref before clearing state (mirrors handleSendMessage's tail).
-    pendingImagesRef.current = [...attachedImages]
-
-    const userMessage = attachedFiles.length > 0
-      ? buildFileMessage(input.trim(), attachedFiles)
-      : input.trim()
-
-    const fileParts: FileUIPart[] = attachedImages.map(img => ({
-      type: 'file' as const,
-      mediaType: img.mediaType,
-      url: img.dataUrl,
-    }))
-
-    setInput("")
-    setAttachedFiles([])
-    setAttachedImages([])
-
-    if (fileParts.length > 0) {
-      await sendMessage({ text: userMessage, files: fileParts })
-    } else {
-      await sendMessage({ text: userMessage })
-    }
-  }, [input, attachedFiles, attachedImages, isLoading, getPersonaById, sendMessage, currentSystemPrompt, applyGroundedDefault, models])
+    await sendComposerMessage(newChatId)
+  }, [input, attachedFiles, attachedImages, isLoading, getPersonaById, sendComposerMessage, currentSystemPrompt, applyGroundedDefault, models])
 
   const handleProjectLandingKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -953,53 +980,6 @@ export default function Home() {
     e.preventDefault()
     handleProjectLandingCompose()
   }
-
-  // Save user messages to database when messages array changes
-  useEffect(() => {
-    if (messages.length === 0 || !activeChatId) return
-
-    const lastMessage = messages[messages.length - 1]
-    if (lastMessage.role === 'user' && lastMessage.id !== lastSavedMessageIdRef.current) {
-      lastSavedMessageIdRef.current = lastMessage.id
-      // Extract text content from message parts
-      const textContent = extractText(lastMessage.parts)
-      // Save user message to database and trigger embedding
-      saveMessage(activeChatId, 'user', textContent)
-        .then((result) => {
-          // Async embed the user message (best-effort)
-          if (result?.[0]?.id) {
-            const messageId = result[0].id
-            fetch('/api/embed', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                messageId,
-                chatId: activeChatId,
-                projectId: activeProjectIdRef.current,
-                content: textContent,
-              }),
-            }).catch(() => {}) // Embedding is best-effort
-
-            // Save image attachments if any were pending
-            const pending = pendingImagesRef.current
-            if (pending.length > 0) {
-              pendingImagesRef.current = []
-              saveMessageAttachments(
-                messageId,
-                activeChatId,
-                pending.map(img => ({
-                  filename: img.name,
-                  mediaType: img.mediaType,
-                  dataUrl: img.dataUrl,
-                  fileSize: img.size,
-                }))
-              ).catch(err => console.error('[useEffect] Error saving attachments:', err))
-            }
-          }
-        })
-        .catch(err => console.error('[useEffect] Error saving user message:', err))
-    }
-  }, [messages, activeChatId])
 
   const handleRequestDeleteProject = useCallback((id: number) => {
     dialogs.deleteProject.open(id)

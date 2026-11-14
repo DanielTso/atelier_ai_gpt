@@ -1,5 +1,5 @@
 import { streamText, convertToModelMessages, stepCountIs, APICallError, type UIMessage, type LanguageModelUsage } from 'ai';
-import { getChatWithContext, getProjectContext, getProjectDocuments } from '@/app/actions';
+import { getChatWithContext, getProjectContext, getProjectDocuments, saveMessage } from '@/app/actions';
 import { buildProjectPreamble } from '@/lib/projectPreamble';
 import { retrieveContext } from '@/lib/retrieval';
 import { createProvider } from '@/lib/providers';
@@ -15,6 +15,8 @@ import { promptSafeLabel } from '@/lib/promptSafe';
 import { CITE_RE, LOOSE_CITE_RE } from '@/lib/citations';
 import { after } from 'next/server';
 import { recordUsage, sumUsage } from '@/lib/usage';
+import { createAssistantTurnRecorder, isDbMessageId, type TurnMetadata } from '@/lib/chatTurn';
+import { messageText } from '@/lib/messageParts';
 
 // Experience-mode turns run long: web research + several image generations + an
 // HTML artifact build in one streamed response. Make the time budget explicit.
@@ -97,13 +99,44 @@ export async function POST(req: Request) {
       return apiError(body.error, 'Invalid request body', 400);
     }
     const { messages, model, chatId, effort, grounded, excludedDocumentIds } = body.data;
+
+    // This route persists the turn to the request's chat (below), so the chat is
+    // validated first: an unknown id is a 404 with nothing written, not a
+    // foreign-key failure halfway through a stream.
+    const chat = chatId ? await getChatWithContext(chatId) : undefined;
+    if (chatId && !chat) {
+      return apiError(new Error(`chat ${chatId} does not exist`), 'Chat not found', 404);
+    }
+
+    // Turn persistence, user half (audit U1/F1/F3). The user's message is saved
+    // HERE, to the request's chat, before any model work — so it is durable no
+    // matter what the client does next, and its row id can ride on the stream's
+    // first chunk. Only the newest message is ever inserted, and only when it is
+    // not already a DB row: after a reload the client's history carries
+    // stringified `messages.id`s, and re-saving those was the F3 duplicate.
+    const lastMessage = messages[messages.length - 1];
+    const saveUserTurn = async (): Promise<number | null> => {
+      if (!chat || lastMessage.role !== 'user' || isDbMessageId(lastMessage.id)) return null;
+      const [row] = await saveMessage(chat.id, 'user', messageText(lastMessage));
+      return row?.id ?? null;
+    };
+
     // Registry-backed resolution: an unknown/stale/tampered id (e.g. a project's
     // default_model that no longer exists) falls back to the current default
     // instead of reaching a provider call that would throw — see registry.ts.
-    const { modelId: modelName } = await resolveRequestedModel(model);
+    // Then create the provider (routes by model-name prefix; returns the model,
+    // tools, and provider options).
+    const resolveProvider = async () => {
+      const { modelId } = await resolveRequestedModel(model);
+      return { modelName: modelId, ...(await createProvider(modelId, effort)) };
+    };
 
-    // Create provider (routes by model-name prefix; returns the model, tools, and provider options)
-    const { model: selectedModel, tools: providerTools, providerOptions } = await createProvider(modelName, effort);
+    // Concurrent: the insert must not add a round-trip to time-to-first-token. A
+    // provider failure (missing key) still leaves the user's message saved, as it
+    // always was; a failed insert fails the request rather than answering a
+    // message that was never stored.
+    const [userMessageDbId, { modelName, model: selectedModel, tools: providerTools, providerOptions }] =
+      await Promise.all([saveUserTurn(), resolveProvider()]);
 
     // Build context with hybrid approach: system prompt + semantic context + summary + recent messages
     let contextMessages = messages as unknown as UIMessage[];
@@ -117,9 +150,8 @@ export async function POST(req: Request) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let tools: Record<string, any> | undefined = providerTools;
 
-    if (chatId) {
-      const chat = await getChatWithContext(chatId);
-      projectId = chat?.projectId ?? null;
+    if (chatId && chat) {
+      projectId = chat.projectId ?? null;
 
       // The project-context read and the retrieval pipeline are independent once we
       // have the chat — run them concurrently to shave a round-trip off time-to-
@@ -213,6 +245,10 @@ export async function POST(req: Request) {
     // that second call would write an all-zero cost_estimated:false row, which
     // reads as a genuinely free generation. onAbort fires first and carries the
     // real summed tokens, so first-wins keeps the truthful row.
+    //
+    // This is the CALLBACK form of after(): it runs once the response has closed,
+    // which is fine for a ledger row nothing on the wire depends on. The assistant
+    // message below needs the opposite — see the turn recorder.
     let usageRecorded = false;
     const persistUsage = (usage: LanguageModelUsage | undefined) => {
       // No usage at all (an abort during the very first step: steps === [] so
@@ -230,12 +266,32 @@ export async function POST(req: Request) {
       }
     };
 
+    // Turn persistence, assistant half (audit U1/F1). The reply is saved by the
+    // server, to the request's chat, exactly once — at the stream's `finish`, or
+    // at its `abort` with the text streamed so far — whatever the client is doing
+    // by then (another chat, another view, a closed tab). The recorder is a stream
+    // transform rather than onFinish/onAbort code so that the row id exists before
+    // the `finish` chunk is sent; see createAssistantTurnRecorder for the SDK
+    // details. No chat (a chat-less request) → nothing to persist.
+    const recorder = chat
+      ? createAssistantTurnRecorder(async (text) => {
+          const [row] = await saveMessage(chat.id, 'assistant', text);
+          return row?.id ?? null;
+        })
+      : null;
+    // `projectId` here is the chat ROW's project — the client never supplies it.
+    const turnMetadata = (): TurnMetadata | undefined =>
+      chat && recorder
+        ? { chatId: chat.id, projectId, userMessageDbId, assistantMessageDbId: recorder.assistantMessageDbId() }
+        : undefined;
+
     const result = streamText({
       model: selectedModel,
       system: systemPrompt, // System instruction is always first, never trimmed
       messages: modelMessages,
       ...(tools && { tools }),
       ...(providerOptions && { providerOptions }),
+      ...(recorder && { experimental_transform: recorder.transform }),
       // Multi-step tool loop: without this streamText stops after ONE step, so the
       // model could never continue writing after a generate_image/generate_artifact
       // call (it would tease a visual and die mid-reply). 12 steps allows an
@@ -247,9 +303,12 @@ export async function POST(req: Request) {
       // never executes (seen live: "Building document…" stuck forever). 32k covers
       // a large page + prose across every Claude model in the picker.
       maxOutputTokens: 32000,
-      // Cancel the upstream generation when the client goes away (Stop button,
+      // Cancel the upstream generation when the CONNECTION goes away (Stop button,
       // tab close, network drop) — otherwise Anthropic keeps generating, and
-      // billing, to maxOutputTokens for a response nobody receives.
+      // billing, to maxOutputTokens for a response nobody receives. The recorder
+      // saves whatever had streamed. Switching chats or views inside the app does
+      // not abort anything: the client keeps the connection open, the turn runs to
+      // completion, and the full reply is saved.
       abortSignal: req.signal,
       // An aborted run has no totalUsage, so sum the steps that DID complete —
       // those tokens are already billed. The SDK also runs onFinish afterwards
@@ -293,12 +352,37 @@ export async function POST(req: Request) {
 
     // Drain the stream server-side regardless of the client: without this the
     // recorded-transform `flush` that calls onFinish never runs on a cancelled
-    // response, and the usage row is silently lost (audit C1).
-    void result.consumeStream();
+    // response, and the usage row is silently lost (audit C1). The same drain is
+    // what carries the turn recorder to the end of the stream.
+    const drained = Promise.resolve(result.consumeStream());
+    if (recorder) {
+      // Catch-all: a pipeline that ERRORS (as opposed to emitting an error part)
+      // skips the recorder's finish/abort/flush hooks entirely — save what
+      // streamed once the drain settles. No-op when the row was already written.
+      const settled = drained.then(recorder.persist, recorder.persist);
+      // PROMISE form of after(): the write is already in flight (it has to finish
+      // before the `finish` chunk goes out), and this keeps the function alive
+      // until it lands when the client has disconnected. Registered here, inside
+      // the request scope — stream callbacks are not reliably in it. Outside a
+      // request scope (unit tests) after() throws; the promise runs regardless.
+      try {
+        after(settled);
+      } catch {
+        // not in a Next request scope
+      }
+    }
 
     return result.toUIMessageStreamResponse({
       sendSources: true,
       sendReasoning: true,
+      // Server-authoritative ids for the client's post-turn steps. On `start`:
+      // the chat, its DB project and the user row. On `finish`: the same plus
+      // the assistant row (already saved — the recorder holds `finish` back
+      // until the insert returns).
+      ...(recorder && {
+        messageMetadata: ({ part }: { part: { type: string } }) =>
+          part.type === 'start' || part.type === 'finish' ? turnMetadata() : undefined,
+      }),
       // streamText() is synchronous — a provider error (e.g. Fable's 30-day
       // retention requirement, or a per-model thinking/effort combination the
       // registry doesn't model) is never thrown into the surrounding try/catch;

@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { asc, eq } from 'drizzle-orm'
+import { MockLanguageModelV3 } from 'ai/test'
 import { createTestDb, testDb } from '../../helpers/test-db'
-import { documents } from '@/db/schema'
+import { documents, messages as messagesTable } from '@/db/schema'
 
 // Mock db
 vi.mock('@/db', () => ({
@@ -69,7 +71,7 @@ vi.mock('@ai-sdk/anthropic', () => ({
   createAnthropic: () => mockAnthropicFn,
 }))
 
-import { createProject, createChat, updateChatSystemPrompt, updateChatSummary } from '@/app/actions'
+import { createProject, createChat, createStandaloneChat, updateChatSystemPrompt, updateChatSummary } from '@/app/actions'
 
 // Ids the fake registry treats as "known" — mirrors the model set the picker
 // used to hardcode. Anything else falls back, matching production
@@ -735,5 +737,346 @@ describe('POST /api/chat', () => {
     expect(response.status).toBe(500)
     const data = await response.json()
     expect(data.error).toContain('An error occurred during text generation.')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Server-side turn persistence (audit U1/F1/F3). These run the REAL AI SDK
+// (streamText, the UI message stream, abort handling) against a scripted mock
+// model — the behavior under test lives in how the route is wired into the SDK's
+// stream, which a mocked streamText cannot show.
+// ---------------------------------------------------------------------------
+describe('POST /api/chat — server-side turn persistence', () => {
+  const mockCreateProvider = vi.fn()
+
+  beforeEach(async () => {
+    await createTestDb()
+    vi.clearAllMocks()
+    mockRetrieveContext.mockResolvedValue({ semanticContext: null, documentContext: null })
+  })
+
+  // The provider-level stream part type, taken from the mock model's own signature.
+  type StreamPart = Awaited<ReturnType<MockLanguageModelV3['doStream']>>['stream'] extends ReadableStream<infer P> ? P : never
+
+  const usage = {
+    inputTokens: { total: 3, noCache: 3, cacheRead: 0, cacheWrite: 0 },
+    outputTokens: { total: 5, text: 5, reasoning: 0 },
+  }
+  const START: StreamPart[] = [{ type: 'stream-start', warnings: [] }, { type: 'text-start', id: 't1' }]
+  const END: StreamPart[] = [{ type: 'text-end', id: 't1' }, { type: 'finish', finishReason: { unified: 'stop', raw: 'stop' }, usage }]
+  const textDelta = (delta: string): StreamPart => ({ type: 'text-delta', id: 't1', delta })
+
+  /** A model that streams its text in two deltas and finishes. */
+  function scriptedModel(first = 'Full ', second = 'answer.') {
+    return new MockLanguageModelV3({
+      doStream: async () => ({
+        stream: new ReadableStream<StreamPart>({
+          start(controller) {
+            for (const chunk of [...START, textDelta(first), textDelta(second), ...END]) controller.enqueue(chunk)
+            controller.close()
+          },
+        }),
+      }),
+    })
+  }
+
+  /** A model whose stream the test drives chunk by chunk. */
+  function controlledModel() {
+    let controller!: ReadableStreamDefaultController<StreamPart>
+    const stream = new ReadableStream<StreamPart>({ start(c) { controller = c } })
+    const model = new MockLanguageModelV3({
+      doStream: async ({ abortSignal }) => {
+        // A real provider's fetch rejects with an AbortError when the request
+        // signal aborts — mirror that so streamText takes its abort path.
+        abortSignal?.addEventListener('abort', () => {
+          try { controller.error(new DOMException('This operation was aborted', 'AbortError')) } catch { /* already closed */ }
+        })
+        return { stream }
+      },
+    })
+    return {
+      model,
+      push: (...chunks: StreamPart[]) => { for (const c of chunks) controller.enqueue(c) },
+      close: () => controller.close(),
+      fail: (error: Error) => controller.error(error),
+    }
+  }
+
+  async function postTurn(
+    body: Record<string, unknown>,
+    opts: { model?: unknown; signal?: AbortSignal } = {},
+  ) {
+    vi.resetModules()
+    vi.doMock('@/db', () => ({
+      get db() { return testDb },
+    }))
+    vi.doMock('ai', async () => await vi.importActual<typeof import('ai')>('ai'))
+    mockCreateProvider.mockResolvedValue({ model: opts.model ?? scriptedModel(), tools: undefined, providerOptions: undefined })
+    vi.doMock('@/lib/providers', () => ({
+      createProvider: (...args: unknown[]) => mockCreateProvider(...args),
+    }))
+    vi.doMock('@/lib/retrieval', () => ({
+      retrieveContext: (...args: unknown[]) => mockRetrieveContext(...args),
+    }))
+    vi.doMock('@/lib/usage', async () => {
+      const real = await vi.importActual<typeof import('@/lib/usage')>('@/lib/usage')
+      return {
+        recordUsage: (...args: unknown[]) => mockRecordUsage(...args),
+        sumUsage: real.sumUsage,
+      }
+    })
+    vi.doMock('@/lib/models/registry', () => ({
+      resolveRequestedModel: async () => ({ modelId: 'claude-opus-4-8', usedFallback: false }),
+    }))
+
+    const { POST } = await import('@/app/api/chat/route')
+    return POST(
+      new Request('http://localhost/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: opts.signal,
+      })
+    )
+  }
+
+  // A client-generated id (useChat's generateId shape) vs. the stringified
+  // integer id loadMessages gives a row that is already in the DB.
+  const userMessage = (text: string, id = 'aB3xK9mQ2LpT7vNc') => ({ id, role: 'user', parts: [{ type: 'text', text }] })
+
+  const rowsFor = (chatId: number) =>
+    testDb.select({ id: messagesTable.id, role: messagesTable.role, content: messagesTable.content })
+      .from(messagesTable).where(eq(messagesTable.chatId, chatId)).orderBy(asc(messagesTable.id))
+
+  /** Parse the SSE body into UI message chunks. */
+  async function readChunks(response: Response) {
+    const text = await response.text()
+    return text.split('\n')
+      .filter(line => line.startsWith('data: ') && line !== 'data: [DONE]')
+      .map(line => JSON.parse(line.slice('data: '.length)) as { type: string; messageMetadata?: Record<string, unknown> })
+  }
+
+  /** Wait for the assistant row, then confirm no second one shows up late. */
+  async function settledRows(chatId: number) {
+    await vi.waitFor(async () => {
+      expect((await rowsFor(chatId)).filter(r => r.role === 'assistant')).toHaveLength(1)
+    }, { timeout: 5000, interval: 20 })
+    await new Promise(r => setTimeout(r, 100))
+    return rowsFor(chatId)
+  }
+
+  describe('persists-to-origin-chat-after-switch', () => {
+    it('writes the full reply to the request chat when the client never reads the response', async () => {
+      const [origin] = await createStandaloneChat('Origin')
+      const [other] = await createStandaloneChat('Other')
+
+      // The user sent in `origin` and left: nothing consumes the response body.
+      const response = await postTurn({ messages: [userMessage('Question for the origin chat')], chatId: origin.id })
+      expect(response.status).toBe(200)
+
+      const rows = await settledRows(origin.id)
+      expect(rows.map(r => [r.role, r.content])).toEqual([
+        ['user', 'Question for the origin chat'],
+        ['assistant', 'Full answer.'],
+      ])
+      expect(await rowsFor(other.id)).toEqual([])
+    })
+
+    it('writes the full reply exactly once when the client reads the stream to the end', async () => {
+      const [origin] = await createStandaloneChat('Origin')
+      const response = await postTurn({ messages: [userMessage('Hi')], chatId: origin.id })
+      await response.text()
+
+      const rows = await settledRows(origin.id)
+      expect(rows.map(r => [r.role, r.content])).toEqual([['user', 'Hi'], ['assistant', 'Full answer.']])
+    })
+
+    it('writes the text streamed so far, once, when the client disconnects mid-stream', async () => {
+      const [origin] = await createStandaloneChat('Origin')
+      const [other] = await createStandaloneChat('Other')
+      const client = new AbortController()
+      const { model, push } = controlledModel()
+
+      const response = await postTurn(
+        { messages: [userMessage('Question for the origin chat')], chatId: origin.id },
+        { model, signal: client.signal },
+      )
+      expect(response.status).toBe(200)
+      push(...START, textDelta('Partial '), textDelta('answer'))
+
+      // Read until the second delta has reached the client, then drop the connection.
+      const reader = response.body!.getReader()
+      const decoder = new TextDecoder()
+      let received = ''
+      while (!received.includes('"delta":"answer"')) {
+        const { done, value } = await reader.read()
+        if (done) break
+        received += decoder.decode(value, { stream: true })
+      }
+      client.abort()
+      reader.cancel().catch(() => {})
+
+      const rows = await settledRows(origin.id)
+      expect(rows.map(r => [r.role, r.content])).toEqual([
+        ['user', 'Question for the origin chat'],
+        ['assistant', 'Partial answer'],
+      ])
+      expect(await rowsFor(other.id)).toEqual([])
+    })
+
+    it('writes the text streamed so far when the provider stream dies mid-turn', async () => {
+      // Not an abort and not an in-band error part: the stream itself throws, so
+      // the SDK pipeline errors and none of its finish/abort hooks run.
+      const [origin] = await createStandaloneChat('Origin')
+      const { model, push, fail } = controlledModel()
+      const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      try {
+        const response = await postTurn({ messages: [userMessage('Question')], chatId: origin.id }, { model })
+        push(...START, textDelta('Half an ans'))
+        const reader = response.body!.getReader()
+        const decoder = new TextDecoder()
+        let received = ''
+        while (!received.includes('Half an ans')) {
+          const { done, value } = await reader.read()
+          if (done) break
+          received += decoder.decode(value, { stream: true })
+        }
+        fail(new Error('socket hang up'))
+        reader.cancel().catch(() => {})
+
+        const rows = await settledRows(origin.id)
+        expect(rows.map(r => [r.role, r.content])).toEqual([['user', 'Question'], ['assistant', 'Half an ans']])
+      } finally {
+        errSpy.mockRestore()
+      }
+    })
+
+    it('writes no assistant row when the turn aborts before any text — the user message is still saved', async () => {
+      const [origin] = await createStandaloneChat('Origin')
+      const client = new AbortController()
+      const { model, push } = controlledModel()
+
+      const response = await postTurn({ messages: [userMessage('Stopped early')], chatId: origin.id }, { model, signal: client.signal })
+      push(...START)
+      const reader = response.body!.getReader()
+      await reader.read()
+      client.abort()
+      reader.cancel().catch(() => {})
+
+      await new Promise(r => setTimeout(r, 200))
+      expect((await rowsFor(origin.id)).map(r => [r.role, r.content])).toEqual([['user', 'Stopped early']])
+    })
+  })
+
+  describe('persists-user-message-once', () => {
+    it('inserts a client-id user message exactly once, before any reply text exists', async () => {
+      const [chat] = await createStandaloneChat('Chat')
+      const { model, push, close } = controlledModel()
+
+      const response = await postTurn({ messages: [userMessage('Only once')], chatId: chat.id }, { model })
+      // The response exists but the model has produced nothing yet: the user row
+      // is already durable.
+      expect((await rowsFor(chat.id)).map(r => [r.role, r.content])).toEqual([['user', 'Only once']])
+
+      push(...START, textDelta('Reply'), ...END)
+      close()
+      await response.text()
+      const rows = await settledRows(chat.id)
+      expect(rows.filter(r => r.role === 'user')).toHaveLength(1)
+    })
+
+    it('does not re-insert a user message whose id is already a DB integer (F3)', async () => {
+      const [chat] = await createStandaloneChat('Chat')
+      const [existing] = await testDb.insert(messagesTable).values({ chatId: chat.id, role: 'user', content: 'Already saved' }).returning()
+
+      const response = await postTurn({
+        messages: [userMessage('Already saved', String(existing.id))],
+        chatId: chat.id,
+      })
+      const chunks = await readChunks(response)
+
+      const rows = await settledRows(chat.id)
+      expect(rows.map(r => [r.role, r.content])).toEqual([['user', 'Already saved'], ['assistant', 'Full answer.']])
+      // Nothing was inserted for the user turn, so there is no new id to report.
+      expect(chunks.find(c => c.type === 'finish')?.messageMetadata).toMatchObject({ userMessageDbId: null })
+    })
+
+    it('saves only the newest message of a history that already holds earlier client-id turns', async () => {
+      const [chat] = await createStandaloneChat('Chat')
+      const response = await postTurn({
+        messages: [
+          userMessage('Earlier question', 'earlierUserMsg001'),
+          { id: 'earlierAsstMsg01', role: 'assistant', parts: [{ type: 'text', text: 'Earlier answer' }] },
+          userMessage('Newest question', 'newestUserMsg0001'),
+        ],
+        chatId: chat.id,
+      })
+      await response.text()
+      const rows = await settledRows(chat.id)
+      expect(rows.map(r => [r.role, r.content])).toEqual([['user', 'Newest question'], ['assistant', 'Full answer.']])
+    })
+  })
+
+  describe('rejects-unknown-chat', () => {
+    it('returns 404 and writes nothing when the chat does not exist', async () => {
+      const [chat] = await createStandaloneChat('Real chat')
+      const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      try {
+        const response = await postTurn({ messages: [userMessage('Into the void')], chatId: chat.id + 999 })
+        expect(response.status).toBe(404)
+        expect(await response.json()).toEqual({ error: 'Chat not found' })
+      } finally {
+        errSpy.mockRestore()
+      }
+      expect(mockCreateProvider).not.toHaveBeenCalled()
+      expect(await testDb.select().from(messagesTable)).toEqual([])
+    })
+  })
+
+  describe('metadata-carries-db-ids', () => {
+    it('sends chatId, the DB projectId and both row ids on the finish chunk', async () => {
+      const [project] = await createProject('P')
+      const [chat] = await createChat(project.id, 'Chat')
+
+      const response = await postTurn({
+        messages: [userMessage('Hello')],
+        chatId: chat.id,
+        // A stale/forged client project must never reach the metadata.
+        projectId: project.id + 41,
+      })
+      const chunks = await readChunks(response)
+      const rows = await settledRows(chat.id)
+      const userRow = rows.find(r => r.role === 'user')!
+      const assistantRow = rows.find(r => r.role === 'assistant')!
+
+      // Known before the first token: everything but the reply's id.
+      expect(chunks.find(c => c.type === 'start')?.messageMetadata).toEqual({
+        chatId: chat.id,
+        projectId: project.id,
+        userMessageDbId: userRow.id,
+        assistantMessageDbId: null,
+      })
+      expect(chunks.find(c => c.type === 'finish')?.messageMetadata).toEqual({
+        chatId: chat.id,
+        projectId: project.id,
+        userMessageDbId: userRow.id,
+        assistantMessageDbId: assistantRow.id,
+      })
+    })
+
+    it('reports a null projectId for a standalone chat', async () => {
+      const [chat] = await createStandaloneChat('Quick chat')
+      const response = await postTurn({ messages: [userMessage('Hello')], chatId: chat.id, projectId: 7 })
+      const chunks = await readChunks(response)
+      await settledRows(chat.id)
+      expect(chunks.find(c => c.type === 'finish')?.messageMetadata).toMatchObject({ chatId: chat.id, projectId: null })
+    })
+
+    it('sends no turn metadata when the request has no chat', async () => {
+      const response = await postTurn({ messages: [userMessage('Hello')] })
+      const chunks = await readChunks(response)
+      expect(chunks.some(c => c.messageMetadata !== undefined)).toBe(false)
+      expect(await testDb.select().from(messagesTable)).toEqual([])
+    })
   })
 })

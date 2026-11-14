@@ -229,6 +229,25 @@ export async function getChatMessages(chatId: number, limit: number = 100) {
   return recentMessages.reverse()
 }
 
+/**
+ * The assistant row `/api/chat` saved in reply to a given user message, or null if
+ * there is none (yet). Used by the client after a STOPPED or failed turn: the
+ * stream's finish chunk — which carries the reply's id — never arrives, but the
+ * server still saves the partial reply on its abort/error path.
+ *
+ * Only the row immediately after the user message counts: if that row is another
+ * user message, this turn saved no reply, and a later turn's reply must not be
+ * mistaken for it.
+ */
+export async function getAssistantReplyId(chatId: number, userMessageId: number): Promise<number | null> {
+  const [next] = await db.select({ id: messages.id, role: messages.role })
+    .from(messages)
+    .where(and(eq(messages.chatId, chatId), gt(messages.id, userMessageId)))
+    .orderBy(asc(messages.id))
+    .limit(1)
+  return next?.role === 'assistant' ? next.id : null
+}
+
 export async function moveChatToProject(chatId: number, projectId: number | null) {
   return await db.update(chats).set({ projectId }).where(eq(chats.id, chatId)).returning()
 }
