@@ -23,7 +23,7 @@ function setup(cfgOverrides: Record<string, unknown> = {}) {
   vi.doMock('@/lib/ragConfig', () => ({ getRagConfig: () => ({
     docThreshold: 0.5, msgThreshold: 0.7, topN: 20, docTopK: 3, msgTopK: 5, mmrLambda: 0.7,
     rewriteEnabled: true, rerankEnabled: true, mmrEnabled: true,
-    hybridEnabled: true, rrfK: 60, keywordTopN: 20, ...cfgOverrides,
+    hybridEnabled: true, rrfK: 60, keywordTopN: 20, stageTimeoutMs: 4000, ...cfgOverrides,
   }) }))
   // Default: no keyword hits, so existing vector-only test expectations hold unchanged.
   m.findChunksByKeyword.mockResolvedValue([])
@@ -52,7 +52,7 @@ describe('retrieveContext', () => {
     const { retrieveContext } = await import('@/lib/retrieval')
     const out = await retrieveContext(multiTurn as never, { chatId: 1, projectId: 7 })
     expect(m.rewriteQuery).toHaveBeenCalled()
-    expect(m.generateEmbedding).toHaveBeenCalledWith('standalone foundation query', 'query')
+    expect(m.generateEmbedding).toHaveBeenCalledWith('standalone foundation query', 'query', expect.objectContaining({ maxRetries: 0 }))
     expect(out.documentContext).toContain('spec.pdf')
     expect(out.documentContext).toContain('4000psi')
   })
@@ -66,7 +66,7 @@ describe('retrieveContext', () => {
     const { retrieveContext } = await import('@/lib/retrieval')
     await retrieveContext(msgs as never, { chatId: 1, projectId: 7 })
     expect(m.rewriteQuery).not.toHaveBeenCalled()
-    expect(m.generateEmbedding).toHaveBeenCalledWith('foundation spec?', 'query')
+    expect(m.generateEmbedding).toHaveBeenCalledWith('foundation spec?', 'query', expect.objectContaining({ maxRetries: 0 }))
   })
 
   it('still returns (no throw) when embedding generation fails', async () => {
@@ -101,7 +101,7 @@ describe('retrieveContext', () => {
     const { retrieveContext } = await import('@/lib/retrieval')
     await retrieveContext(msgs as never, { chatId: 1, projectId: 7 })
     expect(m.rewriteQuery).not.toHaveBeenCalled()
-    expect(m.generateEmbedding).toHaveBeenCalledWith('foundation spec?', 'query')
+    expect(m.generateEmbedding).toHaveBeenCalledWith('foundation spec?', 'query', expect.objectContaining({ maxRetries: 0 }))
   })
 
   it('RRF-fuses vector + keyword hits and surfaces a keyword-only hit through MMR', async () => {
@@ -237,5 +237,153 @@ describe('retrieveContext', () => {
     const { retrieveContext } = await import('@/lib/retrieval')
     const out = await retrieveContext(msgs as never, { chatId: 1, projectId: 7 })
     expect(out.documentContext).toContain('vector hit')
+  })
+  // Audit B5: the chunk found by BOTH legs (keyword rank 1, vector rank 15) tops the
+  // fused list. MMR used to re-rank every embedded candidate by raw similarity and
+  // keep only docTopK*2 of them, so it dropped chunk 15 while keyword-only chunk 99
+  // survived. Being found by both legs must never be worse than keyword alone.
+  it('fused-chunk-survives-mmr', async () => {
+    setup()
+    m.generateEmbedding.mockResolvedValue([1, 0, 0])
+    m.findSimilarMessages.mockResolvedValue([])
+    const oneHot = (i: number) => Array.from({ length: 24 }, (_, j) => (j === i ? 1 : 0))
+    // Vector leg: chunks 1..20 by descending similarity, so chunk 15 is rank 15.
+    m.findSimilarDocumentChunks.mockResolvedValue(Array.from({ length: 20 }, (_, i) => ({
+      content: `vec ${i + 1}`, similarity: 0.95 - i * 0.01, chunkId: i + 1, documentId: 1,
+      filename: 'a.pdf', pageStart: null, pageEnd: null, embedding: oneHot(i),
+    })))
+    // Keyword leg: chunk 15 first, then keyword-only chunk 99. RRF top 5 = [15, 1, 2, 99, 3].
+    m.findChunksByKeyword.mockResolvedValue([
+      { content: 'vec 15', chunkId: 15, documentId: 1, filename: 'a.pdf', pageStart: null, pageEnd: null, embedding: null },
+      { content: 'kw 99', chunkId: 99, documentId: 1, filename: 'a.pdf', pageStart: null, pageEnd: null, embedding: null },
+    ])
+    // A rerank that keeps the incoming order (its fallback on failure or timeout).
+    m.rerankCandidates.mockImplementation((_q: unknown, c: unknown[], k: number) => Promise.resolve(c.slice(0, k)))
+    const { retrieveContext } = await import('@/lib/retrieval')
+    const out = await retrieveContext(msgs as never, { chatId: 1, projectId: 7 })
+    expect(out.documentContext).toContain('§c15]')
+    // The candidates handed to rerank arrive in fused order, so its fallback is sane.
+    const docCall = m.rerankCandidates.mock.calls.find(c => (c[1] as { chunkId?: number }[])[0]?.chunkId != null)!
+    const handed = (docCall[1] as { chunkId: number }[]).map(c => c.chunkId)
+    expect(handed[0]).toBe(15)
+  })
+
+  it('fused chunk also survives the no-rerank slice', async () => {
+    setup({ rerankEnabled: false })
+    m.generateEmbedding.mockResolvedValue([1, 0, 0])
+    m.findSimilarMessages.mockResolvedValue([])
+    const oneHot = (i: number) => Array.from({ length: 24 }, (_, j) => (j === i ? 1 : 0))
+    m.findSimilarDocumentChunks.mockResolvedValue(Array.from({ length: 20 }, (_, i) => ({
+      content: `vec ${i + 1}`, similarity: 0.95 - i * 0.01, chunkId: i + 1, documentId: 1,
+      filename: 'a.pdf', pageStart: null, pageEnd: null, embedding: oneHot(i),
+    })))
+    m.findChunksByKeyword.mockResolvedValue([
+      { content: 'vec 15', chunkId: 15, documentId: 1, filename: 'a.pdf', pageStart: null, pageEnd: null, embedding: null },
+    ])
+    const { retrieveContext } = await import('@/lib/retrieval')
+    const out = await retrieveContext(msgs as never, { chatId: 1, projectId: 7 })
+    expect(out.documentContext?.startsWith('[Source: doc 1 "a.pdf" §c15]')).toBe(true)
+  })
+
+  // Audit B10: the keyword leg is pure Postgres and must not die with the embedding.
+  it('keyword-leg-survives-embedding-failure', async () => {
+    setup()
+    m.generateEmbedding.mockRejectedValue(new Error('429 quota exhausted'))
+    m.findChunksByKeyword.mockResolvedValue([
+      { content: 'SW-101 storm drain', chunkId: 4, documentId: 2, filename: 'plans.pdf', pageStart: 3, pageEnd: 3, embedding: null },
+    ])
+    m.rerankCandidates.mockImplementation((_q: unknown, c: unknown) => Promise.resolve(c))
+    const { retrieveContext } = await import('@/lib/retrieval')
+    const out = await retrieveContext(msgs as never, { chatId: 1, projectId: 7 })
+    expect(out.documentContext).toContain('SW-101 storm drain')
+    expect(out.semanticContext).toBeNull()
+    expect(m.findSimilarDocumentChunks).not.toHaveBeenCalled()
+    expect(m.findSimilarMessages).not.toHaveBeenCalled()
+  })
+
+  // Audit B9: messages already in the prompt must not come back as "previous
+  // conversations" context.
+  it('excludes-current-chat-messages', async () => {
+    setup()
+    m.generateEmbedding.mockResolvedValue([1, 0, 0])
+    m.findSimilarMessages.mockResolvedValue([])
+    m.findSimilarDocumentChunks.mockResolvedValue([])
+    const { retrieveContext } = await import('@/lib/retrieval')
+    await retrieveContext(msgs as never, { chatId: 3, projectId: 7, excludeChatId: 3 })
+    expect(m.findSimilarMessages).toHaveBeenCalledWith(
+      [1, 0, 0], expect.objectContaining({ projectId: 7, excludeChatId: 3 }), 20, 0.7, true,
+    )
+  })
+
+  it('skips message retrieval for a standalone chat whose whole history is in the prompt', async () => {
+    setup()
+    m.generateEmbedding.mockResolvedValue([1, 0, 0])
+    m.findSimilarMessages.mockResolvedValue([
+      { content: 'a turn of this same chat', similarity: 0.9, chatId: 3, messageId: 5, embedding: [1, 0, 0] },
+    ])
+    const { retrieveContext } = await import('@/lib/retrieval')
+    const out = await retrieveContext(msgs as never, { chatId: 3, projectId: null, excludeChatId: 3 })
+    expect(m.findSimilarMessages).not.toHaveBeenCalled()
+    expect(out.semanticContext).toBeNull()
+  })
+
+  // Phase B follow-up: the exclusion set is the ids actually SENT (the route's
+  // recentTail), not every id in the posted history. A loaded message the route
+  // trimmed (id 10 here) is in no other layer, so semantic retrieval must keep it.
+  it('excludes exactly the sent message ids, not the whole posted history', async () => {
+    setup({ rerankEnabled: false, mmrEnabled: false })
+    m.generateEmbedding.mockResolvedValue([1, 0, 0])
+    m.findSimilarMessages.mockResolvedValue([
+      { content: 'trimmed older turn', similarity: 0.9, chatId: 3, messageId: 10, embedding: null },
+    ])
+    m.findSimilarDocumentChunks.mockResolvedValue([])
+    const posted = [
+      { id: '10', role: 'user', parts: [{ type: 'text', text: 'older question' }] },
+      { id: '11', role: 'user', parts: [{ type: 'text', text: 'foundation spec?' }] },
+    ]
+    const { retrieveContext } = await import('@/lib/retrieval')
+    const out = await retrieveContext(posted as never, { chatId: 3, projectId: 7, excludeMessageIds: [11] })
+    expect(m.findSimilarMessages).toHaveBeenCalledWith(
+      [1, 0, 0], expect.objectContaining({ excludeMessageIds: [11] }), 20, 0.7, false,
+    )
+    expect(m.findSimilarMessages.mock.calls[0]![1]).not.toHaveProperty('excludeChatId')
+    expect(out.semanticContext).toBe('trimmed older turn')
+  })
+
+  // Audit B11: a stalled Gemini call is bounded by RAG_STAGE_TIMEOUT_MS and degrades.
+  it('best-effort-calls-time-out', async () => {
+    setup({ stageTimeoutMs: 200 })
+    const multiTurn = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'tell me about the project' }] },
+      { id: 'a1', role: 'assistant', parts: [{ type: 'text', text: 'sure' }] },
+      { id: 'u2', role: 'user', parts: [{ type: 'text', text: 'foundation spec?' }] },
+    ]
+    m.rewriteQuery.mockReturnValue(new Promise(() => {}))
+    m.generateEmbedding.mockResolvedValue([1, 0, 0])
+    m.findSimilarMessages.mockResolvedValue([])
+    m.findSimilarDocumentChunks.mockResolvedValue([])
+    const { retrieveContext } = await import('@/lib/retrieval')
+    const t0 = Date.now()
+    await retrieveContext(multiTurn as never, { chatId: 1, projectId: 7 })
+    expect(Date.now() - t0).toBeLessThan(200 + 500)
+    expect(m.generateEmbedding).toHaveBeenCalledWith('foundation spec?', 'query', expect.objectContaining({ maxRetries: 0 }))
+    const rewriteOpts = m.rewriteQuery.mock.calls[0]![1] as { abortSignal?: AbortSignal }
+    expect(rewriteOpts.abortSignal).toBeInstanceOf(AbortSignal)
+  })
+
+  it('a stalled embedding and a stalled rerank both degrade within the stage timeout', async () => {
+    setup({ stageTimeoutMs: 200 })
+    m.generateEmbedding.mockReturnValue(new Promise(() => {}))
+    m.findChunksByKeyword.mockResolvedValue([
+      { content: 'kw A', chunkId: 1, documentId: 1, filename: 'a.pdf', pageStart: null, pageEnd: null, embedding: null },
+      { content: 'kw B', chunkId: 2, documentId: 1, filename: 'a.pdf', pageStart: null, pageEnd: null, embedding: null },
+    ])
+    m.rerankCandidates.mockReturnValue(new Promise(() => {}))
+    const { retrieveContext } = await import('@/lib/retrieval')
+    const t0 = Date.now()
+    const out = await retrieveContext(msgs as never, { chatId: 1, projectId: 7 })
+    expect(Date.now() - t0).toBeLessThan(2 * 200 + 500)
+    expect(out.documentContext).toContain('kw A')
+    expect(out.documentContext).toContain('kw B')
   })
 })

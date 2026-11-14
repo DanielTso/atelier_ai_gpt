@@ -1,6 +1,10 @@
 export interface MmrItem {
   embedding: number[]
   similarity: number // base relevance to the query (e.g. vector cosine similarity)
+  // Overrides `similarity` as the relevance term when set — retrieval passes the
+  // normalised RRF score here so MMR keeps the fused order (audit B5). Diversity is
+  // still measured on the embeddings.
+  relevance?: number
 }
 
 function dot(a: number[], b: number[]): number {
@@ -15,7 +19,8 @@ function cosine(a: number[], b: number[]): number {
 
 /**
  * Maximal Marginal Relevance: greedily pick items that are relevant to the query
- * (high `similarity`) while penalising similarity to already-picked items.
+ * (high `relevance`, else `similarity`) while penalising similarity to
+ * already-picked items.
  * lambda=1 -> pure relevance; lambda=0 -> pure diversity.
  */
 export function mmr<T extends MmrItem>(candidates: T[], topK: number, lambda: number): T[] {
@@ -28,7 +33,7 @@ export function mmr<T extends MmrItem>(candidates: T[], topK: number, lambda: nu
       const maxSimToSelected = selected.length === 0
         ? 0
         : Math.max(...selected.map(s => cosine(pool[i]!.embedding, s.embedding)))
-      const score = lambda * pool[i]!.similarity - (1 - lambda) * maxSimToSelected
+      const score = lambda * (pool[i]!.relevance ?? pool[i]!.similarity) - (1 - lambda) * maxSimToSelected
       if (score > bestScore) { bestScore = score; bestIdx = i }
     }
     selected.push(pool[bestIdx]!)

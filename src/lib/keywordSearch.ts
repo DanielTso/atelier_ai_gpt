@@ -34,6 +34,24 @@ export function identifierTokens(query: string, max = 5): string[] {
   return out
 }
 
+// The FTS leg ORs the question's words (prior audit D1): websearch_to_tsquery on
+// the raw question ANDs every term, so "what does the storm drain profile show"
+// matched nothing as soon as one word was missing from the chunk. ts_rank_cd
+// still ranks chunks that match more of the words first; english stopwords drop
+// out inside websearch_to_tsquery. Words are letters/digits only, so operator
+// syntax in the question ("-", quotes, "or") can never negate or group anything.
+const MAX_FTS_TERMS = 32
+
+export function ftsOrQuery(query: string): string {
+  const terms: string[] = []
+  for (const w of query.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []) {
+    if (w === 'or' || terms.includes(w)) continue
+    terms.push(w)
+    if (terms.length >= MAX_FTS_TERMS) break
+  }
+  return terms.join(' or ')
+}
+
 // A "query" longer than this is not a keyword query — messages carrying inline
 // file attachments arrive as the FULL file text (600k+ chars, seen live with an
 // attached contract), and websearch_to_tsquery rejects inputs that large. The
@@ -51,13 +69,14 @@ export async function findChunksByKeyword(
   const excl = excludeDocumentIds && excludeDocumentIds.length > 0
     ? sql` AND dc.document_id NOT IN (${sql.join(excludeDocumentIds.map(id => sql`${id}`), sql`, `)})`
     : sql``
-  const fts = rowsOf(await db.execute(sql`
+  const ftsQuery = ftsOrQuery(query)
+  const fts = ftsQuery === '' ? [] : rowsOf(await db.execute(sql`
     SELECT dc.id AS chunk_id, dc.content, dc.document_id, d.filename, dc.page_start, dc.page_end
     FROM document_chunks dc
     JOIN documents d ON d.id = dc.document_id
     WHERE dc.project_id = ${projectId}${excl}
-      AND dc.content_tsv @@ websearch_to_tsquery('english', ${query})
-    ORDER BY ts_rank_cd(dc.content_tsv, websearch_to_tsquery('english', ${query})) DESC
+      AND dc.content_tsv @@ websearch_to_tsquery('english', ${ftsQuery})
+    ORDER BY ts_rank_cd(dc.content_tsv, websearch_to_tsquery('english', ${ftsQuery})) DESC
     LIMIT ${topN}`))
 
   const tokens = identifierTokens(query)

@@ -1,6 +1,6 @@
 import { embed } from 'ai'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
-import { sql, eq, and, not, inArray, cosineDistance } from 'drizzle-orm'
+import { sql, eq, ne, and, not, inArray, notInArray, cosineDistance } from 'drizzle-orm'
 import { db } from '@/db'
 import { messageEmbeddings, documentChunks, documents } from '@/db/schema'
 import { getGeminiApiKey } from './settings'
@@ -36,11 +36,14 @@ export async function ensureEmbeddingModel(): Promise<{ available: boolean; prov
 
 /**
  * Generate an embedding using Google Gemini gemini-embedding-001.
- * Returns a 768-dimensional float array.
+ * Returns a 768-dimensional float array. `opts` is for the chat path's query
+ * embedding, which is best-effort and must fail fast (`maxRetries: 0` plus a
+ * timeout signal); ingestion leaves it unset and keeps the SDK's retries.
  */
 export async function generateEmbedding(
   text: string,
-  taskType: 'query' | 'document' = 'document'
+  taskType: 'query' | 'document' = 'document',
+  opts: { abortSignal?: AbortSignal; maxRetries?: number } = {}
 ): Promise<number[]> {
   const apiKey = await getGeminiApiKey()
   if (!apiKey) {
@@ -57,6 +60,8 @@ export async function generateEmbedding(
         taskType: taskType === 'query' ? 'RETRIEVAL_QUERY' : 'RETRIEVAL_DOCUMENT',
       },
     },
+    ...(opts.abortSignal && { abortSignal: opts.abortSignal }),
+    ...(opts.maxRetries !== undefined && { maxRetries: opts.maxRetries }),
   })
 
   return embedding
@@ -64,11 +69,13 @@ export async function generateEmbedding(
 
 /**
  * Find messages semantically similar to the query embedding.
- * Searches within the specified scope (chat or project).
+ * Searches within the specified scope (chat or project). `excludeChatId` /
+ * `excludeMessageIds` leave out rows already in the prompt (audit B9); they are
+ * applied in SQL, before the LIMIT, so excluded rows cannot use up the top-K.
  */
 export async function findSimilarMessages(
   queryEmbedding: number[],
-  scope: { chatId?: number; projectId?: number },
+  scope: { chatId?: number; projectId?: number; excludeChatId?: number; excludeMessageIds?: number[] },
   topK: number = 5,
   threshold: number = 0.7,
   includeEmbedding: boolean = true
@@ -85,6 +92,11 @@ export async function findSimilarMessages(
     : scope.chatId
       ? eq(messageEmbeddings.chatId, scope.chatId)
       : undefined
+  const where = and(
+    scopeFilter,
+    scope.excludeChatId != null ? ne(messageEmbeddings.chatId, scope.excludeChatId) : undefined,
+    scope.excludeMessageIds?.length ? notInArray(messageEmbeddings.messageId, scope.excludeMessageIds) : undefined,
+  )
   const baseCols = {
     content: messageEmbeddings.content,
     similarity,
@@ -95,9 +107,9 @@ export async function findSimilarMessages(
   // (~20 vectors parsed per query on the chat critical path for nothing).
   const rows = includeEmbedding
     ? await db.select({ ...baseCols, embedding: messageEmbeddings.embedding })
-        .from(messageEmbeddings).where(scopeFilter).orderBy(distance).limit(topK)
+        .from(messageEmbeddings).where(where).orderBy(distance).limit(topK)
     : await db.select(baseCols)
-        .from(messageEmbeddings).where(scopeFilter).orderBy(distance).limit(topK)
+        .from(messageEmbeddings).where(where).orderBy(distance).limit(topK)
   return rows
     .filter((r) => r.similarity > threshold)
     .map((r) => ({

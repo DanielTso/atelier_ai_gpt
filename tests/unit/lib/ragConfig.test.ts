@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { getRagConfig } from '@/lib/ragConfig'
 
-const KEYS = ['RAG_DOC_THRESHOLD','RAG_MSG_THRESHOLD','RAG_TOP_N','RAG_DOC_TOP_K','RAG_MSG_TOP_K','RAG_MMR_LAMBDA','RAG_REWRITE_ENABLED','RAG_RERANK_ENABLED','RAG_MMR_ENABLED','RAG_HYBRID_ENABLED','RAG_RRF_K','RAG_KEYWORD_TOP_N']
+const KEYS = ['RAG_DOC_THRESHOLD','RAG_MSG_THRESHOLD','RAG_TOP_N','RAG_DOC_TOP_K','RAG_MSG_TOP_K','RAG_MMR_LAMBDA','RAG_REWRITE_ENABLED','RAG_RERANK_ENABLED','RAG_MMR_ENABLED','RAG_HYBRID_ENABLED','RAG_RRF_K','RAG_KEYWORD_TOP_N','RAG_STAGE_TIMEOUT_MS']
 
 describe('getRagConfig', () => {
   afterEach(() => { for (const k of KEYS) delete process.env[k] })
@@ -20,6 +20,14 @@ describe('getRagConfig', () => {
     expect(c.hybridEnabled).toBe(true)
     expect(c.rrfK).toBe(60)
     expect(c.keywordTopN).toBe(20)
+    expect(c.stageTimeoutMs).toBe(4000)
+  })
+
+  it('applies a stage-timeout override and ignores a non-positive one', () => {
+    process.env.RAG_STAGE_TIMEOUT_MS = '1500'
+    expect(getRagConfig().stageTimeoutMs).toBe(1500)
+    process.env.RAG_STAGE_TIMEOUT_MS = '0'
+    expect(getRagConfig().stageTimeoutMs).toBe(4000)
   })
 
   it('applies numeric + boolean env overrides', () => {

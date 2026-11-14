@@ -132,3 +132,26 @@ export function recentTail<M extends UIMessage>(
   if (messages[start].role !== 'user' && start > 0) start -= 1
   return messages.slice(start)
 }
+
+/**
+ * The DB row ids of the messages actually sent to the model (the output of
+ * `recentTail`), plus the turn's own user row — what semantic retrieval must
+ * leave out (audit B9). A live user message has no id of its own; the reply
+ * after it carries it in its turn metadata, so it is taken from there, and only
+ * when that user message was sent too. Messages trimmed off the front are NOT
+ * listed: they are in no other layer, so retrieval may still surface them.
+ */
+export function sentMessageDbIds(sent: UIMessage[], currentUserMessageDbId: number | null): number[] {
+  const ids = new Set<number>()
+  sent.forEach((message, i) => {
+    const id = knownDbId(message)
+    if (id !== null) ids.add(id)
+    const prev = i > 0 ? sent[i - 1] : undefined
+    if (message.role === 'assistant' && prev?.role === 'user' && knownDbId(prev) === null) {
+      const userId = readTurnMetadata(message)?.userMessageDbId
+      if (userId != null) ids.add(userId)
+    }
+  })
+  if (currentUserMessageDbId != null) ids.add(currentUserMessageDbId)
+  return [...ids]
+}

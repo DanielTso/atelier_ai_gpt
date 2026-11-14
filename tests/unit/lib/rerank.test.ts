@@ -53,4 +53,13 @@ describe('rerankCandidates', () => {
     expect(new Set(contents).size).toBe(contents.length) // all unique
     expect(out).toHaveLength(3)
   })
+
+  it('fails fast: no SDK retries and the caller abort signal is passed through', async () => {
+    setup()
+    mockGenerateText.mockResolvedValue({ text: '[]' })
+    const { rerankCandidates } = await import('@/lib/rerank')
+    const signal = new AbortController().signal
+    await rerankCandidates('q', cands, 2, { abortSignal: signal })
+    expect(mockGenerateText).toHaveBeenCalledWith(expect.objectContaining({ maxRetries: 0, abortSignal: signal }))
+  })
 })

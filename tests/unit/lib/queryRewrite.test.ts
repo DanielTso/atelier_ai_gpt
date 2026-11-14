@@ -38,4 +38,14 @@ describe('rewriteQuery', () => {
     const { rewriteQuery } = await import('@/lib/queryRewrite')
     expect(await rewriteQuery(turns)).toBe('what about the second one?')
   })
+
+  it('fails fast: no SDK retries and the caller abort signal is passed through', async () => {
+    setup()
+    vi.doMock('@/lib/settings', () => ({ getGeminiApiKey: () => Promise.resolve('k') }))
+    mockGenerateText.mockResolvedValue({ text: 'q' })
+    const { rewriteQuery } = await import('@/lib/queryRewrite')
+    const signal = new AbortController().signal
+    await rewriteQuery(turns, { abortSignal: signal })
+    expect(mockGenerateText).toHaveBeenCalledWith(expect.objectContaining({ maxRetries: 0, abortSignal: signal }))
+  })
 })

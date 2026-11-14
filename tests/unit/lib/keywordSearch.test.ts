@@ -5,7 +5,7 @@ vi.mock('@/db', () => ({
   get db() { return testDb },
 }))
 
-import { findChunksByKeyword, identifierTokens } from '@/lib/keywordSearch'
+import { findChunksByKeyword, ftsOrQuery, identifierTokens } from '@/lib/keywordSearch'
 
 async function seed() {
   const { projects, documents, documentChunks } = await import('@/db/schema')
@@ -44,6 +44,19 @@ describe('identifierTokens', () => {
   })
 })
 
+describe('ftsOrQuery', () => {
+  it('OR-joins the distinct words, dropping operator syntax and the word or', () => {
+    expect(ftsOrQuery('What does SW-101 show, or not?')).toBe('what or does or sw or 101 or show or not')
+    expect(ftsOrQuery('"-storm" storm OR drain')).toBe('storm or drain')
+    expect(ftsOrQuery('?! --')).toBe('')
+  })
+
+  it('caps the number of terms', () => {
+    const many = Array.from({ length: 50 }, (_, i) => `w${i}`).join(' ')
+    expect(ftsOrQuery(many).split(' or ')).toHaveLength(32)
+  })
+})
+
 describe('findChunksByKeyword', () => {
   beforeEach(async () => { await createTestDb() })
 
@@ -54,6 +67,30 @@ describe('findChunksByKeyword', () => {
     expect(r[0].content).toContain('SW-101')
     expect(r[0].filename).toBe('plans.pdf')
     expect(r[0].embedding).toBeNull()
+  })
+
+  // Prior audit D1: websearch_to_tsquery ANDs every term, so a natural question
+  // matched nothing as soon as one of its words was missing from the chunk.
+  it('fts-or-matches-partial-question', async () => {
+    const { projectId } = await seed()
+    const r = await findChunksByKeyword('what does the storm drain profile show about outfalls', projectId, 10)
+    expect(r.length).toBeGreaterThan(0)
+    expect(r[0].content).toContain('Storm drain profile')
+  })
+
+  it('ranks the chunk matching more of the question first', async () => {
+    const { projectId } = await seed()
+    // Electrical chunk matches panel + schedule + single + line + diagram; Landscape only schedule.
+    const r = await findChunksByKeyword('which panel schedule is on the single line diagram', projectId, 10)
+    expect(r.map(c => c.content.split(' ')[0])).toEqual(['Electrical', 'Landscape'])
+  })
+
+  it('treats operator syntax in the question as plain words', async () => {
+    const { projectId } = await seed()
+    // A leading "-" would negate a term and a stray quote would open a phrase;
+    // both are just words here, so the storm-drain chunk still matches.
+    const r = await findChunksByKeyword('"storm -drain or OR ( ) : & | ! <-> \\', projectId, 10)
+    expect(r.map(c => c.content)).toEqual(['Storm drain profile sheet SW-101 with general notes'])
   })
 
   it('finds identifier chunks via ILIKE even when FTS misses', async () => {
@@ -102,8 +139,8 @@ describe('findChunksByKeyword oversized queries', () => {
     const { projectId } = await seed()
     // Seen live: a message carrying an attached contract arrives as 600k+ chars.
     // websearch_to_tsquery rejects inputs that large — the cap must prevent the
-    // throw (matching is not expected: websearch ANDs every term, so a
-    // junk-heavy query legitimately returns nothing and vector search carries it).
+    // throw. Matching is not asserted: the terms are OR-joined, but a junk-heavy
+    // head can still match nothing, and the vector leg carries it then.
     const giant = 'abstract this contract ' + 'lorem ipsum '.repeat(60_000)
     await expect(findChunksByKeyword(giant, projectId, 10)).resolves.toBeInstanceOf(Array)
   })

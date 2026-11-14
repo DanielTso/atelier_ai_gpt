@@ -17,7 +17,7 @@ import { after } from 'next/server';
 import { recordUsage, sumUsage } from '@/lib/usage';
 import { createAssistantTurnRecorder, isDbMessageId, type TurnMetadata } from '@/lib/chatTurn';
 import { messageText } from '@/lib/messageParts';
-import { recentTail, stubOldToolOutputs } from '@/lib/contextBudget';
+import { recentTail, sentMessageDbIds, stubOldToolOutputs } from '@/lib/contextBudget';
 
 // Experience-mode turns run long: web research + several image generations + an
 // HTML artifact build in one streamed response. Make the time budget explicit.
@@ -186,7 +186,8 @@ export async function POST(req: Request) {
     // windows of all but the last assistant turn so they are not re-billed on every
     // later turn (audit B3). See src/lib/contextBudget.ts.
     const summaryBoundary = chat?.summary ? chat.summaryUpToMessageId ?? null : null;
-    let contextMessages = stubOldToolOutputs(recentTail(messages as unknown as UIMessage[], summaryBoundary));
+    const sentTail = recentTail(messages as unknown as UIMessage[], summaryBoundary);
+    let contextMessages = stubOldToolOutputs(sentTail);
     let systemPrompt: string | undefined;
     let semanticContext: string | null = null;
     let documentContext: string | null = null;
@@ -209,6 +210,12 @@ export async function POST(req: Request) {
           chatId,
           projectId: chat?.projectId ?? null,
           excludeDocumentIds: excludedDocumentIds,
+          // Semantic retrieval leaves out what the model already sees (audit B9):
+          // the whole chat when nothing was trimmed, otherwise exactly the sent
+          // rows, so messages trimmed off the front stay retrievable.
+          ...(sentTail.length === messages.length
+            ? { excludeChatId: chatId }
+            : { excludeMessageIds: sentMessageDbIds(sentTail, userMessageDbId) }),
         }),
         chat?.projectId ? getProjectDocuments(chat.projectId).catch(() => []) : Promise.resolve([]),
       ]);

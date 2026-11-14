@@ -7,12 +7,14 @@ const RERANK_MODEL = 'gemini-3.5-flash'
 /**
  * Re-score candidates for relevance to the query with an LLM and return the
  * top-K reordered. Best-effort: any failure / missing key / unparseable output
- * falls back to the original order (sliced to topK).
+ * falls back to the original order (sliced to topK). Fails fast (no SDK retries);
+ * the caller bounds it further with `abortSignal`.
  */
 export async function rerankCandidates<T extends { content: string }>(
   query: string,
   candidates: T[],
   topK: number,
+  opts: { abortSignal?: AbortSignal } = {},
 ): Promise<T[]> {
   if (candidates.length <= 1) return candidates.slice(0, topK)
   try {
@@ -24,7 +26,9 @@ export async function rerankCandidates<T extends { content: string }>(
       `Return ONLY a JSON array of {"index": <candidate number>, "score": <0-100 relevance>} ` +
       `for the candidates, sorted most-relevant first.`
     const google = createGoogleGenerativeAI({ apiKey })
-    const { text } = await generateText({ model: google(RERANK_MODEL), prompt, maxOutputTokens: 500 })
+    const { text } = await generateText({
+      model: google(RERANK_MODEL), prompt, maxOutputTokens: 500, maxRetries: 0, abortSignal: opts.abortSignal,
+    })
     const match = text.match(/\[[\s\S]*\]/)
     if (!match) return candidates.slice(0, topK)
     const scored = JSON.parse(match[0]) as { index: number; score: number }[]

@@ -8,8 +8,12 @@ const REWRITE_PROMPT =
 
 export interface Turn { role: string; text: string }
 
-/** Conversation -> standalone retrieval query. Falls back to the last user message. */
-export async function rewriteQuery(turns: Turn[]): Promise<string> {
+/**
+ * Conversation -> standalone retrieval query. Falls back to the last user message.
+ * Fails fast (no SDK retries): it runs before the first token of a chat turn, and
+ * the caller bounds it further with `abortSignal`.
+ */
+export async function rewriteQuery(turns: Turn[], opts: { abortSignal?: AbortSignal } = {}): Promise<string> {
   const lastUserText = [...turns].reverse().find(t => t.role === 'user')?.text ?? ''
   try {
     const apiKey = await getGeminiApiKey()
@@ -22,6 +26,8 @@ export async function rewriteQuery(turns: Turn[]): Promise<string> {
         { role: 'user', content: REWRITE_PROMPT + '\n\n' + recent },
       ],
       maxOutputTokens: 100,
+      maxRetries: 0,
+      abortSignal: opts.abortSignal,
     })
     return text.trim() || lastUserText
   } catch {

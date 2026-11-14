@@ -252,6 +252,36 @@ describe('POST /api/chat', () => {
     expect(passed[59].id).toBe('80')
   })
 
+  // Audit B9 + Phase B follow-up: semantic retrieval leaves out the messages the
+  // model already sees: the whole chat when nothing was trimmed, otherwise exactly
+  // the ids in the sent tail, so messages trimmed off the front stay retrievable.
+  it('excludes the whole chat from semantic retrieval when its history is sent in full', async () => {
+    const [project] = await createProject('P')
+    const [chat] = await createChat(project.id, 'Chat')
+    await postChat({
+      messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] }],
+      model: 'gemini-3.5-flash',
+      chatId: chat.id,
+    })
+    const scope = mockRetrieveContext.mock.calls[0][1] as Record<string, unknown>
+    expect(scope.excludeChatId).toBe(chat.id)
+    expect(scope).not.toHaveProperty('excludeMessageIds')
+  })
+
+  it('excludes exactly the sent tail ids from semantic retrieval when the history is trimmed', async () => {
+    const [project] = await createProject('P')
+    const [chat] = await createChat(project.id, 'Chat')
+    const history = Array.from({ length: 80 }, (_, i) => ({
+      id: String(i + 1),
+      role: i % 2 === 0 ? 'user' : 'assistant',
+      parts: [{ type: 'text', text: `m${i + 1}` }],
+    }))
+    await postChat({ messages: history, model: 'gemini-3.5-flash', chatId: chat.id })
+    const scope = mockRetrieveContext.mock.calls[0][1] as { excludeMessageIds?: number[] }
+    expect(scope).not.toHaveProperty('excludeChatId')
+    expect([...(scope.excludeMessageIds ?? [])].sort((a, b) => a - b)).toEqual(Array.from({ length: 60 }, (_, i) => i + 21))
+  })
+
   it('stubs-old-read-document-outputs and drops incomplete tool calls before converting', async () => {
     const [chat] = await createStandaloneChat('Chat')
     const bigOutput = (documentId: number) => ({ documentId, filename: 'f.pdf', text: 'x'.repeat(100_000), nextOffset: 100_000, firstPage: 1 })

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { UIMessage } from 'ai'
-import { stubOldToolOutputs, recentTail } from '@/lib/contextBudget'
+import { stubOldToolOutputs, recentTail, sentMessageDbIds } from '@/lib/contextBudget'
 
 const user = (id: string, text = `q${id}`): UIMessage => ({ id, role: 'user', parts: [{ type: 'text', text }] })
 const assistant = (id: string, text = `a${id}`, metadata?: unknown): UIMessage =>
@@ -180,5 +180,32 @@ describe('recentTail', () => {
   it('sends up to `max` when the boundary cannot be placed in the history', () => {
     const history = Array.from({ length: 30 }, (_, i) => (i % 2 === 0 ? user(`clientUser${i}xxxxx`) : assistant(`clientAsst${i}xxxxx`)))
     expect(recentTail(history, 500)).toBe(history)
+  })
+})
+
+describe('sentMessageDbIds', () => {
+  it('lists the DB ids of exactly the messages in the sent tail', () => {
+    const history = dbHistory(150)
+    const tail = recentTail(history, null)
+    const ids = sentMessageDbIds(tail, null)
+    expect(ids.sort((a, b) => a - b)).toEqual(Array.from({ length: 60 }, (_, i) => i + 91))
+  })
+
+  it('places live user messages via the next reply metadata, and adds the current turn', () => {
+    const sent = [
+      user('liveUser0xxxxxxx'),
+      assistant('liveAsst0xxxxxxx', 'a', { chatId: 1, projectId: null, userMessageDbId: 41, assistantMessageDbId: 42 }),
+      user('currentQuestion01'),
+    ]
+    expect(sentMessageDbIds(sent, 43).sort((a, b) => a - b)).toEqual([41, 42, 43])
+  })
+
+  it('does not claim a user message that was not sent', () => {
+    // The tail opens on a reply: its user message was trimmed, so its id stays out.
+    const sent = [
+      assistant('liveAsst0xxxxxxx', 'a', { chatId: 1, projectId: null, userMessageDbId: 41, assistantMessageDbId: 42 }),
+      user('7'),
+    ]
+    expect(sentMessageDbIds(sent, null).sort((a, b) => a - b)).toEqual([7, 42])
   })
 })

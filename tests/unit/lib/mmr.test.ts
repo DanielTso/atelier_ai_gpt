@@ -23,4 +23,12 @@ describe('mmr', () => {
   it('handles empty input', () => {
     expect(mmr([], 3, 0.7)).toEqual([])
   })
+
+  it('ranks by an explicit relevance when one is given, over raw similarity', () => {
+    // Fused rank says c is the most relevant even though its cosine is lowest.
+    const a = { ...item('a', [1, 0, 0], 0.95), relevance: 0.4 }
+    const b = { ...item('b', [0, 1, 0], 0.9), relevance: 0.5 }
+    const c = { ...item('c', [0, 0, 1], 0.6), relevance: 1 }
+    expect(mmr([a, b, c], 1, 0.7).map(x => x.id)).toEqual(['c'])
+  })
 })
