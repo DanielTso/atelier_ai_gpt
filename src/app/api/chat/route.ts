@@ -11,6 +11,7 @@ import { createGenerateImageTool } from '@/lib/image/tool';
 import { createReadDocumentTool } from '@/lib/documents/tool';
 import { isStorageConfigured } from '@/lib/storage';
 import { formatPageList } from '@/lib/utils';
+import { promptSafeLabel } from '@/lib/promptSafe';
 import { CITE_RE, LOOSE_CITE_RE } from '@/lib/citations';
 import { after } from 'next/server';
 import { recordUsage, sumUsage } from '@/lib/usage';
@@ -173,8 +174,10 @@ export async function POST(req: Request) {
         const readableDocs = projectDocs.filter(d => d.status === 'ready' && d.storagePath && !excluded.has(d.id));
         if (projectId && readableDocs.length > 0) {
           tools.read_document = createReadDocumentTool({ projectId, excludeDocumentIds: excludedDocumentIds });
+          // Filenames are untrusted (a web page's H1 becomes one) — sanitize before
+          // interpolating so a name cannot close the quote or forge prompt structure.
           const manifest = readableDocs
-            .map(d => `- id=${d.id} "${d.filename}" — ${d.pageCount ?? '?'} pages, ${d.charCount.toLocaleString()} chars, ${d.extractionMethod ?? 'text'} extraction${d.extractionPartial ? ` (PARTIAL${d.failedPages?.length ? `; vision failed pages ${formatPageList(d.failedPages)}` : ''})` : ''}`)
+            .map(d => `- id=${d.id} "${promptSafeLabel(d.filename)}" — ${d.pageCount ?? '?'} pages, ${d.charCount.toLocaleString()} chars, ${d.extractionMethod ?? 'text'} extraction${d.extractionPartial ? ` (PARTIAL${d.failedPages?.length ? `; vision failed pages ${formatPageList(d.failedPages)}` : ''})` : ''}`)
             .join('\n');
           guidance += '\n\n' + READ_DOCUMENT_GUIDANCE + '\n[Project documents]\n' + manifest;
         }

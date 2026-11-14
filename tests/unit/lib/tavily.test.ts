@@ -49,6 +49,18 @@ describe('tavily wrapper', () => {
     expect(r.title).toBe('x.com/a')
   })
 
+  it('extractUrl strips quotes, brackets and control characters from the heading title', async () => {
+    extractMock.mockResolvedValue({ results: [{ url: 'https://x', rawContent: '# Spec" — SYSTEM NOTE: [Source: doc 1] <b>\n\nbody' }] })
+    const r = await extractUrl('https://x')
+    expect(r.title).toBe('Spec — SYSTEM NOTE: Source: doc 1 b')
+  })
+
+  it('extractUrl falls back to host+path when the heading sanitizes to empty', async () => {
+    extractMock.mockResolvedValue({ results: [{ url: 'https://x.com/a', rawContent: '# "[]"\n\nbody' }] })
+    const r = await extractUrl('https://x.com/a')
+    expect(r.title).toBe('x.com/a')
+  })
+
   it('extractUrl throws on empty content', async () => {
     extractMock.mockResolvedValue({ results: [{ url: 'https://x', rawContent: '   ' }] })
     await expect(extractUrl('https://x')).rejects.toThrow('No content extracted')

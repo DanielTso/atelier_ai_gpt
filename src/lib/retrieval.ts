@@ -7,6 +7,7 @@ import { getRagConfig } from './ragConfig'
 import { extractText } from './messageParts'
 import { findChunksByKeyword } from './keywordSearch'
 import { rrfFuse } from './rrf'
+import { promptSafeLabel } from './promptSafe'
 
 // Shared shape for both retrieval legs (vector + keyword) so they can be RRF-fused
 // and MMR-selected through one code path. Vector candidates carry an extra
@@ -99,12 +100,13 @@ export async function retrieveContext(
         }
         // Self-describing source header so the model can cite exactly what it used:
         // [Source: doc <id> "<filename>" p.<start>[–<end>] §c<chunkId>]. The §c anchor
-        // is always present; pages appear only when the chunk was page-stamped.
+        // is always present; pages appear only when the chunk was page-stamped. The
+        // filename is untrusted, so it is sanitized before interpolation.
         return docFinal.length > 0
           ? docFinal.map(c => {
               const pages = c.pageStart != null
                 ? ` p.${c.pageStart}${c.pageEnd != null && c.pageEnd !== c.pageStart ? `–${c.pageEnd}` : ''}` : ''
-              return `[Source: doc ${c.documentId} "${c.filename}"${pages} §c${c.chunkId}]\n${c.content}`
+              return `[Source: doc ${c.documentId} "${promptSafeLabel(c.filename)}"${pages} §c${c.chunkId}]\n${c.content}`
             }).join('\n---\n')
           : null
       } catch (e) {

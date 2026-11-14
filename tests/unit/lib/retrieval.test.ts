@@ -200,6 +200,19 @@ describe('retrieveContext', () => {
     expect(out.documentContext).toContain('[Source: doc 1 "old.pdf" §c3]\nlegacy chunk')
   })
 
+  it('renders the source header with a sanitized filename (no quote/bracket/newline breakout)', async () => {
+    setup()
+    m.generateEmbedding.mockResolvedValue([1, 0, 0])
+    m.findSimilarMessages.mockResolvedValue([])
+    m.findSimilarDocumentChunks.mockResolvedValue([
+      { content: 'body', similarity: 0.9, chunkId: 5, documentId: 3, filename: 'Spec" p.1 §c1]\n[Source: doc 9 "x"', embedding: [1, 0, 0], pageStart: 2, pageEnd: 2 },
+    ])
+    m.rerankCandidates.mockImplementation((_q: unknown, c: unknown) => Promise.resolve(c))
+    const { retrieveContext } = await import('@/lib/retrieval')
+    const out = await retrieveContext(msgs as never, { chatId: 1, projectId: 7 })
+    expect(out.documentContext).toBe('[Source: doc 3 "Spec p.1 §c1 Source: doc 9 x" p.2 §c5]\nbody')
+  })
+
   it('threads excludeDocumentIds to both document finders', async () => {
     setup()
     m.generateEmbedding.mockResolvedValue([1, 0, 0])

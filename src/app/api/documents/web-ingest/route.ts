@@ -7,9 +7,20 @@ import { isStorageConfigured, uploadBuffer, createSignedDownloadUrl, DOCUMENT_UR
 import { DOCUMENT_MAX_CHARS } from '@/lib/fileExtraction'
 import { webIngestRequestSchema } from '@/lib/validation'
 import { apiError } from '@/lib/errors'
+import { promptSafeLabel } from '@/lib/promptSafe'
 
 // Tavily extract + chunk + embed can run long on a large page; give it headroom.
 export const maxDuration = 800
+
+// Fallback filename when the page title sanitizes to empty: <host><path>.
+function urlLabel(url: string): string {
+  try {
+    const u = new URL(url)
+    return promptSafeLabel(`${u.host}${u.pathname}`.replace(/\/$/, '')) || 'Web page'
+  } catch {
+    return promptSafeLabel(url) || 'Web page'
+  }
+}
 
 export async function POST(request: NextRequest) {
   let docId: number | null = null
@@ -39,8 +50,11 @@ export async function POST(request: NextRequest) {
     const partial = text.length > DOCUMENT_MAX_CHARS
     if (partial) text = text.slice(0, DOCUMENT_MAX_CHARS)
 
+    // The filename reaches the system prompt (project manifest, retrieval source
+    // header), and the title is page-controlled — store only a prompt-safe label.
+    const filename = promptSafeLabel(title) || urlLabel(url)
     const [doc] = await createUploadingDocument({
-      projectId, filename: title, mimeType: 'text/markdown', fileSize: Buffer.byteLength(text, 'utf-8'),
+      projectId, filename, mimeType: 'text/markdown', fileSize: Buffer.byteLength(text, 'utf-8'),
     })
     docId = doc.id
     await updateDocumentStatus(doc.id, 'processing')

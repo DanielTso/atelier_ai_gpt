@@ -2,6 +2,7 @@
 // the API key is read here via getTavilyApiKey() and must not reach the browser.
 import { tavily } from '@tavily/core'
 import { getTavilyApiKey } from '@/lib/settings'
+import { promptSafeLabel } from '@/lib/promptSafe'
 
 const MAP_LIMIT = Number(process.env.WEB_MAP_LIMIT) || 100
 const MAP_MAX_DEPTH = Number(process.env.WEB_MAP_MAX_DEPTH) || 2
@@ -32,13 +33,16 @@ export async function extractUrl(url: string): Promise<{ url: string; title: str
   return { url, title: deriveTitle(markdown, url), markdown }
 }
 
+// The title becomes the document filename, which is interpolated into the system
+// prompt — so it is made prompt-safe here (quotes, brackets, controls stripped).
 function deriveTitle(markdown: string, url: string): string {
   const h1 = markdown.match(/^#\s+(.+)$/m)
-  if (h1?.[1]) return h1[1].trim().slice(0, 200)
+  const fromHeading = h1?.[1] ? promptSafeLabel(h1[1], 200) : ''
+  if (fromHeading) return fromHeading
   try {
     const u = new URL(url)
-    return `${u.host}${u.pathname}`.replace(/\/$/, '').slice(0, 200) || url.slice(0, 200)
+    return promptSafeLabel(`${u.host}${u.pathname}`.replace(/\/$/, ''), 200) || promptSafeLabel(url, 200)
   } catch {
-    return url.slice(0, 200)
+    return promptSafeLabel(url, 200)
   }
 }
