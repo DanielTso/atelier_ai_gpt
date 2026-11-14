@@ -21,13 +21,21 @@ export async function ingestText(
     documentId: doc.id, projectId: doc.projectId, chunkIndex: c.index, content: c.content,
     ...(pageRangeFor(pageMap, c.start, c.end) ?? { pageStart: null, pageEnd: null }),
   })))
-  const { embedded, failed } = await embedChunks(saved)
-  if (failed > 0) console.warn(`[ingest] ${failed}/${saved.length} chunks failed to embed`)
+  const { embedded, failed, aborted } = await embedChunks(saved)
+  if (failed > 0) console.warn(`[ingest] ${failed}/${saved.length} chunks failed to embed${aborted ? ' (stopped early: provider failing)' : ''}`)
   const status: 'ready' | 'error' = embedded === 0 && saved.length > 0 ? 'error' : 'ready'
   // A partial extraction (char-truncation / page-capping) OR any post-retry embed failure
   // is a fidelity hole — surface it, never hide it.
   const extractionPartial = Boolean(opts.partial) || failed > 0
+  // An error row always says why (audit B21); a ready row gets no message, and
+  // updateDocumentStatus clears any stale one left by an earlier failure.
+  const errorMessage = status === 'error'
+    ? aborted
+      ? 'Embedding failed: the embedding provider is not responding. Try again later.'
+      : 'Embedding failed for every chunk.'
+    : undefined
   await updateDocumentStatus(doc.id, status, {
+    ...(errorMessage && { errorMessage }),
     chunkCount: saved.length, charCount: textContent.length,
     thumbnailPath: opts.thumbnailPath, extractionMethod: opts.extractionMethod,
     pageCount: opts.pageCount ?? null, pagesExtracted: opts.pagesExtracted ?? null,

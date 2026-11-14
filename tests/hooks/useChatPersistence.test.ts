@@ -101,7 +101,7 @@ function makeOpts(overrides: {
     pendingImages.delete(chatId)
     return images
   })
-  const triggerSummarization = vi.fn().mockResolvedValue(undefined)
+  const triggerSummarization = vi.fn<UseChatPersistenceOpts['triggerSummarization']>().mockResolvedValue(true)
   const maybeGenerateTitle = vi.fn()
 
   return {
@@ -540,6 +540,41 @@ describe('useChatPersistence', () => {
     mockGetMessageCount.mockResolvedValue(SUMMARIZATION_THRESHOLD + SUMMARIZE_EVERY + 1) // 51, delta 20 from the first fire
     await act(async () => { await result.current.onTurnFinish(turn('c')) })
     expect(opts.triggerSummarization).toHaveBeenCalledTimes(2)
+  })
+
+  // Audit B4 (client side): the gate used to advance before the fold and never roll
+  // back, so a failed fold postponed the next try by SUMMARIZE_EVERY messages.
+  it('(c) re-arms the summarization gate when the fold fails', async () => {
+    const opts = makeOpts()
+    opts.triggerSummarization.mockResolvedValueOnce(false)
+    const { result } = renderHook(() => useChatPersistence(opts))
+    const turn = (id: string) => makeTurn(makeMessage({ id, metadata: meta({ chatId: 12 }) }))
+
+    mockGetMessageCount.mockResolvedValue(SUMMARIZATION_THRESHOLD + 1)
+    await act(async () => { await result.current.onTurnFinish(turn('a')) })
+    await settle()
+    expect(opts.triggerSummarization).toHaveBeenCalledTimes(1)
+    expect(opts.lastSummarizedCountRef.current.get(12) ?? 0).toBe(0)
+
+    // The very next turn tries again, although the delta since the failed fold is 2.
+    mockGetMessageCount.mockResolvedValue(SUMMARIZATION_THRESHOLD + 3)
+    await act(async () => { await result.current.onTurnFinish(turn('b')) })
+    await settle()
+    expect(opts.triggerSummarization).toHaveBeenCalledTimes(2)
+    // That fold succeeded, so the gate holds its count now.
+    expect(opts.lastSummarizedCountRef.current.get(12)).toBe(SUMMARIZATION_THRESHOLD + 3)
+  })
+
+  it('(c) re-arms the summarization gate when the fold rejects', async () => {
+    const opts = makeOpts({ lastSummarizedCount: new Map([[12, 20]]) })
+    opts.triggerSummarization.mockRejectedValueOnce(new Error('getChatMessages failed'))
+    const { result } = renderHook(() => useChatPersistence(opts))
+
+    mockGetMessageCount.mockResolvedValue(SUMMARIZATION_THRESHOLD + 1)
+    await act(async () => { await result.current.onTurnFinish(makeTurn(makeMessage({ id: 'rej', metadata: meta({ chatId: 12 }) }))) })
+    await settle()
+    // Back to the count of the last successful fold, not to zero.
+    expect(opts.lastSummarizedCountRef.current.get(12)).toBe(20)
   })
 
   // (d) project chat past the gate → POST /api/memory/suggest

@@ -94,3 +94,45 @@ describe('POST /api/embed project scope', () => {
     expect(mockEmbedAndStore).not.toHaveBeenCalled()
   })
 })
+
+// Audit B13: a failed embed used to answer 200 `{ error }`, which the client
+// ignores — the message was left with no vector and no trail. A failure is now a
+// sanitized 502, and the text is capped before it reaches the embedding model.
+describe('POST /api/embed failures and length cap', () => {
+  beforeEach(() => {
+    [mockEnsure, mockEmbedAndStore, mockGetChat].forEach(f => f.mockReset())
+    mockEnsure.mockResolvedValue({ available: true, provider: 'gemini' })
+    mockGetChat.mockResolvedValue({ id: 3, projectId: 5 })
+  })
+
+  it('returns 502 with a sanitized error when embedding fails', async () => {
+    mockEmbedAndStore.mockRejectedValue(new Error('429 RESOURCE_EXHAUSTED: quota key=AIza-secret'))
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const { POST } = await importRoute()
+      const res = await POST(postRequest({ messageId: 900, chatId: 3, content: 'hello' }))
+      expect(res.status).toBe(502)
+      const body = await res.json()
+      expect(body).toEqual({ error: 'Embedding failed' })
+      expect(JSON.stringify(body)).not.toContain('AIza')
+    } finally {
+      errSpy.mockRestore()
+    }
+  })
+
+  it('embeds only the first EMBED_MAX_CHARS (8000) characters of a long message', async () => {
+    mockEmbedAndStore.mockResolvedValue(undefined)
+    const { POST } = await importRoute()
+    const long = 'a'.repeat(8000) + 'b'.repeat(4000)
+    const res = await POST(postRequest({ messageId: 900, chatId: 3, content: long }))
+    expect(res.status).toBe(200)
+    expect(mockEmbedAndStore).toHaveBeenCalledExactlyOnceWith(900, 3, 5, 'a'.repeat(8000))
+  })
+
+  it('rejects an absurdly large body with 400 instead of sending it to the provider', async () => {
+    const { POST } = await importRoute()
+    const res = await POST(postRequest({ messageId: 900, chatId: 3, content: 'x'.repeat(500_001) }))
+    expect(res.status).toBe(400)
+    expect(mockEmbedAndStore).not.toHaveBeenCalled()
+  })
+})

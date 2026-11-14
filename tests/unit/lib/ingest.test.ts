@@ -65,6 +65,34 @@ describe('ingestText', () => {
     const res = await ingestText({ id: 9, projectId: 1 }, 'text', { extractionMethod: 'text' })
     expect(res.status).toBe('error')
   })
+
+  // Audit B21: the all-embeds-failed exit used to set status 'error' with no
+  // errorMessage, so the card showed an error with no reason (or a stale one).
+  it('sets an errorMessage when every embed fails', async () => {
+    mockEmbedChunks.mockResolvedValue({ embedded: 0, failed: 3, aborted: false })
+    const { ingestText } = await load()
+    await ingestText({ id: 9, projectId: 1 }, 'text', { extractionMethod: 'text' })
+    expect(mockUpdateDocumentStatus).toHaveBeenCalledWith(9, 'error', expect.objectContaining({
+      errorMessage: expect.stringMatching(/embed/i),
+    }))
+  })
+
+  it('says the provider was failing when the embed pool stopped early', async () => {
+    mockEmbedChunks.mockResolvedValue({ embedded: 0, failed: 3, aborted: true })
+    const { ingestText } = await load()
+    await ingestText({ id: 9, projectId: 1 }, 'text', { extractionMethod: 'text' })
+    const [, , updates] = mockUpdateDocumentStatus.mock.calls[0]
+    expect(updates.errorMessage).toMatch(/embedding provider/i)
+  })
+
+  it('does not set an errorMessage on a ready document', async () => {
+    mockEmbedChunks.mockResolvedValue({ embedded: 3, failed: 0, aborted: false })
+    const { ingestText } = await load()
+    await ingestText({ id: 9, projectId: 1 }, 'text', { extractionMethod: 'text' })
+    const [, status, updates] = mockUpdateDocumentStatus.mock.calls[0]
+    expect(status).toBe('ready')
+    expect(updates.errorMessage ?? null).toBeNull()
+  })
 })
 
 // Page stamping goes through the real chunker + real actions into PGlite — the

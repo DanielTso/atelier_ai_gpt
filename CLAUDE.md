@@ -37,6 +37,10 @@ TAVILY_API_KEY=your_tavily_key_here                     # or set in Settings →
 WEB_MAP_LIMIT=100                                       # optional; max URLs a site map returns
 WEB_MAP_MAX_DEPTH=2                                     # optional; crawl depth for mapping
 
+# Embedding knobs (src/lib/embedChunks.ts) — all optional
+EMBED_MAX_CHARS=8000                                    # chars of a chat message sent to the embedding model
+EMBED_FAIL_FAST_AFTER=5                                 # embed pool stops after this many consecutive failures
+
 # Access gate (Phase 1 hardening) — single-password gate over the whole app.
 # The gate is OFF unless APP_ACCESS_PASSWORD is set. See docs/AUTH.md.
 APP_ACCESS_PASSWORD=your_access_password_here           # set to enable the gate

@@ -56,4 +56,31 @@ describe('document storage actions', () => {
     expect(after?.updatedAt).toBeInstanceOf(Date)
     expect(after!.updatedAt!.getTime()).toBeGreaterThanOrEqual(before - 1000)
   })
+
+  // Audit B21: "Upload never completed" / "Processing timed out" used to stay on a
+  // row that later became ready, because nothing could set error_message to null.
+  it('a later ready clears a stale error_message', async () => {
+    const { createUploadingDocument, updateDocumentStatus, getDocumentById } = await import('@/app/actions')
+    const [project] = await createProject('Stale Error Project')
+    const [doc] = await createUploadingDocument({ projectId: project.id, filename: 's.pdf', mimeType: 'application/pdf', fileSize: 10 })
+
+    await updateDocumentStatus(doc.id, 'error', { errorMessage: 'Processing timed out' })
+    expect((await getDocumentById(doc.id))?.errorMessage).toBe('Processing timed out')
+
+    await updateDocumentStatus(doc.id, 'processing')
+    await updateDocumentStatus(doc.id, 'ready', { chunkCount: 2 })
+    const after = await getDocumentById(doc.id)
+    expect(after?.status).toBe('ready')
+    expect(after?.errorMessage).toBeNull()
+  })
+
+  it('errorMessage can be cleared explicitly with null', async () => {
+    const { createUploadingDocument, updateDocumentStatus, getDocumentById } = await import('@/app/actions')
+    const [project] = await createProject('Explicit Clear Project')
+    const [doc] = await createUploadingDocument({ projectId: project.id, filename: 'e.pdf', mimeType: 'application/pdf', fileSize: 10 })
+
+    await updateDocumentStatus(doc.id, 'error', { errorMessage: 'Upload never completed' })
+    await updateDocumentStatus(doc.id, 'processing', { errorMessage: null })
+    expect((await getDocumentById(doc.id))?.errorMessage).toBeNull()
+  })
 })

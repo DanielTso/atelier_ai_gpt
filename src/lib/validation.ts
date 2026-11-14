@@ -60,7 +60,9 @@ export const embedRequestSchema = z.object({
   // Ignored: the route files the embedding under the chat's DB project. Kept
   // optional for one release so older clients still validate.
   projectId: z.number().nullable().optional(),
-  content: z.string().min(1),
+  // Bounds the request only; the route embeds the first EMBED_MAX_CHARS
+  // (src/lib/embedChunks.ts). Generous so a long message is capped, not rejected.
+  content: z.string().min(1).max(500_000),
 })
 
 export const classifyRequestSchema = z.object({

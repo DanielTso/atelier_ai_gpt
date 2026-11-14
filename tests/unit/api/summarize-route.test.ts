@@ -159,4 +159,34 @@ describe('POST /api/summarize', () => {
       usage: FAKE_TOTAL_USAGE,
     })
   })
+
+  // Audit B22: a blocked or empty model reply used to overwrite the summary with ''
+  // and advance the boundary — every folded message was then in neither layer.
+  it('keeps the old summary and boundary when the model returns no text, and answers non-2xx', async () => {
+    const [project] = await createProject('P')
+    const [chat] = await createChat(project.id, 'Chat')
+    await saveMessage(chat.id, 'user', 'One')
+    const [m2] = await saveMessage(chat.id, 'assistant', 'Two')
+    await saveMessage(chat.id, 'user', 'Three')
+    const [m4] = await saveMessage(chat.id, 'assistant', 'Four')
+    await updateChatSummary(chat.id, 'Earlier summary', m2.id)
+
+    mockGenerateText.mockResolvedValueOnce({ text: '   ', totalUsage: FAKE_TOTAL_USAGE })
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const POST = await importRoute()
+      const res = await POST(makeRequest({ chatId: chat.id, cutoffMessageId: m4.id }))
+      expect(res.status).toBe(502)
+      const data = await res.json()
+      expect(data.success).toBeUndefined()
+
+      const after = await getChatWithContext(chat.id)
+      expect(after!.summary).toBe('Earlier summary')
+      expect(after!.summaryUpToMessageId).toBe(m2.id)
+      // The tokens were still spent, so they are still recorded.
+      expect(mockRecordUsage).toHaveBeenCalledTimes(1)
+    } finally {
+      errSpy.mockRestore()
+    }
+  })
 })

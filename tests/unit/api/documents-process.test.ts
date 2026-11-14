@@ -210,6 +210,24 @@ describe('POST /api/documents/process', () => {
     expect(m.updateDocumentStatus).toHaveBeenCalledWith(21, 'ready')
   })
 
+  // The embed pool's fail-fast (audit B11) skips the rest of a batch once the provider
+  // looks down. A replace must not swap a fully embedded revision for a mostly
+  // unembedded one, so a stopped pool aborts like a total failure.
+  it('replace path: embed pool stopped early → abort with 502, previous revision stays active', async () => {
+    m.getDocumentById.mockResolvedValue({ id: 23, projectId: 1, revision: 3, filename: 'old.pdf', mimeType: 'application/pdf', fileSize: 5, storagePath: 'p', thumbnailPath: null, charCount: 10, chunkCount: 1, extractionMethod: 'text' })
+    m.extractTextFromBuffer.mockResolvedValue(extRes('A'.repeat(300)))
+    m.embedContents.mockResolvedValue({ embeddings: [new Array(768).fill(0.1)], embedded: 1, failed: 6, aborted: true })
+    const POST = await importRoute()
+    const res = await POST(new Request('http://localhost/api/documents/process', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ documentId: 23, filename: 'new.pdf', mimeType: 'application/pdf', fileSize: 9 }),
+    }) as never)
+    expect(res.status).toBe(502)
+    expect(m.createDocumentRevision).not.toHaveBeenCalled()
+    expect(m.commitDocumentReplacement).not.toHaveBeenCalled()
+    expect(m.updateDocumentStatus).toHaveBeenCalledWith(23, 'ready')
+  })
+
   it('replace path: rejects an unsupported declared file type before downloading', async () => {
     m.getDocumentById.mockResolvedValue({ id: 22, projectId: 1, revision: 1, filename: 'old.pdf', mimeType: 'application/pdf', fileSize: 5, storagePath: 'documents/1/22/old.pdf', thumbnailPath: null, charCount: 10, chunkCount: 1, extractionMethod: 'text' })
     const POST = await importRoute()

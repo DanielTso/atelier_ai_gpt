@@ -71,7 +71,14 @@ export async function POST(req: Request) {
     // spent (a later DB failure below doesn't un-spend them).
     void recordUsage({ chatId, projectId: chat.projectId ?? null, purpose: 'summarize', model: modelName, usage: result.totalUsage }).catch(() => {});
 
-    const summary = result.text;
+    const summary = result.text.trim();
+
+    // A blocked or empty reply must not overwrite the summary or move the boundary:
+    // the folded messages would then be in neither the summary nor the tail (audit
+    // B22). Answer non-2xx so the client re-arms its fold gate.
+    if (!summary) {
+      return apiError(new Error(`empty summary (finishReason: ${result.finishReason})`), 'Summarization returned no text', 502);
+    }
 
     // Update chat with new summary
     await updateChatSummary(chatId, summary, cutoffMessageId);

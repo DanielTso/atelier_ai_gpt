@@ -2,6 +2,7 @@ import { embedAndStore, ensureEmbeddingModel } from '@/lib/embeddings';
 import { getChatWithContext, getEmbeddingCount } from '@/app/actions';
 import { apiError } from '@/lib/errors';
 import { embedRequestSchema } from '@/lib/validation';
+import { capEmbedText } from '@/lib/embedChunks';
 
 export async function GET(req: Request) {
   try {
@@ -65,13 +66,16 @@ export async function POST(req: Request) {
       });
     }
 
-    await embedAndStore(messageId, chatId, chat.projectId ?? null, content);
+    // Only the first EMBED_MAX_CHARS are embedded (and stored): the model ignores the rest.
+    await embedAndStore(messageId, chatId, chat.projectId ?? null, capEmbedText(content));
 
     return new Response(JSON.stringify({ success: true }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (error) {
-    return apiError(error, 'Embedding failed', 200);
+    // A non-2xx, not 200 + { error }: the failure is visible to the client and in
+    // the logs (audit B13). The message stays unembedded until backfillMissingEmbeddings.
+    return apiError(error, 'Embedding failed', 502);
   }
 }

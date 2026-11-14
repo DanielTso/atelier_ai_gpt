@@ -27,6 +27,17 @@ export const MEMORY_SUGGEST_EVERY = 6
 // this runs — retry briefly rather than race it. Delays before each attempt, ms.
 const REPLY_LOOKUP_DELAYS_MS = [0, 300, 900]
 
+// Best-effort: a failed embed (502) leaves the message for backfillMissingEmbeddings.
+function postEmbed(body: { messageId: number; chatId: number; projectId: number | null; content: string }) {
+  fetch('/api/embed', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+    .then(res => { if (!res.ok) console.warn(`[post-turn] embedding message ${body.messageId} failed (HTTP ${res.status})`) })
+    .catch(() => {})
+}
+
 async function lookUpAssistantReplyId(chatId: number, userMessageDbId: number): Promise<number | null> {
   for (const delayMs of REPLY_LOOKUP_DELAYS_MS) {
     if (delayMs > 0) await new Promise(resolve => setTimeout(resolve, delayMs))
@@ -73,7 +84,8 @@ export interface UseChatPersistenceOpts {
   setArtifacts: React.Dispatch<React.SetStateAction<ArtifactSummary[]>>
   /** Remove and return the images attached to `chatId`'s in-flight user message. */
   takePendingImages: (chatId: number) => AttachedImage[]
-  triggerSummarization: (chatId: number, messageCount: number) => Promise<void>
+  /** Resolves false when the fold failed, so the gate is re-armed (see useSummarization). */
+  triggerSummarization: (chatId: number, messageCount: number) => Promise<boolean>
   maybeGenerateTitle: (chatId: number) => void
 }
 
@@ -159,11 +171,7 @@ export function useChatPersistence(opts: UseChatPersistenceOpts) {
     const lastUser = messages ? [...messages].reverse().find(m => m.role === 'user') : undefined
     const userText = lastUser ? extractText(lastUser.parts) : ''
     if (userText.trim()) {
-      fetch('/api/embed', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messageId: userMessageDbId, chatId, projectId, content: userText }),
-      }).catch(() => {}) // Embedding is best-effort
+      postEmbed({ messageId: userMessageDbId, chatId, projectId, content: userText })
     }
   }, [takePendingImages, updateChatMessages])
 
@@ -260,11 +268,7 @@ export function useChatPersistence(opts: UseChatPersistenceOpts) {
 
         // Async embed the assistant message (best-effort)
         if (textContent.trim()) {
-          fetch('/api/embed', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ messageId: assistantMessageDbId, chatId, projectId, content: textContent }),
-          }).catch(() => {}) // Embedding is best-effort
+          postEmbed({ messageId: assistantMessageDbId, chatId, projectId, content: textContent })
         }
       }
 
@@ -274,12 +278,21 @@ export function useChatPersistence(opts: UseChatPersistenceOpts) {
 
       // Check if summarization is needed. Monotonic delta-gate (mirrors the
       // auto-memory gate below): past the threshold, fold at most once per
-      // SUMMARIZE_EVERY new messages instead of on every turn.
+      // SUMMARIZE_EVERY new messages instead of on every turn. The gate advances
+      // up front (so overlapping finishes don't double-fire) and is rolled back if
+      // the fold fails, so the next turn retries instead of SUMMARIZE_EVERY later
+      // (audit B4). The rollback is skipped if a later fold has moved the gate.
       const messageCount = await getMessageCount(chatId)
       const lastSummarized = lastSummarizedCountRef.current.get(chatId) ?? 0
       if (messageCount > SUMMARIZATION_THRESHOLD && messageCount - lastSummarized >= SUMMARIZE_EVERY) {
         lastSummarizedCountRef.current.set(chatId, messageCount)
-        triggerSummarization(chatId, messageCount).catch(() => {})
+        triggerSummarization(chatId, messageCount)
+          .catch(() => false)
+          .then(ok => {
+            if (!ok && lastSummarizedCountRef.current.get(chatId) === messageCount) {
+              lastSummarizedCountRef.current.set(chatId, lastSummarized)
+            }
+          })
       }
 
       // Best-effort: throttled auto-memory suggestion pass (project chats only —

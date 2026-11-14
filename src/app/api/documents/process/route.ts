@@ -198,15 +198,16 @@ export async function POST(request: NextRequest) {
       // Replace: embed FIRST (no destructive writes yet), then snapshot the old
       // revision and atomically swap (delete old chunks + insert new + update row).
       // A commit/transaction failure rolls back, leaving the prior revision intact.
-      const { embeddings, embedded, failed } = await embedContents(textChunks.map(c => c.content))
+      const { embeddings, embedded, failed, aborted } = await embedContents(textChunks.map(c => c.content))
       const chunkRows = textChunks.map((c, i) => ({
         chunkIndex: c.index, content: c.content, embedding: embeddings[i],
         ...(pageRangeFor(pageMap, c.start, c.end) ?? { pageStart: null, pageEnd: null }),
       }))
       if (failed > 0) console.warn(`[documents/process] ${failed}/${textChunks.length} chunks failed to embed`)
-      if (embedded === 0 && textChunks.length > 0) {
-        // TOTAL embed failure (e.g. Gemini outage mid-re-upload): abort before any
-        // destructive write so the previous revision's chunk index stays active.
+      if ((embedded === 0 && textChunks.length > 0) || aborted) {
+        // TOTAL embed failure (e.g. Gemini outage mid-re-upload), or the pool stopped
+        // early because the provider looks down: abort before any destructive write
+        // so the previous, fully embedded revision's chunk index stays active.
         // The new rev<N> storage objects written above are left as orphans —
         // consistent with the Stage-1 orphan-sweep deferral; a retry overwrites the
         // same rev<N> paths.
