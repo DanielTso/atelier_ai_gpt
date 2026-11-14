@@ -242,7 +242,7 @@ Model: implementer Opus; review Opus.
 
 ### Task C3: Artifact rendering fidelity (B6, B7, B14, B17, B18, X5, X13)
 
-Model: implementer Opus; review Sonnet.
+Model: implementer Opus; review Sonnet. **Ruling (2026-11-14):** reviewed on Opus, not Sonnet — the diff was ~300 src lines over 12 files and touched usage recording (MODEL_ROUTING rule 4); the scoped fix-round re-review ran on Sonnet.
 
 **Files:** Modify `src/app/api/artifacts/[id]/regenerate/route.ts:15,50`, `src/lib/artifacts/{markdown,toDocx,toXlsx,toPdf,style,tool,render}.ts`; Tests `tests/unit/lib/artifacts/*.test.ts`, `tests/unit/api/artifact-regenerate-route.test.ts`.
 
