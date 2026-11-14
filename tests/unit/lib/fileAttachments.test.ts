@@ -6,8 +6,14 @@ import {
   getFileTypeLabel,
   formatFileSize,
   isImageFile,
+  isUnsupportedImage,
   fileToAttachedImage,
+  imagePayloadBytes,
+  exceedsImageBudget,
+  CHAT_IMAGE_BUDGET_BYTES,
+  IMAGE_BUDGET_MESSAGE,
   type AttachedFile,
+  type AttachedImage,
 } from '@/lib/fileAttachments'
 
 describe('buildFileMessage', () => {
@@ -185,14 +191,56 @@ describe('isImageFile', () => {
     expect(isImageFile(new File([], 'test.webp', { type: 'image/webp' }))).toBe(true)
   })
 
-  it('recognizes modern image types (avif, heic, svg)', () => {
-    expect(isImageFile(new File([], 'test.avif', { type: 'image/avif' }))).toBe(true)
-    expect(isImageFile(new File([], 'test.heic', { type: 'image/heic' }))).toBe(true)
-    expect(isImageFile(new File([], 'test.svg', { type: 'image/svg+xml' }))).toBe(true)
+  // Claude accepts JPEG/PNG/GIF/WebP only; anything else sent as an image part
+  // fails every later turn in the chat (U11).
+  it('rejects-svg-heic-avif: types Claude cannot read are not chat images', () => {
+    expect(isImageFile(new File([], 'test.avif', { type: 'image/avif' }))).toBe(false)
+    expect(isImageFile(new File([], 'test.heic', { type: 'image/heic' }))).toBe(false)
+    expect(isImageFile(new File([], 'test.svg', { type: 'image/svg+xml' }))).toBe(false)
   })
 
   it('rejects non-image types', () => {
     expect(isImageFile(new File([], 'doc.pdf', { type: 'application/pdf' }))).toBe(false)
+  })
+})
+
+describe('isUnsupportedImage', () => {
+  it('flags image MIME types outside the four supported ones', () => {
+    expect(isUnsupportedImage(new File([], 'a.svg', { type: 'image/svg+xml' }))).toBe(true)
+    expect(isUnsupportedImage(new File([], 'a.heic', { type: 'image/heic' }))).toBe(true)
+    expect(isUnsupportedImage(new File([], 'a.avif', { type: 'image/avif' }))).toBe(true)
+  })
+
+  it('flags unsupported image extensions even when the browser reports no MIME type', () => {
+    expect(isUnsupportedImage(new File([], 'IMG_0001.HEIC', { type: '' }))).toBe(true)
+    expect(isUnsupportedImage(new File([], 'photo.heif', { type: '' }))).toBe(true)
+  })
+
+  it('does not flag supported images or ordinary files', () => {
+    expect(isUnsupportedImage(new File([], 'a.png', { type: 'image/png' }))).toBe(false)
+    expect(isUnsupportedImage(new File([], 'a.pdf', { type: 'application/pdf' }))).toBe(false)
+    expect(isUnsupportedImage(new File([], 'a.txt', { type: 'text/plain' }))).toBe(false)
+  })
+})
+
+describe('chat image budget', () => {
+  const img = (chars: number): AttachedImage => ({
+    name: 'x.png', mediaType: 'image/png', size: chars, dataUrl: 'd'.repeat(chars),
+  })
+
+  it('is 3 MB of base64 payload', () => {
+    expect(CHAT_IMAGE_BUDGET_BYTES).toBe(3 * 1024 * 1024)
+    expect(IMAGE_BUDGET_MESSAGE).toBe('Images too large to send together (max 3 MB)')
+  })
+
+  it('sums the data URL lengths', () => {
+    expect(imagePayloadBytes([img(10), img(25)])).toBe(35)
+    expect(imagePayloadBytes([])).toBe(0)
+  })
+
+  it('rejects-over-combined-image-budget-with-message: only a combined payload over 3 MB is refused', () => {
+    expect(exceedsImageBudget([img(CHAT_IMAGE_BUDGET_BYTES)])).toBe(false)
+    expect(exceedsImageBudget([img(2 * 1024 * 1024), img(1024 * 1024 + 1)])).toBe(true)
   })
 })
 

@@ -11,15 +11,43 @@ export interface AttachedImage {
   dataUrl: string        // "data:image/png;base64,..."
 }
 
-const IMAGE_MIME_TYPES = new Set([
-  'image/png', 'image/jpeg', 'image/gif', 'image/webp',
-  'image/avif', 'image/heic', 'image/svg+xml',
-])
+// The only image types Claude reads. Anything else sent as an image part is
+// rejected by the provider — and since the attachment is persisted and replayed,
+// every later turn in that chat would fail too (U11).
+export const CHAT_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'] as const
+const IMAGE_MIME_TYPES = new Set<string>(CHAT_IMAGE_TYPES)
 
-const MAX_IMAGE_SIZE = 10 * 1024 * 1024 // 10MB
+// Image formats people commonly try to attach that Claude can't read. Checked by
+// extension too: Windows often reports an empty MIME type for .heic.
+const UNSUPPORTED_IMAGE_EXTENSIONS = new Set(['svg', 'heic', 'heif', 'avif', 'bmp', 'tif', 'tiff', 'ico'])
+
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024 // 10MB, after client-side downscaling
+
+// Chat images travel inline as base64 data URLs in the /api/chat JSON body, and
+// Vercel rejects request bodies over 4.5 MB before the function runs. 3 MB of
+// base64 leaves room for the transcript and the rest of the request (U4).
+export const CHAT_IMAGE_BUDGET_BYTES = 3 * 1024 * 1024
+export const IMAGE_BUDGET_MESSAGE = 'Images too large to send together (max 3 MB)'
 
 export function isImageFile(file: File): boolean {
   return IMAGE_MIME_TYPES.has(file.type)
+}
+
+/** An image Claude can't read (SVG, HEIC, AVIF, …) — refuse it rather than treat it as a document. */
+export function isUnsupportedImage(file: File): boolean {
+  if (isImageFile(file)) return false
+  if (file.type.startsWith('image/')) return true
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
+  return UNSUPPORTED_IMAGE_EXTENSIONS.has(ext)
+}
+
+/** Bytes the images add to the chat request: the length of their base64 data URLs. */
+export function imagePayloadBytes(images: AttachedImage[]): number {
+  return images.reduce((sum, img) => sum + img.dataUrl.length, 0)
+}
+
+export function exceedsImageBudget(images: AttachedImage[]): boolean {
+  return imagePayloadBytes(images) > CHAT_IMAGE_BUDGET_BYTES
 }
 
 export function fileToAttachedImage(file: File): Promise<AttachedImage> {

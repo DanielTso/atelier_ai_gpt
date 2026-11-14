@@ -1,6 +1,6 @@
 'use client'
 
-import { memo, useRef, useState, useEffect, useCallback } from 'react'
+import { memo, useRef, useState, useEffect, useCallback, type Dispatch, type SetStateAction } from 'react'
 import { Send, Square, Loader2, FileText, Brain, Paperclip, Upload, X, BookMarked } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import TextareaAutosize from 'react-textarea-autosize'
@@ -11,7 +11,12 @@ import { EffortPill } from '@/components/ui/EffortPill'
 import { ModelSelect } from '@/components/ui/ModelSelect'
 import type { Effort } from '@/hooks/usePersonas'
 import type { AttachedFile, AttachedImage } from '@/lib/fileAttachments'
-import { getFileTypeLabel, isImageFile, fileToAttachedImage } from '@/lib/fileAttachments'
+import {
+  getFileTypeLabel, isImageFile, isUnsupportedImage, fileToAttachedImage,
+  imagePayloadBytes, CHAT_IMAGE_BUDGET_BYTES, CHAT_IMAGE_TYPES, IMAGE_BUDGET_MESSAGE,
+} from '@/lib/fileAttachments'
+import { downscaleImage } from '@/lib/imageDownscale'
+import { extractAttachedFile } from '@/lib/attachmentExtract'
 import { formatFileSize } from '@/lib/fileUtils'
 import type { Model } from '@/types'
 
@@ -75,10 +80,18 @@ interface ChatInputAreaProps {
   onGroundedToggle?: () => void
   showGroundedPill?: boolean
   attachedFiles: AttachedFile[]
-  onFilesChange: (files: AttachedFile[]) => void
+  /** A state setter: attachments resolve asynchronously, so additions use
+   *  functional updates — a closure over `attachedFiles` would drop files
+   *  attached while an extraction was in flight (U10/F18). */
+  onFilesChange: Dispatch<SetStateAction<AttachedFile[]>>
   attachedImages: AttachedImage[]
-  onImagesChange: (images: AttachedImage[]) => void
+  onImagesChange: Dispatch<SetStateAction<AttachedImage[]>>
 }
+
+// Raw size accepted before downscaling — a modern phone photo is 5–15 MB.
+const MAX_IMAGE_INPUT_SIZE = 25 * 1024 * 1024
+
+const IMAGE_ACCEPT = CHAT_IMAGE_TYPES.join(',')
 
 export const ChatInputArea = memo(function ChatInputArea({
   input,
@@ -110,7 +123,10 @@ export const ChatInputArea = memo(function ChatInputArea({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [embedStatus, setEmbedStatus] = useState<EmbedStatus | null>(null)
   const [isDragOver, setIsDragOver] = useState(false)
-  const [isExtracting, setIsExtracting] = useState(false)
+  // A count, not a flag: two drops can extract at once, and the first to finish
+  // must not re-enable send while the other is still running.
+  const [extractingCount, setExtractingCount] = useState(0)
+  const isExtracting = extractingCount > 0
 
   // Track when loading state changes to detect response completion
   const prevLoading = useRef(isLoading)
@@ -145,77 +161,93 @@ export const ChatInputArea = memo(function ChatInputArea({
     return () => clearTimeout(timer)
   }, [activeChatId, activeProjectId, isLoading])
 
-  const MAX_IMAGE_SIZE = 10 * 1024 * 1024 // 10MB
-
   const processFiles = useCallback(async (files: File[]) => {
     const imageFiles: File[] = []
     const textFiles: File[] = []
 
     for (const file of files) {
       if (isImageFile(file)) {
-        if (file.size > MAX_IMAGE_SIZE) {
-          toast.error(`${file.name} exceeds 10MB limit`)
+        if (file.size > MAX_IMAGE_INPUT_SIZE) {
+          toast.error(`${file.name} exceeds the ${MAX_IMAGE_INPUT_SIZE / (1024 * 1024)}MB image limit`)
           continue
         }
         imageFiles.push(file)
+      } else if (isUnsupportedImage(file)) {
+        toast.error(`Unsupported image type: ${file.name}. Use PNG, JPEG, WebP or GIF.`)
       } else {
         textFiles.push(file)
       }
     }
 
-    // Process images client-side (no server call needed)
+    // Images: downscaled and read client-side, then sent inline with the message.
+    // Downscaling takes a moment, so it holds send like an extraction does.
     if (imageFiles.length > 0) {
+      setExtractingCount(n => n + 1)
       const newImages: AttachedImage[] = []
-      for (const file of imageFiles) {
-        try {
-          const img = await fileToAttachedImage(file)
-          newImages.push(img)
-        } catch {
-          toast.error(`Failed to read ${file.name}`)
-        }
-      }
-      if (newImages.length > 0) {
-        onImagesChange([...attachedImages, ...newImages])
-      }
-    }
-
-    // Process text files via server extraction
-    if (textFiles.length > 0) {
-      setIsExtracting(true)
-      const results: AttachedFile[] = []
-
-      for (const file of textFiles) {
-        try {
-          const formData = new FormData()
-          formData.append('file', file)
-
-          const res = await fetch('/api/extract', { method: 'POST', body: formData })
-          if (!res.ok) {
-            const data = await res.json()
-            toast.error(data.error || `Failed to process ${file.name}`)
-            continue
+      // Measured against the images already attached when this batch started; the
+      // send path re-checks the final set, so a racing batch can't slip past.
+      let payload = imagePayloadBytes(attachedImages)
+      try {
+        for (const file of imageFiles) {
+          try {
+            const img = await fileToAttachedImage(await downscaleImage(file))
+            if (payload + img.dataUrl.length > CHAT_IMAGE_BUDGET_BYTES) {
+              toast.error(IMAGE_BUDGET_MESSAGE)
+              continue
+            }
+            payload += img.dataUrl.length
+            newImages.push(img)
+          } catch {
+            toast.error(`Failed to read ${file.name}`)
           }
-
-          const data = await res.json()
-          results.push({
-            name: data.filename,
-            type: data.mimeType,
-            size: file.size,
-            charCount: data.charCount,
-            textContent: data.textContent,
-            truncated: data.truncated,
-          })
-        } catch {
-          toast.error(`Failed to process ${file.name}`)
         }
+        if (newImages.length > 0) {
+          onImagesChange(prev => [...prev, ...newImages])
+        }
+      } finally {
+        setExtractingCount(n => n - 1)
       }
-
-      if (results.length > 0) {
-        onFilesChange([...attachedFiles, ...results])
-      }
-      setIsExtracting(false)
     }
-  }, [attachedFiles, onFilesChange, attachedImages, onImagesChange])
+
+    // Other files: text extraction on the server (via Storage for large files).
+    if (textFiles.length > 0) {
+      setExtractingCount(n => n + 1)
+      const results: AttachedFile[] = []
+      try {
+        for (const file of textFiles) {
+          try {
+            results.push(await extractAttachedFile(file, activeChatId))
+          } catch (e) {
+            toast.error(e instanceof Error && e.message ? e.message : `Failed to process ${file.name}`)
+          }
+        }
+        if (results.length > 0) {
+          onFilesChange(prev => [...prev, ...results])
+        }
+      } finally {
+        setExtractingCount(n => n - 1)
+      }
+    }
+  }, [activeChatId, onFilesChange, attachedImages, onImagesChange])
+
+  // Sending while a file is still extracting would send the message without it,
+  // and the late result would then attach to the NEXT message (U10). The Enter
+  // key bypasses the disabled button, so it is gated here too.
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (isExtracting && e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+      e.preventDefault()
+      return
+    }
+    onKeyDown(e)
+  }, [isExtracting, onKeyDown])
+
+  const handleFormSubmit = useCallback((e: React.FormEvent<HTMLFormElement>) => {
+    if (isExtracting) {
+      e.preventDefault()
+      return
+    }
+    onFormSubmit(e)
+  }, [isExtracting, onFormSubmit])
 
   // Prevent the browser's default "open the dropped file" behaviour anywhere on
   // the window. Without this, a file dropped even slightly outside the input area
@@ -289,12 +321,12 @@ export const ChatInputArea = memo(function ChatInputArea({
   }, [processFiles])
 
   const removeFile = useCallback((index: number) => {
-    onFilesChange(attachedFiles.filter((_, i) => i !== index))
-  }, [attachedFiles, onFilesChange])
+    onFilesChange(prev => prev.filter((_, i) => i !== index))
+  }, [onFilesChange])
 
   const removeImage = useCallback((index: number) => {
-    onImagesChange(attachedImages.filter((_, i) => i !== index))
-  }, [attachedImages, onImagesChange])
+    onImagesChange(prev => prev.filter((_, i) => i !== index))
+  }, [onImagesChange])
 
   const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const items = Array.from(e.clipboardData.items)
@@ -408,7 +440,7 @@ export const ChatInputArea = memo(function ChatInputArea({
             type="file"
             multiple
             className="hidden"
-            accept=".pdf,.docx,.xlsx,.txt,.md,.csv,.py,.js,.ts,.tsx,.jsx,.json,.html,.css,.java,.c,.cpp,.go,.rs,.rb,.php,.sh,.yaml,.yml,.xml,.sql,.png,.jpg,.jpeg,.gif,.webp,image/*"
+            accept={`.pdf,.docx,.xlsx,.txt,.md,.csv,.py,.js,.ts,.tsx,.jsx,.json,.html,.css,.java,.c,.cpp,.go,.rs,.rb,.php,.sh,.yaml,.yml,.xml,.sql,.png,.jpg,.jpeg,.gif,.webp,${IMAGE_ACCEPT}`}
             onChange={handleFileInputChange}
           />
 
@@ -495,12 +527,12 @@ export const ChatInputArea = memo(function ChatInputArea({
         )}
 
         {/* Input form */}
-        <form onSubmit={onFormSubmit} className="relative">
+        <form onSubmit={handleFormSubmit} className="relative">
           <TextareaAutosize
             ref={textareaRef}
             value={input}
             onChange={(e) => onInputChange(e.target.value)}
-            onKeyDown={onKeyDown}
+            onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             disabled={isLoading}
             minRows={2}
@@ -521,7 +553,7 @@ export const ChatInputArea = memo(function ChatInputArea({
                 type={showStop ? 'button' : 'submit'}
                 onClick={showStop ? onStop : undefined}
                 aria-label={showStop ? 'Stop response' : 'Send message'}
-                disabled={isLoading ? !showStop : (!input?.trim() && !hasFiles && !hasImages)}
+                disabled={isLoading ? !showStop : (isExtracting || (!input?.trim() && !hasFiles && !hasImages))}
                 className="absolute right-3 bottom-3 p-2 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground transition-colors disabled:opacity-50 active:scale-[0.94] motion-safe:transition-[transform,background-color]"
               >
                 <AnimatePresence mode="wait" initial={false}>

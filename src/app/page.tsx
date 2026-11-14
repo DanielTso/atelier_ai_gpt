@@ -38,7 +38,7 @@ import { useDocScope, scopeProjectIdFor } from "@/hooks/useDocScope"
 import { PersonaSuggestionBanner } from "@/components/chat/PersonaSuggestionBanner"
 import { ProjectLandingPage } from "@/components/chat/ProjectLandingPage"
 import type { AttachedFile, AttachedImage } from "@/lib/fileAttachments"
-import { buildFileMessage } from "@/lib/fileAttachments"
+import { buildFileMessage, exceedsImageBudget, IMAGE_BUDGET_MESSAGE } from "@/lib/fileAttachments"
 import type { FileUIPart } from "ai"
 import type { Model, ArtifactSummary, ChatPreview, DocumentSummary } from "@/types"
 import { useChatTitle } from "@/hooks/useChatTitle"
@@ -840,6 +840,12 @@ export default function Home() {
 
   const handleSendMessage = async () => {
     if ((!input.trim() && attachedFiles.length === 0 && attachedImages.length === 0) || isLoading) return
+    // Images ride inline in the /api/chat body; over budget the platform rejects
+    // the request outright. Refuse before creating a chat or sending anything.
+    if (exceedsImageBudget(attachedImages)) {
+      toast.error(IMAGE_BUDGET_MESSAGE)
+      return
+    }
 
     // No chat yet → create it now (deferred create). In a project compose, create the
     // chat in that project and persist the (default) system prompt; otherwise a quick
@@ -906,6 +912,10 @@ export default function Home() {
   // local values to avoid setState-then-read timing bugs (mirrors handleSendMessage).
   const handleProjectLandingCompose = useCallback(async () => {
     if ((!input.trim() && attachedFiles.length === 0 && attachedImages.length === 0) || isLoading) return
+    if (exceedsImageBudget(attachedImages)) {
+      toast.error(IMAGE_BUDGET_MESSAGE)
+      return
+    }
     const projectId = activeProjectIdRef.current
     if (projectId == null) return
 

@@ -89,6 +89,24 @@ export const uploadUrlRequestSchema = z.object({
   replaceDocumentId: z.number().int().positive().optional(),
 })
 
+// Chat attachment that is uploaded straight to Storage only to be text-extracted
+// (keeps large files off Vercel's 4.5 MB request-body limit). chatId is null
+// while composing the first message of a chat that doesn't exist yet.
+export const attachmentUploadUrlRequestSchema = z.object({
+  chatId: z.number().int().positive().nullable(),
+  filename: z.string().min(1).max(255),
+  mediaType: z.string().min(1).max(255),
+  size: z.number().int().positive(),
+})
+
+// POST /api/extract with a JSON body: extract from a pending attachment upload.
+// The path is checked against the chat's pending prefix in the route.
+export const extractRequestSchema = z.object({
+  chatId: z.number().int().positive().nullable(),
+  storagePath: z.string().min(1).max(1024),
+  mediaType: z.string().max(255).optional(),
+})
+
 // D2.2 — edit an artifact's source (markdown string or sheets array) → new version.
 export const artifactEditRequestSchema = z.object({
   title: z.string().min(1).max(200).optional(),

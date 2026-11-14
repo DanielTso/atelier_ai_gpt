@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, type RefObject } from 'react'
 import type { UIMessage } from 'ai'
+import { toast } from 'sonner'
 import {
   saveGeneratedImage,
   saveMessageAttachments,
@@ -135,7 +136,12 @@ export function useChatPersistence(opts: UseChatPersistenceOpts) {
           dataUrl: img.dataUrl,
           fileSize: img.size,
         }))
-      ).catch(err => console.error('[post-turn] Error saving attachments:', err))
+      ).catch(err => {
+        console.error('[post-turn] Error saving attachments:', err)
+        // The model saw the images, but they aren't stored: say so now rather
+        // than letting them silently vanish on the next refresh (U4).
+        toast.error("Couldn't save the attached images — they won't appear after a refresh")
+      })
     }
 
     // Async embed the user message (best-effort)
@@ -237,6 +243,7 @@ export function useChatPersistence(opts: UseChatPersistenceOpts) {
             )
           } catch (err) {
             console.error('[post-turn] Failed to save image attachments:', err)
+            toast.error("Couldn't save the generated images — they won't appear after a refresh")
           }
         }
 

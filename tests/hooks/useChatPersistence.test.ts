@@ -24,6 +24,9 @@ vi.mock('@/app/actions', () => ({
   getAssistantReplyId: (...args: unknown[]) => mockGetAssistantReplyId(...args),
 }))
 
+const mockToastError = vi.fn()
+vi.mock('sonner', () => ({ toast: { error: (...args: unknown[]) => mockToastError(...args) } }))
+
 // Import the hook AFTER vi.mock so mocks are in place
 import { useChatPersistence, MEMORY_SUGGEST_EVERY, type UseChatPersistenceOpts } from '@/hooks/useChatPersistence'
 import { SUMMARIZATION_THRESHOLD, SUMMARIZE_EVERY } from '@/hooks/useSummarization'
@@ -203,6 +206,19 @@ describe('useChatPersistence', () => {
       // Nothing that belongs to the END of a turn runs yet.
       expect(mockIncrementUsageMessageCount).not.toHaveBeenCalled()
       expect(opts.maybeGenerateTitle).not.toHaveBeenCalled()
+    })
+
+    it('tells the user when the images could not be saved — they would vanish on refresh', async () => {
+      mockToastError.mockReset()
+      mockSaveMessageAttachments.mockRejectedValueOnce(new Error('Body exceeded 10mb limit'))
+      const opts = makeOpts({ pendingImages: new Map([[3, [image]]]) })
+      const { result } = renderHook(() => useChatPersistence(opts))
+
+      act(() => result.current.onTurnStart({ metadata: startMeta, messages: [userMessage] }))
+      await settle()
+
+      expect(mockToastError).toHaveBeenCalledOnce()
+      expect(String(mockToastError.mock.calls[0][0])).toMatch(/image/i)
     })
 
     it('does not repeat the user-message steps when the turn then finishes', async () => {
