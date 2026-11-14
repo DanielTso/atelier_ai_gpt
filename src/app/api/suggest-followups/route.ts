@@ -12,7 +12,7 @@ const FOLLOWUP_PROMPT =
   'Each suggestion must be under 12 words, phrased as an imperative or a question, specific to THIS conversation. ' +
   'Return ONLY a JSON array of 3 strings — no prose, no markdown fences.';
 
-// Best-effort housekeeping (like title/classify/memory-suggest): runs on the cheap
+// Best-effort housekeeping (like title/memory-suggest): runs on the cheap
 // internal Gemini model, and every failure degrades to { suggestions: [] } — the
 // chips simply don't render. Never surfaces as a user-facing error.
 export async function POST(req: Request) {

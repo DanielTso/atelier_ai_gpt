@@ -210,7 +210,7 @@ describe('usePersonas', () => {
 
   // Review regression: GET /api/models never serves Gemini text models, so
   // gemini-3.5-flash (the internal housekeeping model behind
-  // summarize/generate-title/classify/memory-suggest) always misses the row
+  // summarize/generate-title/memory-suggest) always misses the row
   // lookup. Before MODEL_SHORT_LABELS carried an entry for it, this fell all
   // the way through to the raw-id-strip fallback and rendered "3.5-flash" —
   // and this is the one usage-rollup row guaranteed to appear for every user,

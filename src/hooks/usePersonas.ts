@@ -133,7 +133,7 @@ const MODEL_SHORT_LABELS: Record<string, string> = {
   'claude-sonnet-4-6': 'Sonnet 4.6', // legacy label for chats still pinned to it
   'claude-haiku-4-5': 'Haiku 4.5',
   'gemini-3.1-flash-image': 'Nano Banana 2',
-  // Internal-only housekeeping model (summarize/title/classify/memory-suggest)
+  // Internal-only housekeeping model (summarize/title/memory-suggest)
   // — never user-selectable, and absent from GET /api/models (Gemini text
   // models aren't served there), so resolveModelLabel's row lookup always
   // misses and falls through to this map. Without an entry here it falls

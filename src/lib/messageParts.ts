@@ -1,6 +1,6 @@
 // Single source of truth for pulling text out of an AI SDK message's `parts`
 // array. Previously duplicated (with three slightly different typings) across the
-// chat page, the classify/memory-suggest routes, and the retrieval pipeline.
+// chat page, the memory-suggest route, and the retrieval pipeline.
 
 type TextPart = { type: string; text?: string | null }
 

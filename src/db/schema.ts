@@ -213,7 +213,7 @@ export const generatedImages = pgTable('generated_images', {
 
 // Cost visibility (spec C6): one row per LLM generation, written best-effort by
 // recordUsage() (src/lib/usage.ts) from every LLM call site — chat,
-// artifact-regenerate, summarize, generate-title, classify, memory-suggest,
+// artifact-regenerate, summarize, generate-title, memory-suggest (historical: classify),
 // and (audit C5, migration 0023) suggest-followups, query-rewrite, rerank,
 // image-generate, vision-extract.
 // costUsd is computed and FROZEN at write time: a later price change must never

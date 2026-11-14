@@ -486,7 +486,7 @@ Model: implementer Opus; review Opus.
 ## Release steps (owner-approved, not part of execution)
 
 1. ~~Confirm `AUTH_SECRET` is set in Vercel Production and Preview~~ — **done 2026-11-13**: both targets have `AUTH_SECRET` and `APP_ACCESS_PASSWORD` (Vercel API, names only). Stale `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `DASHSCOPE_API_KEY` removed from Production the same day (owner still revokes them at Turso / DashScope).
-2. First, read-only: count duplicate `(document_id, chunk_index)` pairs and total `document_chunks` rows, so the owner knows what migration `0022`'s dedup will delete. Then apply migrations `0022`–`0025` to Supabase with `DIRECT_URL=… npx drizzle-kit migrate` **before** pushing. Then verify `drizzle.__drizzle_migrations` has 26 rows.
+2. First, read-only: count duplicate `(document_id, chunk_index)` pairs and total `document_chunks` rows, so the owner knows what migration `0022`'s dedup will delete. Also read-only: confirm nothing hand-made in the dashboard depends on `chat_topics` (`SELECT … FROM pg_depend d JOIN pg_class c ON c.oid = d.refobjid WHERE c.relname = 'chat_topics' AND d.deptype = 'n'`), since `0024`'s `DROP … CASCADE` would drop it silently. Then apply migrations `0022`–`0025` to Supabase with `DIRECT_URL=… npx drizzle-kit migrate` **before** pushing. Then verify `drizzle.__drizzle_migrations` has 26 rows.
 3. Push → deploy, then live smoke:
    - Review Focus 1–4 on production
    - the Stop-mid-stream single `usage_events` row (handoff item 7)
