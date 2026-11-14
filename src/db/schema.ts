@@ -120,6 +120,9 @@ export const documentChunks = pgTable('document_chunks', {
   createdAt: createdAt(),
 }, (table) => [
   index('idx_chunks_document_id').on(table.documentId),
+  // One row per chunk position (audit D2): a second ingest of the same document
+  // can no longer add a duplicate chunk set. Migration 0022 de-duplicates first.
+  uniqueIndex('uq_chunks_document_chunk').on(table.documentId, table.chunkIndex),
   index('idx_chunks_project_id').on(table.projectId),
   index('idx_chunks_vector').using('hnsw', table.embedding.op('vector_cosine_ops')),
 ]).enableRLS();

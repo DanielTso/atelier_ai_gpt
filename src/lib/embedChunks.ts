@@ -1,6 +1,8 @@
-// Bounded-concurrency, retrying embedding — shared by the new-upload path (embedChunks,
-// persists by chunk id), the replace path (embedContents, returns embeddings so it can
-// embed BEFORE the destructive commit) and the message backfill (src/lib/embeddingBackfill.ts).
+// Bounded-concurrency, retrying embedding. embedContents returns the embeddings so a caller
+// can embed BEFORE any write: the new-upload ingest (src/lib/ingest.ts) and the replace path
+// both commit chunks + status in one transaction afterwards (audit D2), and the message
+// backfill (src/lib/embeddingBackfill.ts) uses it too. embedChunks persists by chunk id and
+// has no production caller since the ingest moved to embedContents.
 // Removing the 100K truncation turns a long contract into hundreds of chunks; firing them
 // all at once 429s Gemini and silently drops embeddings.
 import { generateEmbedding } from '@/lib/embeddings'

@@ -624,24 +624,46 @@ export async function getDocumentById(id: number) {
   return doc ?? null
 }
 
+type DocumentStatusUpdates = { chunkCount?: number; errorMessage?: string | null; charCount?: number; thumbnailPath?: string; extractionMethod?: 'text' | 'vision' | 'hybrid'; pageCount?: number | null; pagesExtracted?: number | null; extractionPartial?: boolean; failedPages?: number[] | null }
+
+// The column set for a status write. A document that reaches 'ready' drops any
+// error_message left by an earlier failure ("Processing timed out", "Upload never
+// completed"), unless the caller sets one explicitly (audit B21). Pass
+// `errorMessage: null` to clear it on any status. Undefined keys are dropped
+// first, so an explicit `errorMessage: undefined` still counts as "not set" and
+// cannot cancel the clear.
+function documentStatusSet(status: 'uploading' | 'processing' | 'ready' | 'error', updates?: DocumentStatusUpdates) {
+  const defined = Object.fromEntries(
+    Object.entries(updates ?? {}).filter(([, value]) => value !== undefined)
+  ) as DocumentStatusUpdates
+  const clearStaleError = status === 'ready' && !('errorMessage' in defined) ? { errorMessage: null } : {}
+  return { status, ...clearStaleError, ...defined, updatedAt: new Date() }
+}
+
 export async function updateDocumentStatus(
   id: number,
   status: 'uploading' | 'processing' | 'ready' | 'error',
-  updates?: { chunkCount?: number; errorMessage?: string | null; charCount?: number; thumbnailPath?: string; extractionMethod?: 'text' | 'vision' | 'hybrid'; pageCount?: number | null; pagesExtracted?: number | null; extractionPartial?: boolean; failedPages?: number[] | null }
+  updates?: DocumentStatusUpdates
 ) {
-  // A document that reaches 'ready' drops any error_message left by an earlier
-  // failure ("Processing timed out", "Upload never completed"), unless the caller
-  // sets one explicitly (audit B21). Pass `errorMessage: null` to clear it on any status.
-  // Undefined keys are dropped first, so an explicit `errorMessage: undefined`
-  // still counts as "not set" and cannot cancel the clear.
-  const defined = Object.fromEntries(
-    Object.entries(updates ?? {}).filter(([, value]) => value !== undefined)
-  ) as NonNullable<typeof updates>
-  const clearStaleError = status === 'ready' && !('errorMessage' in defined) ? { errorMessage: null } : {}
   return await db.update(documents)
-    .set({ status, ...clearStaleError, ...defined, updatedAt: new Date() })
+    .set(documentStatusSet(status, updates))
     .where(eq(documents.id, id))
     .returning()
+}
+
+/**
+ * Claim a document for /api/documents/process: flip it to 'processing' only if
+ * no other call is processing it (audit D2). Returns false when the document is
+ * already 'processing' (or missing), so a re-click or retry is refused instead of
+ * extracting and ingesting the same document twice. A row a killed function left
+ * 'processing' becomes claimable again once reapStaleProcessing flips it to 'error'.
+ */
+export async function claimDocumentForProcessing(id: number): Promise<boolean> {
+  const rows = await db.update(documents)
+    .set({ status: 'processing', updatedAt: new Date() })
+    .where(and(eq(documents.id, id), inArray(documents.status, ['uploading', 'ready', 'error'])))
+    .returning({ id: documents.id })
+  return rows.length > 0
 }
 
 export async function getProjectDocuments(projectId: number) {
@@ -723,6 +745,39 @@ export async function getDocumentRevisions(documentId: number) {
     .orderBy(desc(documentRevisions.revision))
 }
 
+type ChunkInsert = typeof documentChunks.$inferInsert
+// A 2M-character document is ~1,000+ chunks, each carrying a 768-float vector;
+// insert in slices so no single statement gets near Postgres' bind-parameter cap.
+const CHUNK_INSERT_BATCH = 500
+
+async function insertChunkRows(tx: Pick<typeof db, 'insert'>, rows: ChunkInsert[]) {
+  for (let i = 0; i < rows.length; i += CHUNK_INSERT_BATCH) {
+    await tx.insert(documentChunks).values(rows.slice(i, i + CHUNK_INSERT_BATCH))
+  }
+}
+
+/**
+ * Commit a new-upload ingest in one transaction (audit D2): lock the document
+ * row, replace its chunk set with the already-embedded `chunks`, and write the
+ * status. Embeddings are computed BEFORE this call, so no transaction is held
+ * open across provider calls. The row lock makes a second concurrent ingest of
+ * the same document wait, then replace this one's chunks rather than add to
+ * them; the unique (document_id, chunk_index) index backs that up.
+ */
+export async function commitDocumentIngest(
+  documentId: number,
+  status: 'ready' | 'error',
+  updates: DocumentStatusUpdates,
+  chunks: { projectId: number; chunkIndex: number; content: string; embedding: number[] | null; pageStart?: number | null; pageEnd?: number | null }[],
+) {
+  return await db.transaction(async (tx) => {
+    await tx.select({ id: documents.id }).from(documents).where(eq(documents.id, documentId)).for('update')
+    await tx.delete(documentChunks).where(eq(documentChunks.documentId, documentId))
+    await insertChunkRows(tx, chunks.map(c => ({ ...c, documentId, pageStart: c.pageStart ?? null, pageEnd: c.pageEnd ?? null })))
+    await tx.update(documents).set(documentStatusSet(status, updates)).where(eq(documents.id, documentId))
+  })
+}
+
 /**
  * Atomically commit a document replacement: delete the old chunks, insert the new
  * (already-embedded) chunks, and swap the document's metadata + revision — all in
@@ -754,12 +809,10 @@ export async function commitDocumentReplacement(
 ) {
   return await db.transaction(async (tx) => {
     await tx.delete(documentChunks).where(eq(documentChunks.documentId, documentId))
-    if (chunks.length > 0) {
-      await tx.insert(documentChunks).values(chunks.map(c => ({
-        documentId, projectId, chunkIndex: c.chunkIndex, content: c.content, embedding: c.embedding,
-        pageStart: c.pageStart ?? null, pageEnd: c.pageEnd ?? null,
-      })))
-    }
+    await insertChunkRows(tx, chunks.map(c => ({
+      documentId, projectId, chunkIndex: c.chunkIndex, content: c.content, embedding: c.embedding,
+      pageStart: c.pageStart ?? null, pageEnd: c.pageEnd ?? null,
+    })))
     await tx.update(documents)
       .set({
         filename: meta.filename, mimeType: meta.mimeType, fileSize: meta.fileSize,

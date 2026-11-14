@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const m = {
-  getDocumentById: vi.fn(), updateDocumentStatus: vi.fn(), saveDocumentChunks: vi.fn(), deleteDocumentChunks: vi.fn(), updateChunkEmbedding: vi.fn(),
+  getDocumentById: vi.fn(), updateDocumentStatus: vi.fn(), claimDocumentForProcessing: vi.fn(), commitDocumentIngest: vi.fn(),
   createDocumentRevision: vi.fn(), commitDocumentReplacement: vi.fn(),
   ensureEmbeddingModel: vi.fn(), generateEmbedding: vi.fn(), chunkText: vi.fn(),
-  embedChunks: vi.fn(), embedContents: vi.fn(),
-  downloadToBuffer: vi.fn(), uploadBuffer: vi.fn(),
+  embedContents: vi.fn(),
+  downloadToBuffer: vi.fn(), uploadBuffer: vi.fn(), removeObjects: vi.fn(),
   generatePdfThumbnail: vi.fn(), generateImageThumbnail: vi.fn(),
   extractTextFromBuffer: vi.fn(), extractViaVision: vi.fn(), extractViaVisionImage: vi.fn(),
   extractPagesViaVision: vi.fn(), visionRunHeader: vi.fn(),
@@ -15,13 +15,13 @@ async function importRoute() {
   vi.resetModules()
   vi.doMock('@/app/actions', () => ({
     getDocumentById: m.getDocumentById, updateDocumentStatus: m.updateDocumentStatus,
-    saveDocumentChunks: m.saveDocumentChunks, deleteDocumentChunks: m.deleteDocumentChunks, updateChunkEmbedding: m.updateChunkEmbedding,
+    claimDocumentForProcessing: m.claimDocumentForProcessing, commitDocumentIngest: m.commitDocumentIngest,
     createDocumentRevision: m.createDocumentRevision, commitDocumentReplacement: m.commitDocumentReplacement,
   }))
   vi.doMock('@/lib/embeddings', () => ({ ensureEmbeddingModel: m.ensureEmbeddingModel, generateEmbedding: m.generateEmbedding }))
-  vi.doMock('@/lib/embedChunks', () => ({ embedChunks: m.embedChunks, embedContents: m.embedContents }))
+  vi.doMock('@/lib/embedChunks', () => ({ embedContents: m.embedContents }))
   vi.doMock('@/lib/chunking', () => ({ chunkText: m.chunkText }))
-  vi.doMock('@/lib/storage', () => ({ downloadToBuffer: m.downloadToBuffer, uploadBuffer: m.uploadBuffer, sanitizeStorageName: (s: string) => s.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/^\.+$/, '_') }))
+  vi.doMock('@/lib/storage', () => ({ downloadToBuffer: m.downloadToBuffer, uploadBuffer: m.uploadBuffer, removeObjects: m.removeObjects, sanitizeStorageName: (s: string) => s.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/^\.+$/, '_') }))
   vi.doMock('@/lib/thumbnails', () => ({ generatePdfThumbnail: m.generatePdfThumbnail, generateImageThumbnail: m.generateImageThumbnail }))
   vi.doMock('@/lib/visionExtraction', () => ({ extractViaVision: m.extractViaVision, extractViaVisionImage: m.extractViaVisionImage, extractPagesViaVision: m.extractPagesViaVision, visionRunHeader: m.visionRunHeader }))
   vi.doMock('@/lib/fileExtraction', async (orig) => ({ ...(await (orig as () => Promise<Record<string, unknown>>)()), extractTextFromBuffer: m.extractTextFromBuffer }))
@@ -44,12 +44,11 @@ describe('POST /api/documents/process', () => {
     m.ensureEmbeddingModel.mockResolvedValue({ available: true })
     m.downloadToBuffer.mockResolvedValue(Buffer.from('bytes'))
     m.chunkText.mockReturnValue([{ index: 0, content: 'chunk' }])
-    m.saveDocumentChunks.mockResolvedValue([{ id: 11, content: 'chunk' }])
-    m.deleteDocumentChunks.mockResolvedValue([])
-    m.embedChunks.mockImplementation(async (chunks: { id: number }[]) => ({ embedded: chunks.length, failed: 0 }))
+    m.claimDocumentForProcessing.mockResolvedValue(true)
+    m.commitDocumentIngest.mockResolvedValue(undefined)
+    m.removeObjects.mockResolvedValue(undefined)
     m.embedContents.mockImplementation(async (contents: string[]) => ({ embeddings: contents.map(() => new Array(768).fill(0.1)), embedded: contents.length, failed: 0 }))
     m.generateEmbedding.mockResolvedValue(new Array(768).fill(0.1))
-    m.updateChunkEmbedding.mockResolvedValue(undefined)
     m.updateDocumentStatus.mockResolvedValue(undefined)
     m.uploadBuffer.mockResolvedValue(undefined)
     m.generatePdfThumbnail.mockResolvedValue(Buffer.from('thumb'))
@@ -77,8 +76,8 @@ describe('POST /api/documents/process', () => {
     expect(m.downloadToBuffer).toHaveBeenCalledWith('documents/1/7/doc.pdf')
     expect(m.extractViaVision).not.toHaveBeenCalled()
     expect(m.uploadBuffer).toHaveBeenCalled()
-    expect(m.updateDocumentStatus).toHaveBeenCalledWith(7, 'ready', expect.objectContaining({ chunkCount: 1, thumbnailPath: expect.stringContaining('thumb.webp') }))
-    expect(m.updateDocumentStatus).toHaveBeenCalledWith(7, 'ready', expect.objectContaining({ extractionMethod: 'text' }))
+    expect(m.commitDocumentIngest).toHaveBeenCalledWith(7, 'ready', expect.objectContaining({ chunkCount: 1, thumbnailPath: expect.stringContaining('thumb.webp') }), expect.any(Array))
+    expect(m.commitDocumentIngest).toHaveBeenCalledWith(7, 'ready', expect.objectContaining({ extractionMethod: 'text' }), expect.any(Array))
   })
 
   it('thin-text PDF falls back to vision', async () => {
@@ -102,7 +101,7 @@ describe('POST /api/documents/process', () => {
     const res = await POST(req(9) as never)
     expect(res.status).toBe(200)
     expect(m.extractViaVision).toHaveBeenCalled()
-    expect(m.updateDocumentStatus).toHaveBeenCalledWith(9, 'ready', expect.objectContaining({ extractionMethod: 'vision' }))
+    expect(m.commitDocumentIngest).toHaveBeenCalledWith(9, 'ready', expect.objectContaining({ extractionMethod: 'vision' }), expect.any(Array))
   })
 
   it('vision fallback throwing keeps the usable text extraction (does not error the doc)', async () => {
@@ -115,7 +114,7 @@ describe('POST /api/documents/process', () => {
     const res = await POST(req(15) as never)
     expect(res.status).toBe(200)
     expect(m.extractViaVision).toHaveBeenCalled()
-    expect(m.updateDocumentStatus).toHaveBeenCalledWith(15, 'ready', expect.objectContaining({ extractionMethod: 'text' }))
+    expect(m.commitDocumentIngest).toHaveBeenCalledWith(15, 'ready', expect.objectContaining({ extractionMethod: 'text' }), expect.any(Array))
   })
 
   it('dense text PDF (contract) does NOT trigger the vision fallback', async () => {
@@ -137,7 +136,7 @@ describe('POST /api/documents/process', () => {
     expect(m.extractViaVisionImage).toHaveBeenCalled()
     expect(m.generateImageThumbnail).toHaveBeenCalled()
     expect(m.extractTextFromBuffer).not.toHaveBeenCalled()
-    expect(m.updateDocumentStatus).toHaveBeenCalledWith(9, 'ready', expect.objectContaining({ extractionMethod: 'vision' }))
+    expect(m.commitDocumentIngest).toHaveBeenCalledWith(9, 'ready', expect.objectContaining({ extractionMethod: 'vision' }), expect.any(Array))
   })
 
   it('thumbnail failure is non-fatal (still ready, no thumbnailPath)', async () => {
@@ -147,7 +146,7 @@ describe('POST /api/documents/process', () => {
     const POST = await importRoute()
     const res = await POST(req(10) as never)
     expect(res.status).toBe(200)
-    expect(m.updateDocumentStatus).toHaveBeenCalledWith(10, 'ready', expect.objectContaining({ thumbnailPath: undefined }))
+    expect(m.commitDocumentIngest).toHaveBeenCalledWith(10, 'ready', expect.objectContaining({ thumbnailPath: undefined }), expect.any(Array))
   })
 
   it('empty extraction → error status + 400', async () => {
@@ -166,7 +165,7 @@ describe('POST /api/documents/process', () => {
     m.extractViaVision.mockResolvedValue(extRes('V'.repeat(300)))
     const POST = await importRoute()
     await POST(req(14) as never)
-    expect(m.updateDocumentStatus).toHaveBeenCalledWith(14, 'ready', expect.objectContaining({ extractionMethod: 'vision' }))
+    expect(m.commitDocumentIngest).toHaveBeenCalledWith(14, 'ready', expect.objectContaining({ extractionMethod: 'vision' }), expect.any(Array))
   })
 
   it('replace path: embeds first, then atomically commits (no pre-delete of old chunks)', async () => {
@@ -188,8 +187,8 @@ describe('POST /api/documents/process', () => {
     expect(m.commitDocumentReplacement).toHaveBeenCalledWith(20, 1, expect.any(Array), expect.objectContaining({
       revision: 2, status: 'ready', storagePath: 'documents/1/20/rev2/new.pdf',
     }))
-    // new-upload helpers are NOT used on the replace path
-    expect(m.saveDocumentChunks).not.toHaveBeenCalled()
+    // the new-upload commit is NOT used on the replace path
+    expect(m.commitDocumentIngest).not.toHaveBeenCalled()
   })
 
   it('replace path: all embeddings fail → abort with 502, previous revision stays active', async () => {
@@ -273,9 +272,9 @@ describe('POST /api/documents/process', () => {
     m.extractViaVision.mockResolvedValue(extRes('V'.repeat(300), { pageCount: 80, pagesExtracted: 60, partial: true }))
     const POST = await importRoute()
     await POST(req(31) as never)
-    expect(m.updateDocumentStatus).toHaveBeenCalledWith(31, 'ready', expect.objectContaining({
+    expect(m.commitDocumentIngest).toHaveBeenCalledWith(31, 'ready', expect.objectContaining({
       pageCount: 80, pagesExtracted: 60, extractionPartial: true,
-    }))
+    }), expect.any(Array))
   })
 
   it('replace path threads fidelity fields into commitDocumentReplacement', async () => {
@@ -310,9 +309,9 @@ describe('POST /api/documents/process', () => {
     m.extractViaVision.mockResolvedValue(extRes('V'.repeat(300), { pageCount: 80, pagesExtracted: 60, partial: true, failedPages: [12, 13, 14, 30] }))
     const POST = await importRoute()
     await POST(req(33) as never)
-    expect(m.updateDocumentStatus).toHaveBeenCalledWith(33, 'ready', expect.objectContaining({
+    expect(m.commitDocumentIngest).toHaveBeenCalledWith(33, 'ready', expect.objectContaining({
       failedPages: [12, 13, 14, 30],
-    }))
+    }), expect.any(Array))
   })
 
   it('replace path threads vision failedPages into commitDocumentReplacement', async () => {
@@ -342,7 +341,7 @@ describe('POST /api/documents/process', () => {
     const res = await POST(req(40) as never)
     expect(res.status).toBe(200)
     expect(m.extractPagesViaVision).toHaveBeenCalledWith(expect.anything(), [2])
-    const call = m.updateDocumentStatus.mock.calls.find((c: unknown[]) => c[1] === 'ready')
+    const call = m.commitDocumentIngest.mock.calls.find((c: unknown[]) => c[1] === 'ready')
     expect(call?.[2]).toMatchObject({ extractionMethod: 'hybrid' })
     // The spliced text handed downstream (real ingestText → chunkText) must carry the
     // vision body and the dense page text, but NOT the replaced thin page text.
@@ -382,7 +381,7 @@ describe('POST /api/documents/process', () => {
     const POST = await importRoute()
     const res = await POST(req(41) as never)
     expect(res.status).toBe(200)
-    const call = m.updateDocumentStatus.mock.calls.find((c: unknown[]) => c[1] === 'ready')
+    const call = m.commitDocumentIngest.mock.calls.find((c: unknown[]) => c[1] === 'ready')
     expect(call?.[2]).toMatchObject({ extractionMethod: 'text', extractionPartial: true })
   })
 
@@ -395,7 +394,7 @@ describe('POST /api/documents/process', () => {
     const POST = await importRoute()
     const res = await POST(req(42) as never)
     expect(res.status).toBe(200)
-    const call = m.updateDocumentStatus.mock.calls.find((c: unknown[]) => c[1] === 'ready')
+    const call = m.commitDocumentIngest.mock.calls.find((c: unknown[]) => c[1] === 'ready')
     expect(call?.[2]).toMatchObject({ extractionMethod: 'text', extractionPartial: true })
   })
 
@@ -408,7 +407,164 @@ describe('POST /api/documents/process', () => {
     const POST = await importRoute()
     const res = await POST(req(43) as never)
     expect(res.status).toBe(200)
-    const call = m.updateDocumentStatus.mock.calls.find((c: unknown[]) => c[1] === 'ready')
+    const call = m.commitDocumentIngest.mock.calls.find((c: unknown[]) => c[1] === 'ready')
     expect(call?.[2]).toMatchObject({ failedPages: [2] })
+  })
+
+  // ── Audit B8 / B25 / X8 / X12 / D2: replace failures, the tail guard, the claim ──
+
+  // A previously ready document with 3 chunks, replaced by rev 3. upload-url no
+  // longer touches the status (X7), so /process sees the real prior status.
+  const readyDoc = (over: Record<string, unknown> = {}) => ({
+    id: 50, projectId: 1, revision: 2, status: 'ready', filename: 'old.pdf', mimeType: 'application/pdf', fileSize: 5,
+    storagePath: 'documents/1/50/rev2/old.pdf', thumbnailPath: null, charCount: 10, chunkCount: 3, extractionMethod: 'text',
+    ...over,
+  })
+  const replaceReq = (id: number, filename = 'new.pdf') => new Request('http://localhost/api/documents/process', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ documentId: id, filename, mimeType: 'application/pdf', fileSize: 9 }),
+  })
+  const statusesWritten = () => m.updateDocumentStatus.mock.calls.map((c: unknown[]) => c[1])
+
+  it('replace: no embedding provider keeps a ready document ready (B8 exit 1)', async () => {
+    m.getDocumentById.mockResolvedValue(readyDoc())
+    m.ensureEmbeddingModel.mockResolvedValue({ available: false })
+    const POST = await importRoute()
+    const res = await POST(replaceReq(50) as never)
+    expect(res.status).toBe(503)
+    expect(m.updateDocumentStatus).toHaveBeenCalledWith(50, 'ready')
+    expect(statusesWritten()).not.toContain('error')
+  })
+
+  it('replace: download failure keeps a ready document ready (B8 exit 2)', async () => {
+    m.getDocumentById.mockResolvedValue(readyDoc())
+    m.downloadToBuffer.mockRejectedValue(new Error('404'))
+    const POST = await importRoute()
+    const res = await POST(replaceReq(50) as never)
+    expect(res.status).toBe(500)
+    expect(m.updateDocumentStatus).toHaveBeenCalledWith(50, 'ready')
+    expect(statusesWritten()).not.toContain('error')
+  })
+
+  it('replace: extractor throwing keeps a ready document ready (B8 exit 3)', async () => {
+    m.getDocumentById.mockResolvedValue(readyDoc())
+    m.extractTextFromBuffer.mockRejectedValue(new Error('corrupt'))
+    const POST = await importRoute()
+    const res = await POST(replaceReq(50) as never)
+    expect(res.status).toBe(500)
+    expect(m.updateDocumentStatus).toHaveBeenCalledWith(50, 'ready')
+    expect(statusesWritten()).not.toContain('error')
+  })
+
+  it('replace: empty extraction keeps a ready document ready (B8 exit 4)', async () => {
+    m.getDocumentById.mockResolvedValue(readyDoc())
+    m.extractTextFromBuffer.mockResolvedValue(extRes(''))
+    m.extractViaVision.mockResolvedValue(extRes(''))
+    const POST = await importRoute()
+    const res = await POST(replaceReq(50) as never)
+    expect(res.status).toBe(400)
+    expect(m.updateDocumentStatus).toHaveBeenCalledWith(50, 'ready')
+    expect(statusesWritten()).not.toContain('error')
+  })
+
+  // B25: the embed-abort exit used to set 'ready' unconditionally, reviving a
+  // document that was already 'error' before the replace.
+  it('replace: a failure on a document that was error before leaves it error', async () => {
+    m.getDocumentById.mockResolvedValue(readyDoc({ status: 'error' }))
+    m.extractTextFromBuffer.mockResolvedValue(extRes('A'.repeat(300)))
+    m.embedContents.mockResolvedValue({ embeddings: [null], embedded: 0, failed: 1, skipped: 0, aborted: false })
+    const POST = await importRoute()
+    const res = await POST(replaceReq(50) as never)
+    expect(res.status).toBe(502)
+    expect(m.updateDocumentStatus).toHaveBeenCalledWith(50, 'error', expect.objectContaining({ errorMessage: expect.any(String) }))
+    expect(statusesWritten()).not.toContain('ready')
+  })
+
+  // A row an older deploy left 'uploading' carries no prior status: fall back to
+  // "had chunks before the request".
+  it('replace: a legacy uploading row with no chunks falls back to error', async () => {
+    m.getDocumentById.mockResolvedValue(readyDoc({ status: 'uploading', chunkCount: 0 }))
+    m.downloadToBuffer.mockRejectedValue(new Error('404'))
+    const POST = await importRoute()
+    await POST(replaceReq(50) as never)
+    expect(m.updateDocumentStatus).toHaveBeenCalledWith(50, 'error', expect.objectContaining({ errorMessage: expect.any(String) }))
+  })
+
+  it('replace: a legacy uploading row with chunks falls back to ready', async () => {
+    m.getDocumentById.mockResolvedValue(readyDoc({ status: 'uploading' }))
+    m.downloadToBuffer.mockRejectedValue(new Error('404'))
+    const POST = await importRoute()
+    await POST(replaceReq(50) as never)
+    expect(m.updateDocumentStatus).toHaveBeenCalledWith(50, 'ready')
+  })
+
+  // X8: nothing caught a throw after 'processing', so the row sat until the
+  // 20-minute reaper flipped it to error.
+  it('replace: a throw mid-tail restores the prior status', async () => {
+    m.getDocumentById.mockResolvedValue(readyDoc())
+    m.extractTextFromBuffer.mockResolvedValue(extRes('A'.repeat(300)))
+    m.createDocumentRevision.mockRejectedValue(new Error('db hiccup'))
+    const POST = await importRoute()
+    const res = await POST(replaceReq(50) as never)
+    expect(res.status).toBe(500)
+    expect(m.commitDocumentReplacement).not.toHaveBeenCalled()
+    expect(m.updateDocumentStatus).toHaveBeenCalledWith(50, 'ready')
+  })
+
+  it('new upload: a throw mid-tail sets error instead of leaving processing', async () => {
+    m.getDocumentById.mockResolvedValue({ id: 51, projectId: 1, status: 'uploading', filename: 'doc.pdf', mimeType: 'application/pdf', storagePath: 'documents/1/51/doc.pdf', chunkCount: 0 })
+    m.extractTextFromBuffer.mockResolvedValue(extRes('A'.repeat(300)))
+    m.commitDocumentIngest.mockRejectedValue(new Error('db hiccup'))
+    const POST = await importRoute()
+    const res = await POST(req(51) as never)
+    expect(res.status).toBe(500)
+    expect(m.updateDocumentStatus).toHaveBeenCalledWith(51, 'error', expect.objectContaining({ errorMessage: expect.any(String) }))
+  })
+
+  // X12: the abort used to leave the new rev<N> objects behind.
+  it('replace: the embed abort removes the rev objects of the failed revision', async () => {
+    m.getDocumentById.mockResolvedValue(readyDoc())
+    m.extractTextFromBuffer.mockResolvedValue(extRes('A'.repeat(300)))
+    m.embedContents.mockResolvedValue({ embeddings: [null], embedded: 0, failed: 1, skipped: 0, aborted: true })
+    const POST = await importRoute()
+    const res = await POST(replaceReq(50) as never)
+    expect(res.status).toBe(502)
+    const removed = m.removeObjects.mock.calls.flatMap((c: unknown[]) => c[0] as string[])
+    expect(removed).toEqual(expect.arrayContaining([
+      'documents/1/50/rev3/new.pdf', 'documents/1/50/rev3/thumb.webp', 'documents/1/50/rev3/extracted.txt',
+    ]))
+    // Never the active revision's objects.
+    expect(removed.every(p => p.startsWith('documents/1/50/rev3/'))).toBe(true)
+  })
+
+  it('replace: a failed cleanup does not change the response', async () => {
+    m.getDocumentById.mockResolvedValue(readyDoc())
+    m.downloadToBuffer.mockRejectedValue(new Error('404'))
+    m.removeObjects.mockRejectedValue(new Error('storage down'))
+    const POST = await importRoute()
+    const res = await POST(replaceReq(50) as never)
+    expect(res.status).toBe(500)
+    expect(m.updateDocumentStatus).toHaveBeenCalledWith(50, 'ready')
+  })
+
+  it('new upload: a failure does not remove the uploaded original', async () => {
+    m.getDocumentById.mockResolvedValue({ id: 52, projectId: 1, status: 'uploading', filename: 'doc.pdf', mimeType: 'application/pdf', storagePath: 'documents/1/52/doc.pdf', chunkCount: 0 })
+    m.extractTextFromBuffer.mockRejectedValue(new Error('corrupt'))
+    const POST = await importRoute()
+    await POST(req(52) as never)
+    expect(m.removeObjects).not.toHaveBeenCalled()
+  })
+
+  // D2: a second /process call for a document already being processed is a
+  // no-op instead of a second extraction + chunk set.
+  it('409 without touching the document when another call holds the claim', async () => {
+    m.getDocumentById.mockResolvedValue(readyDoc())
+    m.claimDocumentForProcessing.mockResolvedValue(false)
+    const POST = await importRoute()
+    const res = await POST(replaceReq(50) as never)
+    expect(res.status).toBe(409)
+    expect(m.downloadToBuffer).not.toHaveBeenCalled()
+    expect(m.updateDocumentStatus).not.toHaveBeenCalled()
+    expect(m.removeObjects).not.toHaveBeenCalled()
   })
 })

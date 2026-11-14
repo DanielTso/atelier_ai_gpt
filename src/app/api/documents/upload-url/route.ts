@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createUploadingDocument, updateDocumentStoragePath, getDocumentById, updateDocumentStatus } from '@/app/actions'
+import { createUploadingDocument, updateDocumentStoragePath, getDocumentById, deleteDocument } from '@/app/actions'
 import { isStorageConfigured, createSignedUploadUrl, storageBucketName, sanitizeStorageName as sanitize } from '@/lib/storage'
 import { MAX_FILE_SIZE, isSupported, isImageUpload, getExtension } from '@/lib/fileExtraction'
 import { uploadUrlRequestSchema } from '@/lib/validation'
@@ -28,11 +28,13 @@ export async function POST(request: NextRequest) {
     // Replace flow: upload a new revision of an existing document. Keep the old
     // file/path reachable (do NOT overwrite doc.storagePath) — the process step
     // snapshots it and the new path is returned to the client for the process call.
+    // The status is left alone (audit X7): the previous revision stays active and
+    // listed while the browser uploads, so an abandoned replace changes nothing.
+    // /api/documents/process claims the document when the upload has landed.
     if (replaceDocumentId) {
       const existing = await getDocumentById(replaceDocumentId)
       if (!existing) return NextResponse.json({ error: 'Document not found' }, { status: 404 })
       const newPath = `documents/${existing.projectId}/${existing.id}/rev${existing.revision + 1}/${sanitize(filename)}`
-      await updateDocumentStatus(existing.id, 'uploading')
       // upsert: replacing a revision may be retried at the same rev path.
       const { token } = await createSignedUploadUrl(newPath, { upsert: true })
       return NextResponse.json({ documentId: existing.id, path: newPath, token, bucket: storageBucketName })
@@ -42,9 +44,18 @@ export async function POST(request: NextRequest) {
     const [doc] = await createUploadingDocument({
       projectId, filename, mimeType: contentType || 'application/octet-stream', fileSize: size,
     })
+    // The path needs the row id, so the row comes first; if setting the path or
+    // signing fails, delete the row rather than leave an 'uploading' orphan for
+    // the 60-minute reaper (audit B25).
     const path = `documents/${projectId}/${doc.id}/${sanitize(filename)}`
-    await updateDocumentStoragePath(doc.id, path)
-    const { token } = await createSignedUploadUrl(path)
+    let token: string
+    try {
+      await updateDocumentStoragePath(doc.id, path)
+      token = (await createSignedUploadUrl(path)).token
+    } catch (e) {
+      await deleteDocument(doc.id).catch(() => {})
+      throw e
+    }
 
     return NextResponse.json({ documentId: doc.id, path, token, bucket: storageBucketName })
   } catch (error) {
