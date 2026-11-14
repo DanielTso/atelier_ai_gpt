@@ -39,8 +39,15 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  let json: unknown;
   try {
-    const body = embedRequestSchema.safeParse(await req.json());
+    json = await req.json();
+  } catch (error) {
+    // A malformed body is the caller's error, not a provider failure.
+    return apiError(error, 'Invalid request body', 400);
+  }
+  try {
+    const body = embedRequestSchema.safeParse(json);
     if (!body.success) {
       return apiError(body.error, 'Invalid request body', 400);
     }
@@ -57,11 +64,12 @@ export async function POST(req: Request) {
       });
     }
 
-    // Check if any embedding provider is available
+    // No embedding provider configured: a non-2xx like any other failure (audit B13);
+    // the message is left for the backfill.
     const { available } = await ensureEmbeddingModel();
     if (!available) {
       return new Response(JSON.stringify({ success: false, reason: 'Embedding model not available' }), {
-        status: 200,
+        status: 503,
         headers: { 'Content-Type': 'application/json' },
       });
     }
@@ -75,7 +83,8 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     // A non-2xx, not 200 + { error }: the failure is visible to the client and in
-    // the logs (audit B13). The message stays unembedded until backfillMissingEmbeddings.
+    // the logs (audit B13). The message stays unembedded until the backfill
+    // (scripts/backfill-embeddings.ts) picks it up.
     return apiError(error, 'Embedding failed', 502);
   }
 }

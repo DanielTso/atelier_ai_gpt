@@ -12,7 +12,7 @@ import {
 import { extractText } from '@/lib/messageParts'
 import { extractGeneratedImageOutputs } from '@/lib/generatedImages'
 import { readTurnMetadata, type TurnMetadata } from '@/lib/chatTurn'
-import { SUMMARIZATION_THRESHOLD, SUMMARIZE_EVERY } from '@/hooks/useSummarization'
+import { SUMMARIZATION_THRESHOLD, SUMMARIZE_EVERY, SUMMARIZE_RETRY_AFTER } from '@/hooks/useSummarization'
 import type { AttachedImage } from '@/lib/fileAttachments'
 import { replaceFilePartUrls } from '@/lib/chatRequestSize'
 import type { ArtifactSummary } from '@/types'
@@ -27,7 +27,8 @@ export const MEMORY_SUGGEST_EVERY = 6
 // this runs — retry briefly rather than race it. Delays before each attempt, ms.
 const REPLY_LOOKUP_DELAYS_MS = [0, 300, 900]
 
-// Best-effort: a failed embed (502) leaves the message for backfillMissingEmbeddings.
+// Best-effort: a failed embed (502, or 503 with no provider) leaves the message for
+// the operator backfill (scripts/backfill-embeddings.ts).
 function postEmbed(body: { messageId: number; chatId: number; projectId: number | null; content: string }) {
   fetch('/api/embed', {
     method: 'POST',
@@ -279,9 +280,11 @@ export function useChatPersistence(opts: UseChatPersistenceOpts) {
       // Check if summarization is needed. Monotonic delta-gate (mirrors the
       // auto-memory gate below): past the threshold, fold at most once per
       // SUMMARIZE_EVERY new messages instead of on every turn. The gate advances
-      // up front (so overlapping finishes don't double-fire) and is rolled back if
-      // the fold fails, so the next turn retries instead of SUMMARIZE_EVERY later
-      // (audit B4). The rollback is skipped if a later fold has moved the gate.
+      // up front (so overlapping finishes don't double-fire). If the fold fails it
+      // is rolled back to just short of the gate, so the fold is retried after
+      // SUMMARIZE_RETRY_AFTER more messages (about two turns) rather than
+      // SUMMARIZE_EVERY later (audit B4) or on every turn during an outage. The
+      // rollback is skipped if a later fold has moved the gate.
       const messageCount = await getMessageCount(chatId)
       const lastSummarized = lastSummarizedCountRef.current.get(chatId) ?? 0
       if (messageCount > SUMMARIZATION_THRESHOLD && messageCount - lastSummarized >= SUMMARIZE_EVERY) {
@@ -290,7 +293,7 @@ export function useChatPersistence(opts: UseChatPersistenceOpts) {
           .catch(() => false)
           .then(ok => {
             if (!ok && lastSummarizedCountRef.current.get(chatId) === messageCount) {
-              lastSummarizedCountRef.current.set(chatId, lastSummarized)
+              lastSummarizedCountRef.current.set(chatId, messageCount - SUMMARIZE_EVERY + SUMMARIZE_RETRY_AFTER)
             }
           })
       }

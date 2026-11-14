@@ -122,8 +122,63 @@ describe('embedChunks fail-fast', () => {
       expect(res.aborted).toBe(true)
       expect(res.embedded).toBe(0)
       expect(res.failed).toBe(12)
+      // 3 were attempted and failed; 9 were never attempted.
+      expect(res.skipped).toBe(9)
       expect(res.embeddings).toEqual(new Array(12).fill(null))
       expect(mockGenerateEmbedding).toHaveBeenCalledTimes(3)
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('an item in flight when the breaker trips drops its remaining retries', async () => {
+    // 'fast' fails twice (its whole ladder, retries 1) by ~100ms and trips the
+    // breaker (failFastAfter 1). 'slow' fails its first attempt at 50ms and would
+    // retry at ~150ms; by then the breaker has tripped, so it gives up.
+    mockGenerateEmbedding.mockImplementation(async (text: string) => {
+      if (text === 'slow') await new Promise(r => setTimeout(r, 50))
+      throw new Error('down')
+    })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const { embedContents } = await load()
+      const res = await embedContents(['fast', 'slow', 'never'], { concurrency: 2, retries: 1, failFastAfter: 1 })
+      expect(res.aborted).toBe(true)
+      expect(res.skipped).toBe(1)
+      expect(res.failed).toBe(3)
+      expect(mockGenerateEmbedding.mock.calls.map(c => c[0])).toEqual(['fast', 'slow', 'fast'])
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('an item already in flight when the breaker trips still counts as embedded (concurrency 5)', async () => {
+    // Five start together: 'slow' succeeds late, the other four fail at once and
+    // trip the breaker (failFastAfter 3) while 'slow' is still running.
+    mockGenerateEmbedding.mockImplementation(async (text: string) => {
+      if (text === 'slow') {
+        await new Promise(r => setTimeout(r, 30))
+        return vec()
+      }
+      throw new Error('down')
+    })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const { embedChunks, embedContents } = await load()
+      const contents = ['slow', ...Array.from({ length: 19 }, (_, i) => `f${i}`)]
+
+      const res = await embedChunks(contents.map((content, i) => ({ id: i + 1, content })), { concurrency: 5, retries: 0, failFastAfter: 3 })
+      expect(res).toEqual({ embedded: 1, failed: 19, aborted: true })
+      expect(mockGenerateEmbedding).toHaveBeenCalledTimes(5)
+      expect(mockUpdateChunkEmbedding).toHaveBeenCalledExactlyOnceWith(1, expect.any(Array))
+
+      mockGenerateEmbedding.mockClear()
+      const res2 = await embedContents(contents, { concurrency: 5, retries: 0, failFastAfter: 3 })
+      expect(res2.aborted).toBe(true)
+      expect(res2.embedded).toBe(1)
+      expect(res2.embeddings[0]).toEqual(expect.any(Array))
+      expect(res2.skipped).toBe(15)
+      expect(mockGenerateEmbedding).toHaveBeenCalledTimes(5)
     } finally {
       warn.mockRestore()
     }

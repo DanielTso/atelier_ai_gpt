@@ -1,6 +1,6 @@
 // Bounded-concurrency, retrying embedding — shared by the new-upload path (embedChunks,
 // persists by chunk id), the replace path (embedContents, returns embeddings so it can
-// embed BEFORE the destructive commit) and the message backfill (backfillMissingEmbeddings).
+// embed BEFORE the destructive commit) and the message backfill (src/lib/embeddingBackfill.ts).
 // Removing the 100K truncation turns a long contract into hundreds of chunks; firing them
 // all at once 429s Gemini and silently drops embeddings.
 import { generateEmbedding } from '@/lib/embeddings'
@@ -42,8 +42,11 @@ interface PoolOpts { concurrency?: number; retries?: number; failFastAfter?: num
 
 // Embed one string with retry + exponential backoff (100ms, 200ms, 400ms…). Returns null
 // if every attempt fails — a null is a counted, visible failure, never a thrown crash.
-async function embedWithRetry(content: string, retries: number): Promise<number[] | null> {
+// `stop()` is checked before each retry: once the batch's breaker has tripped, an item
+// already in flight gives up instead of finishing its ladder against a dead provider.
+async function embedWithRetry(content: string, retries: number, stop: () => boolean = () => false): Promise<number[] | null> {
   for (let attempt = 0; attempt <= retries; attempt++) {
+    if (attempt > 0 && stop()) return null
     try {
       return await generateEmbedding(content, 'document')
     } catch (err) {
@@ -62,10 +65,13 @@ async function embedWithRetry(content: string, retries: number): Promise<number[
 function breakerEmbed(opts: PoolOpts) {
   const retries = opts.retries ?? DEFAULT_RETRIES
   const failFastAfter = opts.failFastAfter ?? DEFAULT_FAIL_FAST_AFTER
-  const state = { streak: 0, tripped: false }
+  const state = { streak: 0, tripped: false, skipped: 0 }
   const embedOne = async (content: string): Promise<number[] | null> => {
-    if (state.tripped) return null
-    const embedding = await embedWithRetry(content, retries)
+    if (state.tripped) {
+      state.skipped++
+      return null
+    }
+    const embedding = await embedWithRetry(content, retries, () => state.tripped)
     if (embedding) {
       state.streak = 0
     } else if (++state.streak >= failFastAfter && !state.tripped) {
@@ -74,7 +80,7 @@ function breakerEmbed(opts: PoolOpts) {
     }
     return embedding
   }
-  return { embedOne, aborted: () => state.tripped }
+  return { embedOne, aborted: () => state.tripped, skipped: () => state.skipped }
 }
 
 export async function embedChunks(
@@ -106,9 +112,11 @@ export async function embedChunks(
 export async function embedContents(
   contents: string[],
   opts: PoolOpts = {},
-): Promise<{ embeddings: (number[] | null)[]; embedded: number; failed: number; aborted: boolean }> {
-  const { embedOne, aborted } = breakerEmbed(opts)
+): Promise<{ embeddings: (number[] | null)[]; embedded: number; failed: number; skipped: number; aborted: boolean }> {
+  const { embedOne, aborted, skipped } = breakerEmbed(opts)
   const embeddings = await mapWithConcurrency(contents, opts.concurrency ?? DEFAULT_CONCURRENCY, embedOne)
   const embedded = embeddings.filter(Boolean).length
-  return { embeddings, embedded, failed: embeddings.length - embedded, aborted: aborted() }
+  // `failed` counts every null, `skipped` included; `skipped` is the part never
+  // attempted because the breaker had tripped.
+  return { embeddings, embedded, failed: embeddings.length - embedded, skipped: skipped(), aborted: aborted() }
 }

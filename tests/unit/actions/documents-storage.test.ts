@@ -74,6 +74,27 @@ describe('document storage actions', () => {
     expect(after?.errorMessage).toBeNull()
   })
 
+  it('an explicit errorMessage: undefined does not stop ready from clearing a stale error', async () => {
+    const { createUploadingDocument, updateDocumentStatus, getDocumentById } = await import('@/app/actions')
+    const [project] = await createProject('Undefined Key Project')
+    const [doc] = await createUploadingDocument({ projectId: project.id, filename: 'u.pdf', mimeType: 'application/pdf', fileSize: 10 })
+
+    await updateDocumentStatus(doc.id, 'error', { errorMessage: 'Processing timed out' })
+    await updateDocumentStatus(doc.id, 'ready', { errorMessage: undefined, chunkCount: 1 })
+    const after = await getDocumentById(doc.id)
+    expect(after?.errorMessage).toBeNull()
+    expect(after?.chunkCount).toBe(1)
+  })
+
+  it('ready keeps an errorMessage the caller sets explicitly', async () => {
+    const { createUploadingDocument, updateDocumentStatus, getDocumentById } = await import('@/app/actions')
+    const [project] = await createProject('Explicit Message Project')
+    const [doc] = await createUploadingDocument({ projectId: project.id, filename: 'k.pdf', mimeType: 'application/pdf', fileSize: 10 })
+
+    await updateDocumentStatus(doc.id, 'ready', { errorMessage: 'Some pages could not be read' })
+    expect((await getDocumentById(doc.id))?.errorMessage).toBe('Some pages could not be read')
+  })
+
   it('errorMessage can be cleared explicitly with null', async () => {
     const { createUploadingDocument, updateDocumentStatus, getDocumentById } = await import('@/app/actions')
     const [project] = await createProject('Explicit Clear Project')

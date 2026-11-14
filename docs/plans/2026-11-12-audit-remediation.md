@@ -235,7 +235,7 @@ Model: implementer Opus; review Opus.
 
 **Files:** Modify `src/app/api/embed/route.ts:57-65`, `src/lib/validation.ts` (`embedRequestSchema.content` max), `src/lib/ingest.ts:26-35`, `src/app/actions.ts:594-603` (`updateDocumentStatus` can clear `errorMessage`), `src/app/api/summarize/route.ts:74-77`, `src/hooks/useSummarization.ts:36-44`, `useChatPersistence.ts:142-144`; Add server action `backfillMissingEmbeddings({ since?: Date, limit = 200 }): Promise<{ embedded: number; failed: number; remaining: number }>`; Tests in the matching files.
 
-**Interfaces:** `/api/embed` returns 502 on failure and embeds `content.slice(0, EMBED_MAX_CHARS)` (default `8000`). The ingestion embed pool (`src/lib/embedChunks.ts:17-30`) aborts after `EMBED_FAIL_FAST_AFTER` consecutive failures (default `5`), so a full outage fails the document fast instead of running into the platform kill (B11 ingest half). `backfillMissingEmbeddings` selects `messages` with no `message_embeddings` row (oldest first), embeds them, and is idempotent. **Running it against production is a release step the owner approves, not part of this task.**
+**Interfaces:** `/api/embed` returns 502 on failure and embeds `content.slice(0, EMBED_MAX_CHARS)` (default `8000`). The ingestion embed pool (`src/lib/embedChunks.ts:17-30`) aborts after `EMBED_FAIL_FAST_AFTER` consecutive failures (default `5`), so a full outage fails the document fast instead of running into the platform kill (B11 ingest half). `backfillMissingEmbeddings` selects `messages` with no `message_embeddings` row (oldest first), embeds them, and is idempotent. **Running it against production is a release step the owner approves, not part of this task.** *(Changed in the C2 review round: the backfill is not a server action, so it is no network endpoint. It lives in `src/lib/embeddingBackfill.ts`, is run with `scripts/backfill-embeddings.ts`, and returns `{ embedded, failed, skipped, remaining }`, where `skipped` counts rows never attempted because the breaker tripped.)*
 
 - [ ] **Step 1: Failing tests:** embed failure → 502; long content capped; backfill embeds only missing rows and a second run reports `embedded: 0`; ingest all-embeds-fail sets an `errorMessage`; a later `ready` clears a stale `error_message`; summarize with empty model text keeps the old summary and boundary; `useSummarization` re-arms on non-2xx.
 - [ ] **Step 2–4:** FAIL → implement → PASS. **Step 5: Commit** `fix(embeddings): surface embed failures and add a backfill for missing vectors`
@@ -490,5 +490,8 @@ Model: implementer Opus; review Opus.
    - the Stop-mid-stream single `usage_events` row (handoff item 7)
    - B1 turn persistence: switch chats mid-reply, press Stop, and close the tab mid-reply; each partial reply is saved to the chat it was sent from (unit-verified only; `after()` keep-alive on Vercel is untested live)
    - live CSP header check
-4. Run `backfillMissingEmbeddings` against production (handoff item 4), after measuring the gap with a read-only count.
+4. Backfill missing message embeddings in production (handoff item 4) with `scripts/backfill-embeddings.ts`. Dry run first:
+   - `npx -y tsx --env-file=.env.local scripts/backfill-embeddings.ts --dry-run` (add `--since 2026-10-16` to scope it). This is a read-only count of `remaining`, with no embedding calls.
+   - Then `npx -y tsx --env-file=.env.local scripts/backfill-embeddings.ts --since 2026-10-16 --limit 200`. Repeat until `remaining` is 0. Each run embeds up to `--limit` messages (max 1000), oldest first.
+   - If a run reports `skipped` > 0 (exit code 1), the provider failed 5 times in a row and the run stopped. Check the Gemini key and quota before running again.
 5. Add the Vercel WAF rate-limit rule on `POST /api/auth`.

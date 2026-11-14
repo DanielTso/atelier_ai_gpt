@@ -12,8 +12,11 @@ export const MESSAGES_TO_KEEP = 10
 // gap unless the summary falls more than 60 messages behind; keeping this at
 // 20-10 = 10 keeps that tail near its minimum. Imported by useChatPersistence's onFinish
 // trigger, which advances its gate before the fold and rolls it back when the fold
-// reports failure (audit B4), so a failed fold is retried on the next turn.
+// reports failure (audit B4).
 export const SUMMARIZE_EVERY = 10
+// After a failed fold, retry once this many more messages have arrived (about two
+// turns) instead of SUMMARIZE_EVERY later, or on every turn during an outage.
+export const SUMMARIZE_RETRY_AFTER = 4
 
 /**
  * Returns a stable `triggerSummarization(chatId, messageCount)` that compresses all but

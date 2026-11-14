@@ -129,6 +129,24 @@ describe('POST /api/embed failures and length cap', () => {
     expect(mockEmbedAndStore).toHaveBeenCalledExactlyOnceWith(900, 3, 5, 'a'.repeat(8000))
   })
 
+  it('returns 400, not 502, for a body that is not JSON', async () => {
+    const { POST } = await importRoute()
+    const res = await POST(new Request('http://localhost/api/embed', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{not json',
+    }))
+    expect(res.status).toBe(400)
+    expect(mockEmbedAndStore).not.toHaveBeenCalled()
+  })
+
+  it('returns 503 { success: false } when no embedding model is available', async () => {
+    mockEnsure.mockResolvedValue({ available: false, provider: null })
+    const { POST } = await importRoute()
+    const res = await POST(postRequest({ messageId: 900, chatId: 3, content: 'hello' }))
+    expect(res.status).toBe(503)
+    expect(await res.json()).toMatchObject({ success: false })
+    expect(mockEmbedAndStore).not.toHaveBeenCalled()
+  })
+
   it('rejects an absurdly large body with 400 instead of sending it to the provider', async () => {
     const { POST } = await importRoute()
     const res = await POST(postRequest({ messageId: 900, chatId: 3, content: 'x'.repeat(500_001) }))

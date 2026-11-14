@@ -416,80 +416,6 @@ export async function getEmbeddingCount(scope?: { chatId?: number; projectId?: n
   return result[0]?.value ?? 0
 }
 
-// A user/assistant message with real text and no message_embeddings row. These are
-// left behind when /api/embed fails (the 2026-10-16 Gemini credits outage), since
-// the client embeds each message once and never retries.
-function missingEmbeddingFilter(since?: Date) {
-  return and(
-    isNull(messageEmbeddings.id),
-    inArray(messages.role, ['user', 'assistant']),
-    sql`${messages.content} ~ '\\S'`,
-    since ? gte(messages.createdAt, since) : undefined,
-  )
-}
-
-/**
- * Embeds up to `limit` messages that have no embedding, oldest first, filed under
- * each chat's DB project (as /api/embed does). Idempotent: an embedded message is
- * never selected again, so a second run reports `embedded: 0`. A message that fails
- * stays missing for the next run. `failed` counts every selected message not
- * embedded this run, including those the pool skipped after the provider failed
- * several times in a row. `remaining` is the missing count after the run.
- *
- * It calls the embedding provider, so running it against production is an
- * owner-approved release step.
- */
-export async function backfillMissingEmbeddings(
-  { since, limit = 200 }: { since?: Date; limit?: number } = {}
-): Promise<{ embedded: number; failed: number; remaining: number }> {
-  const validSince = since === undefined || (since instanceof Date && !Number.isNaN(since.getTime()))
-  if (!Number.isInteger(limit) || limit < 1 || limit > 1000 || !validSince) {
-    throw new Error('Invalid backfill options')
-  }
-
-  const rows = await db.select({
-    id: messages.id,
-    chatId: messages.chatId,
-    projectId: chats.projectId,
-    content: messages.content,
-  })
-    .from(messages)
-    .innerJoin(chats, eq(chats.id, messages.chatId))
-    .leftJoin(messageEmbeddings, eq(messageEmbeddings.messageId, messages.id))
-    .where(missingEmbeddingFilter(since))
-    .orderBy(asc(messages.createdAt), asc(messages.id))
-    .limit(limit)
-
-  let embedded = 0
-  let failed = 0
-  if (rows.length > 0) {
-    // Imported here, not at the top: embedChunks imports this module, and the
-    // embedding stack has no place in the other actions' import graph.
-    const { embedContents, capEmbedText } = await import('@/lib/embedChunks')
-    const texts = rows.map(r => capEmbedText(r.content))
-    const { embeddings } = await embedContents(texts)
-    for (let i = 0; i < rows.length; i++) {
-      const embedding = embeddings[i]
-      if (!embedding) { failed++; continue }
-      try {
-        await saveMessageEmbedding(rows[i].id, rows[i].chatId, rows[i].projectId ?? null, texts[i], embedding)
-        embedded++
-      } catch (err) {
-        // e.g. the message was deleted mid-run (FK violation). Leave it; count it.
-        console.warn(`[backfill] could not store the embedding for message ${rows[i].id}:`, err instanceof Error ? err.message : err)
-        failed++
-      }
-    }
-  }
-
-  const [{ value: remaining }] = await db.select({ value: count() })
-    .from(messages)
-    .leftJoin(messageEmbeddings, eq(messageEmbeddings.messageId, messages.id))
-    .where(missingEmbeddingFilter(since))
-
-  return { embedded, failed, remaining }
-}
-
 // ── Project Defaults Actions ──
 
 export async function updateProjectDefaults(
@@ -706,9 +632,14 @@ export async function updateDocumentStatus(
   // A document that reaches 'ready' drops any error_message left by an earlier
   // failure ("Processing timed out", "Upload never completed"), unless the caller
   // sets one explicitly (audit B21). Pass `errorMessage: null` to clear it on any status.
-  const clearStaleError = status === 'ready' && updates?.errorMessage === undefined ? { errorMessage: null } : {}
+  // Undefined keys are dropped first, so an explicit `errorMessage: undefined`
+  // still counts as "not set" and cannot cancel the clear.
+  const defined = Object.fromEntries(
+    Object.entries(updates ?? {}).filter(([, value]) => value !== undefined)
+  ) as NonNullable<typeof updates>
+  const clearStaleError = status === 'ready' && !('errorMessage' in defined) ? { errorMessage: null } : {}
   return await db.update(documents)
-    .set({ status, ...clearStaleError, ...updates, updatedAt: new Date() })
+    .set({ status, ...clearStaleError, ...defined, updatedAt: new Date() })
     .where(eq(documents.id, id))
     .returning()
 }

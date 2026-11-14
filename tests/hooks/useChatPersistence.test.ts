@@ -29,7 +29,7 @@ vi.mock('sonner', () => ({ toast: { error: (...args: unknown[]) => mockToastErro
 
 // Import the hook AFTER vi.mock so mocks are in place
 import { useChatPersistence, MEMORY_SUGGEST_EVERY, type UseChatPersistenceOpts } from '@/hooks/useChatPersistence'
-import { SUMMARIZATION_THRESHOLD, SUMMARIZE_EVERY } from '@/hooks/useSummarization'
+import { SUMMARIZATION_THRESHOLD, SUMMARIZE_EVERY, SUMMARIZE_RETRY_AFTER } from '@/hooks/useSummarization'
 import type { TurnMetadata } from '@/lib/chatTurn'
 import type { AttachedImage } from '@/lib/fileAttachments'
 
@@ -544,37 +544,61 @@ describe('useChatPersistence', () => {
 
   // Audit B4 (client side): the gate used to advance before the fold and never roll
   // back, so a failed fold postponed the next try by SUMMARIZE_EVERY messages.
-  it('(c) re-arms the summarization gate when the fold fails', async () => {
+  it('(c) re-arms the summarization gate when the fold fails, retrying after SUMMARIZE_RETRY_AFTER more messages', async () => {
     const opts = makeOpts()
     opts.triggerSummarization.mockResolvedValueOnce(false)
     const { result } = renderHook(() => useChatPersistence(opts))
     const turn = (id: string) => makeTurn(makeMessage({ id, metadata: meta({ chatId: 12 }) }))
+    const failedAt = SUMMARIZATION_THRESHOLD + 1
 
-    mockGetMessageCount.mockResolvedValue(SUMMARIZATION_THRESHOLD + 1)
+    mockGetMessageCount.mockResolvedValue(failedAt)
     await act(async () => { await result.current.onTurnFinish(turn('a')) })
     await settle()
     expect(opts.triggerSummarization).toHaveBeenCalledTimes(1)
-    expect(opts.lastSummarizedCountRef.current.get(12) ?? 0).toBe(0)
+    // Rolled back to just short of the gate, not to the last successful fold:
+    // the retry comes SUMMARIZE_RETRY_AFTER messages later (about two turns).
+    expect(opts.lastSummarizedCountRef.current.get(12)).toBe(failedAt - SUMMARIZE_EVERY + SUMMARIZE_RETRY_AFTER)
 
-    // The very next turn tries again, although the delta since the failed fold is 2.
-    mockGetMessageCount.mockResolvedValue(SUMMARIZATION_THRESHOLD + 3)
+    // One turn later (2 messages) is too soon.
+    mockGetMessageCount.mockResolvedValue(failedAt + 2)
     await act(async () => { await result.current.onTurnFinish(turn('b')) })
+    await settle()
+    expect(opts.triggerSummarization).toHaveBeenCalledTimes(1)
+
+    // Two turns later (SUMMARIZE_RETRY_AFTER messages) it retries.
+    mockGetMessageCount.mockResolvedValue(failedAt + SUMMARIZE_RETRY_AFTER)
+    await act(async () => { await result.current.onTurnFinish(turn('c')) })
     await settle()
     expect(opts.triggerSummarization).toHaveBeenCalledTimes(2)
     // That fold succeeded, so the gate holds its count now.
-    expect(opts.lastSummarizedCountRef.current.get(12)).toBe(SUMMARIZATION_THRESHOLD + 3)
+    expect(opts.lastSummarizedCountRef.current.get(12)).toBe(failedAt + SUMMARIZE_RETRY_AFTER)
   })
 
-  it('(c) re-arms the summarization gate when the fold rejects', async () => {
+  it('(c) re-arms the summarization gate the same way when the fold rejects', async () => {
     const opts = makeOpts({ lastSummarizedCount: new Map([[12, 20]]) })
     opts.triggerSummarization.mockRejectedValueOnce(new Error('getChatMessages failed'))
     const { result } = renderHook(() => useChatPersistence(opts))
+    const failedAt = SUMMARIZATION_THRESHOLD + 1
 
-    mockGetMessageCount.mockResolvedValue(SUMMARIZATION_THRESHOLD + 1)
+    mockGetMessageCount.mockResolvedValue(failedAt)
     await act(async () => { await result.current.onTurnFinish(makeTurn(makeMessage({ id: 'rej', metadata: meta({ chatId: 12 }) }))) })
     await settle()
-    // Back to the count of the last successful fold, not to zero.
-    expect(opts.lastSummarizedCountRef.current.get(12)).toBe(20)
+    expect(opts.lastSummarizedCountRef.current.get(12)).toBe(failedAt - SUMMARIZE_EVERY + SUMMARIZE_RETRY_AFTER)
+  })
+
+  it('(c) leaves the gate alone when a later fold moved it before this one failed', async () => {
+    let failFold: (ok: boolean) => void = () => {}
+    const opts = makeOpts()
+    opts.triggerSummarization.mockImplementationOnce(() => new Promise<boolean>(resolve => { failFold = resolve }))
+    const { result } = renderHook(() => useChatPersistence(opts))
+
+    mockGetMessageCount.mockResolvedValue(SUMMARIZATION_THRESHOLD + 1)
+    await act(async () => { await result.current.onTurnFinish(makeTurn(makeMessage({ id: 'slow-fold', metadata: meta({ chatId: 12 }) }))) })
+    // A later fold has advanced the gate while this one is still running.
+    opts.lastSummarizedCountRef.current.set(12, SUMMARIZATION_THRESHOLD + 11)
+    await act(async () => { failFold(false) })
+    await settle()
+    expect(opts.lastSummarizedCountRef.current.get(12)).toBe(SUMMARIZATION_THRESHOLD + 11)
   })
 
   // (d) project chat past the gate → POST /api/memory/suggest
