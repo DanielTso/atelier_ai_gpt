@@ -40,14 +40,15 @@ type SaveStatus = 'idle' | 'saved' | 'error'
 function useDebouncedSave(projectId: number, onSaveContext: ProjectContextRailProps['onSaveContext']) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [status, setStatus] = useState<SaveStatus>('idle')
-  // Only the latest save may set the status — an older one resolving late must
-  // not show "Saved" over a newer failure (or the reverse).
+  // Only the latest EDIT may set the status: the sequence advances when a save is
+  // scheduled, so an older save resolving during the next debounce can't show
+  // "Saved" for an edit that hasn't been sent yet (or over a newer failure).
   const seq = useRef(0)
   const save = useCallback((fields: { memory?: string; instructions?: string }) => {
     if (timer.current) clearTimeout(timer.current)
     setStatus('idle')
+    const mine = ++seq.current
     timer.current = setTimeout(() => {
-      const mine = ++seq.current
       Promise.resolve(onSaveContext(projectId, fields)).then(
         () => { if (seq.current === mine) setStatus('saved') },
         () => { if (seq.current === mine) setStatus('error') },
@@ -58,11 +59,13 @@ function useDebouncedSave(projectId: number, onSaveContext: ProjectContextRailPr
   return { save, cancel, status }
 }
 
+// Always mounted, so screen readers announce the status as it changes.
 function SaveStatusText({ status }: { status: SaveStatus }) {
-  if (status === 'idle') return null
-  return status === 'saved'
-    ? <span className="text-xs text-muted-foreground">Saved</span>
-    : <span className="text-xs text-destructive">Not saved</span>
+  return (
+    <span aria-live="polite" className={cn('text-xs', status === 'error' ? 'text-destructive' : 'text-muted-foreground')}>
+      {status === 'saved' ? 'Saved' : status === 'error' ? 'Not saved' : ''}
+    </span>
+  )
 }
 
 export function ProjectContextRail({ project, onSaveContext, onMemoryChanged, onAddFiles, excludedDocIds, onExcludedChange }: ProjectContextRailProps) {
@@ -220,7 +223,7 @@ export function ProjectContextRail({ project, onSaveContext, onMemoryChanged, on
         </div>
       {/* Memory */}
       <section>
-        <div className="flex items-center justify-between" aria-live="polite">
+        <div className="flex items-center justify-between">
           <label htmlFor="rail-memory" className="text-sm font-semibold text-foreground">Memory</label>
           <SaveStatusText status={memoryStatus} />
         </div>
@@ -261,7 +264,7 @@ export function ProjectContextRail({ project, onSaveContext, onMemoryChanged, on
 
       {/* Instructions */}
       <section>
-        <div className="flex items-center justify-between" aria-live="polite">
+        <div className="flex items-center justify-between">
           <label htmlFor="rail-instructions" className="text-sm font-semibold text-foreground">Instructions</label>
           <SaveStatusText status={instructionsStatus} />
         </div>

@@ -22,6 +22,8 @@ import type { Model } from '@/types'
 
 // ---- fetch ----------------------------------------------------------------
 let chatCalls: Array<{ body: { chatId: number | null } }> = []
+// Overridable per test; by default the reply is held open.
+let chatResponse: () => Response = () => new Response(new ReadableStream<Uint8Array>({ start() {} }), { status: 200 })
 let otherCalls: Array<{ url: string; init: RequestInit | undefined }> = []
 
 const MODEL: Model = {
@@ -46,8 +48,7 @@ function installFetch() {
     const url = String(input)
     if (url === '/api/chat') {
       chatCalls.push({ body: JSON.parse(String(init?.body)) })
-      // Held open: these tests are about what happens before and around a send.
-      return new Response(new ReadableStream<Uint8Array>({ start() {} }), { status: 200 })
+      return chatResponse()
     }
     otherCalls.push({ url, init })
     if (url.startsWith('/api/models')) return json({ models: [MODEL] })
@@ -69,6 +70,7 @@ const PROJECT = { id: 7, name: 'Tower', memory: 'Hub', instructions: '' }
 beforeEach(() => {
   chatCalls = []
   otherCalls = []
+  chatResponse = () => new Response(new ReadableStream<Uint8Array>({ start() {} }), { status: 200 })
   for (const key of Object.keys(actionMocks)) delete actionMocks[key]
   installFetch()
   vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} })
@@ -156,6 +158,22 @@ describe('Home — double send (U5)', () => {
     expect(chatCalls).toHaveLength(0)
   })
 
+  it('a send after a failed create goes through (the guard is released)', async () => {
+    action('createStandaloneChat').mockRejectedValueOnce(new Error('db down'))
+    render(<Home />)
+
+    const textarea = await composer()
+    fireEvent.change(textarea, { target: { value: 'Try again' } })
+    await act(async () => { fireEvent.keyDown(textarea, { key: 'Enter' }) })
+    expect(await screen.findByText('Failed to create chat.')).toBeTruthy()
+
+    const again = await composer()
+    expect(again.value).toBe('Try again')
+    await act(async () => { fireEvent.keyDown(again, { key: 'Enter' }) })
+    await waitFor(() => expect(chatCalls).toHaveLength(1))
+    expect(action('createStandaloneChat')).toHaveBeenCalledTimes(2)
+  })
+
   it('an oversized send creates no chat and keeps the input', async () => {
     render(<Home />)
     const big = 'x'.repeat(4 * 1024 * 1024 + 16)
@@ -181,6 +199,42 @@ describe('Home — the error banner (F6 / prior C9)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /dismiss/i }))
     expect(screen.queryByText('Failed to load projects.')).toBeNull()
+  })
+})
+
+describe('Home — which errors clear themselves', () => {
+  it('a settings save does not wipe an unrelated error', async () => {
+    action('createStandaloneChat').mockRejectedValue(new Error('db down'))
+    render(<Home />)
+    await waitFor(() => expect(otherCalls.some(c => c.url === '/api/models')).toBe(true))
+
+    const textarea = await composer()
+    fireEvent.change(textarea, { target: { value: 'Hello' } })
+    await act(async () => { fireEvent.keyDown(textarea, { key: 'Enter' }) })
+    expect(await screen.findByText('Failed to create chat.')).toBeTruthy()
+
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Customize' })) })
+    const keysTab = await screen.findByRole('button', { name: /api keys/i })
+    await act(async () => { fireEvent.click(keysTab) })
+    fireEvent.change(await screen.findByPlaceholderText('sk-ant-...'), { target: { value: 'sk-ant-new' } })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /save keys/i })) })
+    await waitFor(() => expect(otherCalls.filter(c => c.url === '/api/models')).toHaveLength(2))
+    await act(async () => { await new Promise(r => setTimeout(r, 20)) })
+
+    expect(screen.getByText('Failed to create chat.')).toBeTruthy()
+  })
+
+  it("a chat's stream error is cleared when the user leaves that chat", async () => {
+    chatResponse = () => new Response('Upstream failed', { status: 500 })
+    render(<Home />)
+
+    const textarea = await composer()
+    fireEvent.change(textarea, { target: { value: 'Hello' } })
+    await act(async () => { fireEvent.keyDown(textarea, { key: 'Enter' }) })
+    expect(await screen.findByText('Upstream failed')).toBeTruthy()
+
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /new chat/i })) })
+    await waitFor(() => expect(screen.queryByText('Upstream failed')).toBeNull())
   })
 })
 
@@ -263,5 +317,31 @@ describe('Home — project landing (U6, delete-project history)', () => {
     await waitFor(() => expect(action('deleteProject')).toHaveBeenCalledWith(7))
     await waitFor(() => expect(window.location.search).toBe(''))
     expect(window.history.length).toBe(lengthBefore)
+  })
+
+  it('deleting a project from the Projects tab leaves the next navigation a real push', async () => {
+    action('getProjects').mockResolvedValue([PROJECT])
+    window.history.replaceState(null, '', '/?project=7')
+    render(<Home />)
+    expect(await screen.findByRole('heading', { name: 'Tower' })).toBeTruthy()
+
+    // Projects tab: activeProjectId stays 7 behind the tab view.
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Projects' })) })
+    const grid = await screen.findByRole('heading', { name: 'Projects' })
+    const main = grid.closest('main') as HTMLElement
+    const trigger = within(main).getByRole('button', { name: 'Project options for Tower' })
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false })
+    fireEvent.pointerUp(trigger)
+    const deleteItem = await screen.findByText('Delete')
+    await act(async () => { fireEvent.click(deleteItem) })
+    const dialog = await screen.findByRole('dialog')
+    await act(async () => { fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' })) })
+    await waitFor(() => expect(action('deleteProject')).toHaveBeenCalledWith(7))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+
+    const lengthBefore = window.history.length
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Artifacts' })) })
+    await waitFor(() => expect(window.location.search).toContain('artifacts'))
+    expect(window.history.length).toBe(lengthBefore + 1)
   })
 })

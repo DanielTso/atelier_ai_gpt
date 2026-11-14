@@ -4,7 +4,7 @@ import { readError } from '@/lib/readError'
 
 // /api/documents/process runs to the function's time limit on a large PDF; past
 // it the platform answers 504 with an HTML page. The work may still have landed.
-const PROCESS_TIMEOUT_MESSAGE = 'Processing timed out — the document may still be indexing; refresh in a minute'
+const PROCESS_TIMEOUT_MESSAGE = "Processing timed out — refresh to see the document's status."
 
 async function processError(res: Response): Promise<Error> {
   return new Error(await readError(res, res.status === 504 ? PROCESS_TIMEOUT_MESSAGE : 'Processing failed'))

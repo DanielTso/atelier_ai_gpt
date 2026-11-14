@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup, waitFor, act } from '@testing-library/react'
 
 // The rail imports server actions for the suggestions strip; mock them so jsdom
 // doesn't pull in the real `db`. Hoisted so the factory can reference the spies.
@@ -90,6 +90,32 @@ describe('ProjectContextRail', () => {
     vi.advanceTimersByTime(700)
     expect(await screen.findByText('Not saved')).toBeTruthy()
     vi.useRealTimers()
+  })
+
+  it('an older save landing during the next debounce does not show Saved for the unsent edit', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const resolvers: Array<() => void> = []
+    const onSaveContext = vi.fn(() => new Promise<void>(r => { resolvers.push(r) }))
+    render(<ProjectContextRail project={{ id: 1, name: 'Drover', memory: '', instructions: '' }} onSaveContext={onSaveContext} onAddFiles={vi.fn()} />)
+    fireEvent.change(screen.getByLabelText('Memory'), { target: { value: 'A' } })
+    vi.advanceTimersByTime(700)
+    await waitFor(() => expect(onSaveContext).toHaveBeenCalledTimes(1))
+    // A second edit is typed (its save is only scheduled) when the first lands.
+    fireEvent.change(screen.getByLabelText('Memory'), { target: { value: 'AB' } })
+    await act(async () => { resolvers[0]() })
+    expect(screen.queryByText('Saved')).toBeNull()
+    vi.advanceTimersByTime(700)
+    await waitFor(() => expect(onSaveContext).toHaveBeenCalledTimes(2))
+    await act(async () => { resolvers[1]() })
+    expect(await screen.findByText('Saved')).toBeTruthy()
+    vi.useRealTimers()
+  })
+
+  it('announces only the save status, not the whole label row', async () => {
+    render(<ProjectContextRail project={{ id: 1, name: 'Drover', memory: '', instructions: '' }} onSaveContext={vi.fn()} onAddFiles={vi.fn()} />)
+    const live = document.querySelectorAll('[aria-live]')
+    expect(live).toHaveLength(2)
+    for (const el of live) expect(el.querySelector('label')).toBeNull()
   })
 
   it('toasts the server reason when a document delete fails (U12)', async () => {

@@ -61,6 +61,10 @@ type ComposerSnapshot = { input: string; files: AttachedFile[]; images: Attached
 // A message handed to its chat session; `turn` resolves when the reply ends.
 type StartedSend = { turn: Promise<void> }
 
+// fetchModels' own banner messages — the only ones it may clear.
+const NO_MODELS_ERROR = "No models found. Please check your API keys in Settings."
+const MODELS_LOAD_ERROR = "Failed to load models. Please check your configuration."
+
 export default function Home() {
   const { setTheme, theme } = useTheme()
   const [models, setModels] = useState<Model[]>([])
@@ -114,6 +118,8 @@ export default function Home() {
   // message is sent (see handleSendMessage), scoped to the active project.
   const [newChatCompose, setNewChatCompose] = useState(false)
   const [activeView, setActiveView] = useState<AppView>('home')
+  const activeViewRef = useRef(activeView)
+  activeViewRef.current = activeView
   const [displayName, setDisplayName] = useState('')
 
   // Project landing page state
@@ -397,10 +403,18 @@ export default function Home() {
     ? getPersonaById(smartSuggestion.suggestedPersonaId)
     : null
 
-  // Sync chat errors to UI
+  // Sync chat errors to UI. `chatError` is the ACTIVE chat's: when it goes away
+  // (the user switched chats, or that chat recovered), take its message down
+  // too — unless something else has replaced it on the banner since.
+  const shownChatErrorRef = useRef<string | null>(null)
   useEffect(() => {
     if (chatError) {
+      shownChatErrorRef.current = chatError.message
       setError(chatError.message)
+    } else if (shownChatErrorRef.current != null) {
+      const stale = shownChatErrorRef.current
+      shownChatErrorRef.current = null
+      setError(prev => (prev === stale ? null : prev))
     }
   }, [chatError])
 
@@ -414,7 +428,9 @@ export default function Home() {
   // reload right after a key change sees the new list too ('no-store' would not).
   const fetchModels = useCallback(async ({ fresh = false }: { fresh?: boolean } = {}) => {
     try {
-      setError(null)
+      // Clear only this loader's own errors — errors no longer auto-dismiss, so
+      // a settings save must not wipe, say, "Failed to create chat."
+      setError(prev => (prev === NO_MODELS_ERROR || prev === MODELS_LOAD_ERROR ? null : prev))
       const res = await fetch("/api/models", fresh ? { cache: 'reload' } : undefined)
       if (!res.ok) throw new Error("Failed to fetch models")
 
@@ -432,11 +448,11 @@ export default function Home() {
          const fallbackModel = personaModelAvailable ? resolvedPersonaModel : data.models[0].model
          setSelectedModel(modelExists ? defaultModel : fallbackModel)
       } else {
-         setError("No models found. Please check your API keys in Settings.")
+         setError(NO_MODELS_ERROR)
       }
     } catch (e) {
       console.error(e)
-      setError("Failed to load models. Please check your configuration.")
+      setError(MODELS_LOAD_ERROR)
     }
   }, [])
   const refreshModels = useCallback(() => fetchModels({ fresh: true }), [fetchModels])
@@ -1080,8 +1096,11 @@ export default function Home() {
       const closesChat = findChatById(activeChatIdRef.current, lists)?.projectId === targetId
       const closesProject = activeProjectIdRef.current === targetId
       // Leaving a deleted project's page is a correction, not a navigation: replace
-      // the URL so Back doesn't land on the dead ?project= / ?chat= entry.
-      if (closesChat || closesProject) suppressNextNavPush()
+      // the URL so Back doesn't land on the dead ?project= / ?chat= entry. Only
+      // when that page is ON SCREEN: behind a tab view (selectView keeps
+      // activeProjectId) the URL doesn't change, the flag would stay armed, and
+      // the next real navigation would become a replace.
+      if ((closesChat || closesProject) && activeViewRef.current === 'home') suppressNextNavPush()
       if (closesChat) setActiveChatId(null)
       if (closesProject) setActiveProjectId(null)
       dialogs.deleteProject.close()

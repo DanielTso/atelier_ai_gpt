@@ -177,7 +177,7 @@ export const ChatInputArea = memo(function ChatInputArea({
     const startedIn = activeChatId
     const stillHere = () => mountedRef.current && activeChatIdRef.current === startedIn
     const dropLate = (names: string[]) =>
-      toast.error(`${names.join(', ')} ${names.length === 1 ? 'was' : 'were'} not attached — the chat changed before ${names.length === 1 ? 'it' : 'they'} finished processing`)
+      toast.error(`${names.join(', ')} ${names.length === 1 ? 'was' : 'were'} not attached — the chat or view changed before ${names.length === 1 ? 'it' : 'they'} finished processing`)
     const imageFiles: File[] = []
     const textFiles: File[] = []
 

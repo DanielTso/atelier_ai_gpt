@@ -49,7 +49,7 @@ describe('useDocumentUpload', () => {
     let message = ''
     await act(async () => { await result.current.upload(file, 1).catch((e: Error) => { message = e.message }) })
     expect(message).not.toMatch(/Unexpected token|JSON|SyntaxError/)
-    expect(message).toBe('Processing timed out — the document may still be indexing; refresh in a minute')
+    expect(message).toBe("Processing timed out — refresh to see the document's status.")
   })
 
   it("passes the route's own error through when minting the upload URL fails", async () => {

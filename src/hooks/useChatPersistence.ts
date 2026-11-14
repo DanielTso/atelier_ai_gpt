@@ -162,9 +162,10 @@ export function useChatPersistence(opts: UseChatPersistenceOpts) {
         if (urls.size > 0) updateChatMessages(chatId, prev => replaceFilePartUrls(prev, urls))
       }, err => {
         console.error('[post-turn] Error saving attachments:', err)
-        // The model saw the images, but they aren't stored: say so now rather
-        // than letting them silently vanish on the next refresh (U4).
-        toast.error("Couldn't save the attached images — they won't appear after a refresh")
+        // The model saw the images, but they may not be stored: say so now rather
+        // than letting them silently vanish on the next refresh (U4). "May": the
+        // action can also throw after its insert landed (a short RETURNING).
+        toast.error("Couldn't save the attached images — they may not appear after a refresh")
       })
     }
 
@@ -263,7 +264,7 @@ export function useChatPersistence(opts: UseChatPersistenceOpts) {
             )
           } catch (err) {
             console.error('[post-turn] Failed to save image attachments:', err)
-            toast.error("Couldn't save the generated images — they won't appear after a refresh")
+            toast.error("Couldn't save the generated images — they may not appear after a refresh")
           }
         }
 

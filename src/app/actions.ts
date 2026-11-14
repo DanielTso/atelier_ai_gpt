@@ -916,7 +916,9 @@ export async function saveMessageAttachments(
     // `url` null (the client keeps the data URL).
     const urlMap = await createSignedDownloadUrls(uploaded, ATTACHMENT_URL_TTL_SECONDS).catch(() => new Map<string, string>())
     // One output row per input, in input order: the client pairs them by index, so
-    // a dropped row would shift every later URL onto the wrong image.
+    // a dropped row would shift every later URL onto the wrong image. The insert
+    // has already landed by then, so callers must not word this failure as
+    // "the images are gone" (useChatPersistence says they MAY not reappear).
     const byPath = new Map(inserted.map(r => [r.storagePath, r]))
     return rows.map(r => {
       const row = byPath.get(r.storagePath ?? null)

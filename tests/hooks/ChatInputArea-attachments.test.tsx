@@ -216,6 +216,7 @@ describe('ChatInputArea attachments', () => {
     await act(async () => { pending.resolve(extractOk('a.txt')) })
 
     await waitFor(() => expect(mockToastError).toHaveBeenCalledWith(expect.stringContaining('a.txt')))
+    expect(String(mockToastError.mock.calls.at(-1)?.[0])).toContain('the chat or view changed')
     expect(onFilesChange).not.toHaveBeenCalled()
   })
 

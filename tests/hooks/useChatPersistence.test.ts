@@ -219,6 +219,9 @@ describe('useChatPersistence', () => {
 
       expect(mockToastError).toHaveBeenCalledOnce()
       expect(String(mockToastError.mock.calls[0][0])).toMatch(/image/i)
+      // The action can also fail AFTER its insert landed (a short RETURNING), so
+      // the copy must not promise the images are gone.
+      expect(String(mockToastError.mock.calls[0][0])).not.toMatch(/won't appear/)
     })
 
     it('does not repeat the user-message steps when the turn then finishes', async () => {
