@@ -169,6 +169,13 @@
       "when": 1794647351239,
       "tag": "0023_usage_purpose_llm_sites",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1794655558784,
+      "tag": "0024_drop_chat_topics",
+      "breakpoints": true
     }
   ]
 }

@@ -36,7 +36,6 @@ let otherCalls: Array<{ url: string; body: Record<string, unknown> | null }> = [
 const MODEL: Model = {
   name: 'Claude Opus 4.8',
   model: 'claude-opus-4-8',
-  digest: '',
   provider: 'anthropic',
   family: 'opus',
   capabilities: {

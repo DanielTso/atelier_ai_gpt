@@ -25,12 +25,8 @@ vi.mock('ai', () => ({
   generateText: (...args: unknown[]) => mockGenerateText(...args),
 }))
 
-const mockGoogleSearch = vi.fn(() => ({ type: 'provider-defined', id: 'google_search' }))
 vi.mock('@ai-sdk/google', () => ({
-  createGoogleGenerativeAI: () => Object.assign(
-    vi.fn((model: string) => ({ modelId: model })),
-    { tools: { googleSearch: mockGoogleSearch } }
-  ),
+  createGoogleGenerativeAI: () => vi.fn((model: string) => ({ modelId: model })),
 }))
 
 function makeRequest(body: Record<string, unknown>) {
@@ -47,10 +43,7 @@ async function importRoute() {
   vi.doMock('@/db', () => ({ get db() { return testDb } }))
   vi.doMock('ai', () => ({ generateText: (...args: unknown[]) => mockGenerateText(...args) }))
   vi.doMock('@ai-sdk/google', () => ({
-    createGoogleGenerativeAI: () => Object.assign(
-      vi.fn((model: string) => ({ modelId: model })),
-      { tools: { googleSearch: mockGoogleSearch } }
-    ),
+    createGoogleGenerativeAI: () => vi.fn((model: string) => ({ modelId: model })),
   }))
   vi.doMock('@/lib/settings', () => ({
     getGeminiApiKey: () => Promise.resolve('test-key'),

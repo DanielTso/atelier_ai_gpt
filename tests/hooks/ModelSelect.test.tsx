@@ -17,7 +17,6 @@ afterEach(cleanup)
 const OPUS: Model = {
   name: 'Claude Opus 4.8',
   model: 'claude-opus-4-8',
-  digest: 'opus',
   provider: 'anthropic',
   family: 'opus',
   capabilities: { supportsEffort: true, effortLevels: ['low', 'medium', 'high', 'xhigh', 'max'], supportsThinking: true, supportsImageInput: true, supportsStructuredOutputs: true },
@@ -29,7 +28,6 @@ const OPUS: Model = {
 const NOVA: Model = {
   name: 'Claude Nova 3',
   model: 'claude-nova-3',
-  digest: 'nova',
   provider: 'anthropic',
   family: 'other',
   capabilities: { supportsEffort: true, effortLevels: ['low', 'medium', 'high', 'max'], supportsThinking: true, supportsImageInput: true, supportsStructuredOutputs: true },
@@ -41,7 +39,6 @@ const NOVA: Model = {
 const NANO_BANANA: Model = {
   name: 'Nano Banana 2',
   model: 'gemini-3.1-flash-image',
-  digest: 'nano',
   provider: 'google',
   family: 'nano-banana',
   capabilities: { supportsEffort: false, effortLevels: [], supportsThinking: false, supportsImageInput: true, supportsStructuredOutputs: false },

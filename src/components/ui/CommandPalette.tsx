@@ -112,7 +112,7 @@ export const CommandPalette = memo(function CommandPalette({
               <Command.Group heading="Switch Model" className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:text-muted-foreground">
                 {models.map((model) => (
                   <CommandItem
-                    key={model.digest}
+                    key={model.model}
                     onSelect={() => {
                       onModelChange(model.model)
                       handleClose()

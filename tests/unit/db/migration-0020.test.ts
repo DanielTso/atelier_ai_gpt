@@ -12,7 +12,7 @@ function rowsOf<T>(res: unknown): T[] {
 describe('migration 0020 — RLS on every public table', () => {
   beforeEach(async () => { await createTestDb() })
 
-  it('enables row-level security on all 16 app tables', async () => {
+  it('enables row-level security on all 15 app tables', async () => {
     const res = await testDb.execute(sql`
       SELECT c.relname, c.relrowsecurity
       FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -21,7 +21,7 @@ describe('migration 0020 — RLS on every public table', () => {
     `)
     const rows = rowsOf<{ relname: string; relrowsecurity: boolean }>(res)
     expect(rows.map(r => r.relname)).toEqual([
-      'artifact_versions', 'artifacts', 'chat_topics', 'chats', 'document_chunks', 'document_revisions',
+      'artifact_versions', 'artifacts', 'chats', 'document_chunks', 'document_revisions',
       'documents', 'generated_images', 'memory_suggestions', 'message_attachments', 'message_embeddings',
       'messages', 'persona_usage', 'projects', 'settings', 'usage_events',
     ])

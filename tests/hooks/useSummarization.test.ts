@@ -12,8 +12,7 @@ import { useSummarization, SUMMARIZATION_THRESHOLD, MESSAGES_TO_KEEP } from '@/h
 const rows = (n: number) => Array.from({ length: n }, (_, i) => ({ id: i + 1, role: i % 2 ? 'assistant' : 'user', content: `m${i + 1}` }))
 
 function trigger() {
-  const ref = { current: 'claude-sonnet-5' }
-  const { result } = renderHook(() => useSummarization(ref))
+  const { result } = renderHook(() => useSummarization())
   return result.current
 }
 
@@ -38,7 +37,7 @@ describe('useSummarization', () => {
     const ok = await trigger()(7, count)
     expect(ok).toBe(true)
     const body = JSON.parse(fetchMock.mock.calls[0][1].body)
-    expect(body).toEqual({ chatId: 7, cutoffMessageId: count - MESSAGES_TO_KEEP, model: 'claude-sonnet-5' })
+    expect(body).toEqual({ chatId: 7, cutoffMessageId: count - MESSAGES_TO_KEEP })
   })
 
   it('resolves false on a non-2xx response', async () => {

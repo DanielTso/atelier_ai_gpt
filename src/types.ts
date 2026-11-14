@@ -34,7 +34,6 @@ export interface ModelPricing {
 export interface Model {
   name: string
   model: string
-  digest: string
   provider: 'anthropic' | 'google'
   family: string
   capabilities: ModelCapabilities

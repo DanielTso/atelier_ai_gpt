@@ -1,7 +1,7 @@
 'use server'
 
 import { db } from '@/db'
-import { projects, chats, messages, settings, messageEmbeddings, personaUsage, chatTopics, documents, documentChunks, documentRevisions, messageAttachments, artifacts, artifactVersions, memorySuggestions, generatedImages, usageEvents } from '@/db/schema'
+import { projects, chats, messages, settings, messageEmbeddings, personaUsage, documents, documentChunks, documentRevisions, messageAttachments, artifacts, artifactVersions, memorySuggestions, generatedImages, usageEvents } from '@/db/schema'
 import { eq, desc, isNull, isNotNull, and, lte, gt, gte, asc, count, inArray, sql } from 'drizzle-orm'
 import { isStorageConfigured, uploadBuffer, createSignedDownloadUrls, removeObjects, signedArtifactUrl, signedArtifactUrls } from '@/lib/storage'
 import { blankArtifactTemplate } from '@/lib/artifacts/templates'
@@ -610,20 +610,6 @@ export async function getChatCost(chatId: number): Promise<{ costUsd: number; es
     .from(usageEvents)
     .where(eq(usageEvents.chatId, chatId))
   return rows[0] ?? { costUsd: 0, estimated: false }
-}
-
-// ── Chat Topics Actions ──
-
-export async function saveChatTopics(chatId: number, topics: { topic: string; confidence: number }[]) {
-  if (topics.length === 0) return []
-  const rows = topics.map(t => ({ chatId, topic: t.topic, confidence: t.confidence, detectedAt: new Date() }))
-  return await db.insert(chatTopics).values(rows).returning()
-}
-
-export async function getChatTopics(chatId: number) {
-  return await db.select().from(chatTopics)
-    .where(eq(chatTopics.chatId, chatId))
-    .orderBy(desc(chatTopics.confidence))
 }
 
 // ── Document RAG Actions ──

@@ -67,8 +67,8 @@ export async function createProvider(modelName: string, effort?: Effort): Promis
       return { model, providerOptions: { google: { responseModalities: ['TEXT', 'IMAGE'] } } };
     }
 
-    // Internal Gemini text (title/summarize utility): Google Search grounding.
-    return { model, tools: { google_search: google.tools.googleSearch({}) } };
+    // Internal Gemini text (title/summarize utility): plain model, no tools.
+    return { model };
   }
 
   throw new Error(

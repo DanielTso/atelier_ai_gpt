@@ -1,4 +1,4 @@
-import { useCallback, type RefObject } from 'react'
+import { useCallback } from 'react'
 import { getChatMessages } from '@/app/actions'
 
 // Context management: auto-summarize older messages once a chat grows past the
@@ -21,13 +21,13 @@ export const SUMMARIZE_RETRY_AFTER = 4
 /**
  * Returns a stable `triggerSummarization(chatId, messageCount)` that compresses all but
  * the last MESSAGES_TO_KEEP messages via `/api/summarize` (best-effort). Pinned server-side
- * to an internal Gemini model; the passed model ref is forwarded for routing parity.
+ * to an internal Gemini model.
  *
  * Resolves `false` when the fold was attempted and failed (a non-2xx or a network
  * error), `true` otherwise (folded, or nothing to fold). It rejects only if the
  * message lookup throws; the caller treats that as a failure too.
  */
-export function useSummarization(selectedModelRef: RefObject<string>) {
+export function useSummarization() {
   return useCallback(
     async (chatId: number, messageCount: number): Promise<boolean> => {
       if (messageCount <= SUMMARIZATION_THRESHOLD) return true
@@ -44,7 +44,7 @@ export function useSummarization(selectedModelRef: RefObject<string>) {
         const res = await fetch('/api/summarize', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chatId, cutoffMessageId, model: selectedModelRef.current }),
+          body: JSON.stringify({ chatId, cutoffMessageId }),
         })
         if (!res.ok) console.warn(`[Summarization] fold failed (HTTP ${res.status}); will retry next turn`)
         return res.ok
@@ -53,6 +53,6 @@ export function useSummarization(selectedModelRef: RefObject<string>) {
         return false
       }
     },
-    [selectedModelRef]
+    []
   )
 }

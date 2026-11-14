@@ -53,11 +53,7 @@ const mockRetrieveContext = vi.fn()
 // in tests/unit/lib/usage.test.ts.
 const mockRecordUsage = vi.fn().mockResolvedValue(undefined)
 
-const mockGoogleSearch = vi.fn(() => ({ type: 'provider-defined', id: 'google_search' }))
-const mockGoogleFn = Object.assign(
-  vi.fn((model: string) => ({ modelId: model, provider: 'google' })),
-  { tools: { googleSearch: mockGoogleSearch } }
-)
+const mockGoogleFn = vi.fn((model: string) => ({ modelId: model, provider: 'google' }))
 vi.mock('@ai-sdk/google', () => ({
   createGoogleGenerativeAI: () => mockGoogleFn,
 }))
@@ -109,10 +105,7 @@ describe('POST /api/chat', () => {
       APICallError: MockAPICallError,
     }))
     vi.doMock('@ai-sdk/google', () => ({
-      createGoogleGenerativeAI: () => Object.assign(
-        (model: string) => mockGoogleFn(model),
-        { tools: { googleSearch: mockGoogleSearch } }
-      ),
+      createGoogleGenerativeAI: () => (model: string) => mockGoogleFn(model),
     }))
     vi.doMock('@ai-sdk/anthropic', () => ({
       createAnthropic: () => Object.assign(

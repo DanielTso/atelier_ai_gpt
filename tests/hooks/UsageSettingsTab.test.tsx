@@ -15,7 +15,7 @@ const mockGetUsage = getMonthlyUsageByModel as ReturnType<typeof vi.fn>
 const BASE_CAPS = { supportsEffort: true, effortLevels: ['low', 'medium', 'high', 'xhigh', 'max'] as const, supportsThinking: true, supportsImageInput: true, supportsStructuredOutputs: true }
 const BASE_PRICING = { inputPerMTok: 1, outputPerMTok: 1, estimated: false }
 function model(id: string, name: string, family: string): Model {
-  return { name, model: id, digest: 'sha256:test', provider: 'anthropic', family, capabilities: { ...BASE_CAPS, effortLevels: [...BASE_CAPS.effortLevels] }, pricing: BASE_PRICING }
+  return { name, model: id, provider: 'anthropic', family, capabilities: { ...BASE_CAPS, effortLevels: [...BASE_CAPS.effortLevels] }, pricing: BASE_PRICING }
 }
 const MODELS: Model[] = [model('claude-opus-4-8', 'Claude Opus 4.8', 'opus')]
 

@@ -221,7 +221,7 @@ export async function POST(req: Request) {
     // Hoisted for usage capture in onFinish (spec C6) — set once the chat's
     // project is known below.
     let projectId: number | null = null;
-    // Start with provider tools (web_search for Claude, google_search for Gemini, undefined for image)
+    // Start with provider tools (web_search for Claude, undefined for Gemini)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let tools: Record<string, any> | undefined = providerTools;
 

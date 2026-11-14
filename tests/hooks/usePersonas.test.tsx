@@ -11,7 +11,7 @@ import type { Model } from '@/types'
 const BASE_CAPS = { supportsEffort: true, effortLevels: ['low', 'medium', 'high', 'xhigh', 'max'] as const, supportsThinking: true, supportsImageInput: true, supportsStructuredOutputs: true }
 const BASE_PRICING = { inputPerMTok: 1, outputPerMTok: 1, estimated: false }
 function model(id: string, name: string, family: string, provider: 'anthropic' | 'google' = 'anthropic'): Model {
-  return { name, model: id, digest: 'sha256:test', provider, family, capabilities: { ...BASE_CAPS, effortLevels: [...BASE_CAPS.effortLevels] }, pricing: BASE_PRICING }
+  return { name, model: id, provider, family, capabilities: { ...BASE_CAPS, effortLevels: [...BASE_CAPS.effortLevels] }, pricing: BASE_PRICING }
 }
 
 // Mirrors what GET /api/models (curated — one entry per family) actually returns.

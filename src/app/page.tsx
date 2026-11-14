@@ -233,7 +233,7 @@ export default function Home() {
       return next
     })
   }, [])
-  const maybeGenerateTitle = useChatTitle({ readChats: readTitleChats, modelRef: selectedModelRef, applyTitle: applyChatTitle, onPendingChange: handleTitlePending })
+  const maybeGenerateTitle = useChatTitle({ readChats: readTitleChats, applyTitle: applyChatTitle, onPendingChange: handleTitlePending })
 
   // Dialog state — centralised in useDialogs
   const dialogs = useDialogs()
@@ -311,7 +311,7 @@ export default function Home() {
   const lastSummarizedCountRef = useRef<Map<number, number>>(new Map())
 
   // Context-window management (auto-summarize older messages past the threshold).
-  const triggerSummarization = useSummarization(selectedModelRef)
+  const triggerSummarization = useSummarization()
 
   // Turn-handler ref: allows useChatPersistence to be called after useChatSessions (which
   // provides updateChatMessages) while still passing it stable onTurnStart/onTurnFinish.

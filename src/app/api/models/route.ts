@@ -11,11 +11,8 @@ export async function GET() {
     const registry = await getModelRegistry();
 
     const models = registry.curated.map((m) => ({
-      // name/model/digest kept for back-compat with existing clients; digest
-      // stays the model id (there's no separate content-hash concept here).
       name: m.name,
       model: m.id,
-      digest: m.id,
       provider: m.provider,
       family: m.family,
       capabilities: m.capabilities,

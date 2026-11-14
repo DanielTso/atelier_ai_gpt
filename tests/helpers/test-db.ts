@@ -10,7 +10,7 @@ let initPromise: Promise<void> | null = null
 export let testDb: ReturnType<typeof drizzle<typeof schema>>
 
 const TABLES = [
-  'artifact_versions', 'artifacts', 'chat_topics', 'generated_images', 'message_attachments',
+  'artifact_versions', 'artifacts', 'generated_images', 'message_attachments',
   'persona_usage', 'document_chunks', 'documents', 'memory_suggestions', 'message_embeddings',
   'usage_events', 'messages', 'chats', 'projects', 'settings',
 ]

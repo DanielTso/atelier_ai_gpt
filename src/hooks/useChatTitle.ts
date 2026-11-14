@@ -1,4 +1,4 @@
-import { useCallback, type RefObject } from 'react'
+import { useCallback } from 'react'
 import { getChatMessages, updateChatTitle } from '@/app/actions'
 
 type TitleChat = { id: number; title: string }
@@ -12,17 +12,15 @@ type TitleChat = { id: number; title: string }
  *
  * Decoupled from page state via injected callbacks (all expected to be stable):
  * - `readChats` → the current chat list to check the title against
- * - `modelRef`  → the selected model (forwarded to the title route)
  * - `applyTitle(chatId, title)` → persist the new title into local state
  */
 export function useChatTitle(opts: {
   readChats: () => TitleChat[]
-  modelRef: RefObject<string>
   applyTitle: (chatId: number, title: string) => void
   /** Fired around the actual generation window so the UI can shimmer the pending title. */
   onPendingChange?: (chatId: number, pending: boolean) => void
 }) {
-  const { readChats, modelRef, applyTitle, onPendingChange } = opts
+  const { readChats, applyTitle, onPendingChange } = opts
   return useCallback(
     async (chatId: number) => {
       const chat = readChats().find((c) => c.id === chatId)
@@ -43,7 +41,6 @@ export function useChatTitle(opts: {
                 { role: 'user', content: (userMsg.content || '').slice(0, 500) },
                 { role: 'assistant', content: (assistantMsg.content || '').slice(0, 500) },
               ],
-              model: modelRef.current,
             }),
           })
           const data = res.ok ? await res.json().catch(() => null) : null
@@ -63,6 +60,6 @@ export function useChatTitle(opts: {
         // best-effort
       }
     },
-    [readChats, modelRef, applyTitle, onPendingChange]
+    [readChats, applyTitle, onPendingChange]
   )
 }

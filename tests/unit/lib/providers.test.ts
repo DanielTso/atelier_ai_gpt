@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const mockWebSearch = vi.fn(() => ({ type: 'provider-defined', id: 'web_search' }))
-const mockGoogleSearch = vi.fn(() => ({ type: 'provider-defined', id: 'google_search' }))
 
 function mockProviders() {
   vi.doMock('@ai-sdk/anthropic', () => ({
@@ -11,10 +10,7 @@ function mockProviders() {
     ),
   }))
   vi.doMock('@ai-sdk/google', () => ({
-    createGoogleGenerativeAI: () => Object.assign(
-      (model: string) => ({ modelId: model, provider: 'google' }),
-      { tools: { googleSearch: mockGoogleSearch } }
-    ),
+    createGoogleGenerativeAI: () => (model: string) => ({ modelId: model, provider: 'google' }),
   }))
 }
 
@@ -205,7 +201,7 @@ describe('createProvider', () => {
     expect(result.providerOptions).toEqual({ google: { responseModalities: ['TEXT', 'IMAGE'] } })
   })
 
-  it('routes internal gemini text with google_search grounding', async () => {
+  it('routes internal gemini text as a plain model with no tools', async () => {
     mockProviders()
     mockRegistry(true)
     vi.doMock('@/lib/settings', () => ({
@@ -214,7 +210,7 @@ describe('createProvider', () => {
     }))
     const { createProvider } = await import('@/lib/providers')
     const result = await createProvider('gemini-3.5-flash')
-    expect(result.tools).toHaveProperty('google_search')
+    expect(result).toEqual({ model: expect.objectContaining({ modelId: 'gemini-3.5-flash' }) })
   })
 
   it('throws for an unknown provider', async () => {
