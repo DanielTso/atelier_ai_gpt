@@ -20,13 +20,17 @@ function renameExtension(name: string, ext: string): string {
 }
 
 /**
- * Returns the file unchanged when it is at most 1 MB; otherwise a re-encoded copy
+ * Returns the file unchanged when it is at most 1 MB or a GIF; otherwise a re-encoded copy
  * whose long edge is at most 2048 px (WebP, or JPEG where the browser can't encode
  * WebP). If re-encoding doesn't make it smaller, the original is kept. Throws if
  * the browser can't decode the image.
  */
 export async function downscaleImage(file: File): Promise<File> {
   if (file.size <= DOWNSCALE_THRESHOLD_BYTES) return file
+  // Re-encoding through a canvas keeps only the first frame: an animated GIF
+  // would silently become a still. GIFs go through as they are, and the size
+  // limits downstream refuse one that is too large, with a message that says so.
+  if (file.type === 'image/gif') return file
 
   const bitmap = await createImageBitmap(file)
   try {

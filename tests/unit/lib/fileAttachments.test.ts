@@ -7,6 +7,7 @@ import {
   formatFileSize,
   isImageFile,
   isUnsupportedImage,
+  withImageMediaType,
   fileToAttachedImage,
   imagePayloadBytes,
   exceedsImageBudget,
@@ -202,6 +203,26 @@ describe('isImageFile', () => {
   it('rejects non-image types', () => {
     expect(isImageFile(new File([], 'doc.pdf', { type: 'application/pdf' }))).toBe(false)
   })
+
+  it('falls back to the extension when the platform reports no MIME type', () => {
+    expect(isImageFile(new File([], 'photo.PNG', { type: '' }))).toBe(true)
+    expect(isImageFile(new File([], 'photo.jpeg', { type: '' }))).toBe(true)
+    expect(isImageFile(new File([], 'logo.svg', { type: '' }))).toBe(false)
+    expect(isImageFile(new File([], 'notes.txt', { type: '' }))).toBe(false)
+  })
+})
+
+describe('withImageMediaType', () => {
+  it('fills in an empty media type from the extension', () => {
+    const typed = withImageMediaType(new File(['x'], 'photo.jpg', { type: '' }))
+    expect(typed.type).toBe('image/jpeg')
+    expect(typed.name).toBe('photo.jpg')
+  })
+
+  it('leaves a file that already has a type alone', () => {
+    const file = new File(['x'], 'photo.jpg', { type: 'image/jpeg' })
+    expect(withImageMediaType(file)).toBe(file)
+  })
 })
 
 describe('isUnsupportedImage', () => {
@@ -247,7 +268,7 @@ describe('chat image budget', () => {
 describe('fileToAttachedImage', () => {
   it('rejects files over 10MB', async () => {
     const bigFile = new File([new ArrayBuffer(11 * 1024 * 1024)], 'huge.png', { type: 'image/png' })
-    await expect(fileToAttachedImage(bigFile)).rejects.toThrow('Image too large')
+    await expect(fileToAttachedImage(bigFile)).rejects.toThrow('Image too large: huge.png')
   })
 })
 

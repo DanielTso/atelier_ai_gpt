@@ -249,6 +249,9 @@ export function useChatSessions({ activeChatId, getRequestBody, onTurnStart, onT
     if (session) session.messages = updater(session.messages)
   }, [registry])
 
+  /** `chatId`'s live transcript as the next send would post it ([] when it has no session). */
+  const peekChatMessages = useCallback((chatId: number): UIMessage[] => registry.peek(chatId)?.messages ?? [], [registry])
+
   return {
     /** The ACTIVE chat's transcript, status and error. */
     messages,
@@ -261,5 +264,6 @@ export function useChatSessions({ activeChatId, getRequestBody, onTurnStart, onT
     sendToChat,
     isChatBusy,
     updateChatMessages,
+    peekChatMessages,
   }
 }

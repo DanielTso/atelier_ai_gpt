@@ -19,7 +19,8 @@ vi.mock('@/lib/storageClient', () => ({
 }))
 
 // jsdom has no canvas/createImageBitmap: downscaling is an identity here, and the
-// spy proves it is applied to images over the 1 MB threshold.
+// spy proves every attachable image is handed to it. The threshold, scaling and
+// format fallbacks are covered by tests/unit/lib/imageDownscale.test.ts.
 const mockDownscale = vi.fn(async (f: File) => f)
 vi.mock('@/lib/imageDownscale', () => ({ downscaleImage: (f: File) => mockDownscale(f) }))
 
@@ -128,7 +129,7 @@ describe('ChatInputArea attachments', () => {
     expect(screen.getAllByRole('img')).toHaveLength(1)
   })
 
-  it('downscales images over 1 MB before attaching them', async () => {
+  it('hands every attachable image to the downscaler', async () => {
     const { container } = render(<Harness />)
     attach(container, [
       new File([bytes(512)], 'small.png', { type: 'image/png' }),
@@ -249,5 +250,50 @@ describe('ChatInputArea attachments', () => {
     const { container } = render(<Harness />)
     attach(container, [new File(['x'], 'notes.txt', { type: 'text/plain' })])
     await waitFor(() => expect(mockToastError).toHaveBeenCalledWith('File too large for upload'))
+  })
+
+  it('a supported image with an empty MIME type is attached as an image, typed from its extension', async () => {
+    const { container } = render(<Harness />)
+    attach(container, [new File([bytes(64)], 'photo.png', { type: '' })])
+    const img = await screen.findByAltText('photo.png')
+    expect(img.getAttribute('src')).toMatch(/^data:image\/png;base64,/)
+    expect(mockToastError).not.toHaveBeenCalled()
+    expect(urlsCalled().some(u => u.includes('/api/extract') || u.includes('upload-url'))).toBe(false)
+  })
+
+  it('an image still over 10 MB after downscaling gets the size message, not "Failed to read"', async () => {
+    const { container } = render(<Harness />)
+    attach(container, [new File([bytes(11 * 1024 * 1024)], 'huge.png', { type: 'image/png' })])
+    await waitFor(() => expect(mockToastError).toHaveBeenCalled())
+    expect(String(mockToastError.mock.calls[0][0])).toMatch(/^Image too large: huge\.png/)
+  })
+
+  it('a failed Storage upload of a file over 4 MB says the upload failed, not that storage is missing', async () => {
+    const path = 'attachments/7/pending/0b8f6a52-3c1e-4d7a-9f10-2a6b5c4d3e21-big.pdf'
+    handler = async (url) => {
+      if (url.startsWith('/api/embed')) return json({ available: false, provider: null, embeddingCount: 0 })
+      if (url === '/api/attachments/upload-url') return json({ path, token: 'tok', bucket: 'atelier-files' })
+      throw new Error(`unexpected fetch ${url}`)
+    }
+    mockUploadToSignedUrl.mockResolvedValue({ error: { message: 'The object exceeded the maximum allowed size' } })
+    const { container } = render(<Harness />)
+    attach(container, [new File([bytes(5 * 1024 * 1024)], 'big.pdf', { type: 'application/pdf' })])
+    await waitFor(() => expect(mockToastError).toHaveBeenCalledWith("Couldn't upload big.pdf: The object exceeded the maximum allowed size"))
+    expect(urlsCalled()).not.toContain('/api/extract')
+  })
+
+  it('a failed Storage upload of a small file still falls back to multipart extraction', async () => {
+    const path = 'attachments/7/pending/0b8f6a52-3c1e-4d7a-9f10-2a6b5c4d3e21-notes.txt'
+    handler = async (url, init) => {
+      if (url.startsWith('/api/embed')) return json({ available: false, provider: null, embeddingCount: 0 })
+      if (url === '/api/attachments/upload-url') return json({ path, token: 'tok', bucket: 'atelier-files' })
+      if (url === '/api/extract') return extractOk(((init?.body as FormData).get('file') as File).name)
+      throw new Error(`unexpected fetch ${url}`)
+    }
+    mockUploadToSignedUrl.mockRejectedValue(new Error('network down'))
+    const { container } = render(<Harness />)
+    attach(container, [new File(['x'], 'notes.txt', { type: 'text/plain' })])
+    await screen.findByText('notes.txt')
+    expect(mockToastError).not.toHaveBeenCalled()
   })
 })

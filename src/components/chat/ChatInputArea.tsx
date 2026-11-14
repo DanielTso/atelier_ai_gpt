@@ -12,7 +12,7 @@ import { ModelSelect } from '@/components/ui/ModelSelect'
 import type { Effort } from '@/hooks/usePersonas'
 import type { AttachedFile, AttachedImage } from '@/lib/fileAttachments'
 import {
-  getFileTypeLabel, isImageFile, isUnsupportedImage, fileToAttachedImage,
+  getFileTypeLabel, isImageFile, isUnsupportedImage, fileToAttachedImage, withImageMediaType,
   imagePayloadBytes, CHAT_IMAGE_BUDGET_BYTES, CHAT_IMAGE_TYPES, IMAGE_BUDGET_MESSAGE,
 } from '@/lib/fileAttachments'
 import { downscaleImage } from '@/lib/imageDownscale'
@@ -171,7 +171,7 @@ export const ChatInputArea = memo(function ChatInputArea({
           toast.error(`${file.name} exceeds the ${MAX_IMAGE_INPUT_SIZE / (1024 * 1024)}MB image limit`)
           continue
         }
-        imageFiles.push(file)
+        imageFiles.push(withImageMediaType(file))
       } else if (isUnsupportedImage(file)) {
         toast.error(`Unsupported image type: ${file.name}. Use PNG, JPEG, WebP or GIF.`)
       } else {
@@ -189,17 +189,23 @@ export const ChatInputArea = memo(function ChatInputArea({
       let payload = imagePayloadBytes(attachedImages)
       try {
         for (const file of imageFiles) {
+          let img: AttachedImage
           try {
-            const img = await fileToAttachedImage(await downscaleImage(file))
-            if (payload + img.dataUrl.length > CHAT_IMAGE_BUDGET_BYTES) {
-              toast.error(IMAGE_BUDGET_MESSAGE)
-              continue
-            }
-            payload += img.dataUrl.length
-            newImages.push(img)
-          } catch {
-            toast.error(`Failed to read ${file.name}`)
+            const prepared = await downscaleImage(file).catch(() => {
+              throw new Error(`Failed to read ${file.name}`)
+            })
+            // Its own errors are user-facing (the 10 MB limit names the file).
+            img = await fileToAttachedImage(prepared)
+          } catch (e) {
+            toast.error(e instanceof Error && e.message ? e.message : `Failed to read ${file.name}`)
+            continue
           }
+          if (payload + img.dataUrl.length > CHAT_IMAGE_BUDGET_BYTES) {
+            toast.error(IMAGE_BUDGET_MESSAGE)
+            continue
+          }
+          payload += img.dataUrl.length
+          newImages.push(img)
         }
         if (newImages.length > 0) {
           onImagesChange(prev => [...prev, ...newImages])

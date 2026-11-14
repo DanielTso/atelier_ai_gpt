@@ -14,6 +14,7 @@ import { extractGeneratedImageOutputs } from '@/lib/generatedImages'
 import { readTurnMetadata, type TurnMetadata } from '@/lib/chatTurn'
 import { SUMMARIZATION_THRESHOLD, SUMMARIZE_EVERY } from '@/hooks/useSummarization'
 import type { AttachedImage } from '@/lib/fileAttachments'
+import { replaceFilePartUrls } from '@/lib/chatRequestSize'
 import type { ArtifactSummary } from '@/types'
 
 // How many new messages must accumulate in a project chat before triggering
@@ -136,7 +137,17 @@ export function useChatPersistence(opts: UseChatPersistenceOpts) {
           dataUrl: img.dataUrl,
           fileSize: img.size,
         }))
-      ).catch(err => {
+      ).then(saved => {
+        // Stored in Storage: point the live transcript at the signed URLs so the
+        // image bytes stop riding inline in every later /api/chat request (U4).
+        const urls = new Map<string, string>()
+        if (Array.isArray(saved)) {
+          saved.forEach((row, i) => {
+            if (row?.url && pendingImages[i]) urls.set(pendingImages[i].dataUrl, row.url)
+          })
+        }
+        if (urls.size > 0) updateChatMessages(chatId, prev => replaceFilePartUrls(prev, urls))
+      }, err => {
         console.error('[post-turn] Error saving attachments:', err)
         // The model saw the images, but they aren't stored: say so now rather
         // than letting them silently vanish on the next refresh (U4).
@@ -154,7 +165,7 @@ export function useChatPersistence(opts: UseChatPersistenceOpts) {
         body: JSON.stringify({ messageId: userMessageDbId, chatId, projectId, content: userText }),
       }).catch(() => {}) // Embedding is best-effort
     }
-  }, [takePendingImages])
+  }, [takePendingImages, updateChatMessages])
 
   const onTurnStart = useCallback(({ metadata, messages }: StartedTurn) => {
     const turn = readTurnMetadata({ metadata })

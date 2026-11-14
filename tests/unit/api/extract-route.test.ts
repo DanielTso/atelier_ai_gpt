@@ -194,6 +194,16 @@ describe('POST /api/extract { chatId, storagePath }', () => {
     expect(mockDownload).not.toHaveBeenCalled()
   })
 
+  it('caps a chat attachment\'s text well below the document limit and flags it truncated', async () => {
+    const { CHAT_ATTACHMENT_MAX_CHARS } = await import('@/lib/fileExtraction')
+    mockDownload.mockResolvedValue(Buffer.from('x'.repeat(CHAT_ATTACHMENT_MAX_CHARS + 10)))
+    const { res, data } = await post({ chatId: 7, storagePath: `attachments/7/pending/${UUID}-log.txt` })
+    expect(res.status).toBe(200)
+    expect(data.textContent).toHaveLength(CHAT_ATTACHMENT_MAX_CHARS)
+    expect(data.charCount).toBe(CHAT_ATTACHMENT_MAX_CHARS)
+    expect(data.truncated).toBe(true)
+  })
+
   it('503 when storage is not configured', async () => {
     mockIsConfigured.mockReturnValue(false)
     const { res } = await post({ chatId: 7, storagePath: `attachments/7/pending/${UUID}-a.txt` })

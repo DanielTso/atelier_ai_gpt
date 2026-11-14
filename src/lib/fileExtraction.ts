@@ -6,6 +6,11 @@
 // signed upload is rejected server-side regardless of this constant.
 export const MAX_FILE_SIZE = 200 * 1024 * 1024 // 200MB
 export const DOCUMENT_MAX_CHARS = Number(process.env.DOCUMENT_MAX_CHARS) || 2_000_000 // char ceiling; text past this is dropped + flagged partial
+// Chat attachments (POST /api/extract) are inlined into the user's message, so
+// their text rides in every later /api/chat request body (Vercel caps those at
+// 4.5 MB) and in the model context. Capped well below DOCUMENT_MAX_CHARS, which is
+// sized for project documents (chunked and retrieved, never inlined).
+export const CHAT_ATTACHMENT_MAX_CHARS = 500_000
 
 export interface ExtractionResult {
   text: string

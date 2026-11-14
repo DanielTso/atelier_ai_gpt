@@ -1,9 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getExtension, validateUploadedFile, extractTextFromBuffer, isSupported, MAX_FILE_SIZE } from '@/lib/fileExtraction'
+import { getExtension, validateUploadedFile, extractTextFromBuffer, isSupported, MAX_FILE_SIZE, CHAT_ATTACHMENT_MAX_CHARS } from '@/lib/fileExtraction'
 import { isStorageConfigured, downloadToBuffer, removeObjects } from '@/lib/storage'
 import { parsePendingAttachmentPath } from '@/lib/attachmentPaths'
 import { extractRequestSchema } from '@/lib/validation'
 import { apiError } from '@/lib/errors'
+
+// The storage path accepts files up to MAX_FILE_SIZE (200 MB): give a large PDF's
+// text extraction room beyond the default function timeout.
+export const maxDuration = 300
+
+// Chat-attachment text is capped at CHAT_ATTACHMENT_MAX_CHARS (see fileExtraction.ts);
+// the cap also keeps this response under the platform's response-size limit.
+function extractResponse(filename: string, mimeType: string, text: string, partial: boolean) {
+  const truncated = partial || text.length > CHAT_ATTACHMENT_MAX_CHARS
+  const textContent = text.length > CHAT_ATTACHMENT_MAX_CHARS ? text.slice(0, CHAT_ATTACHMENT_MAX_CHARS) : text
+  return NextResponse.json({ filename, mimeType, textContent, charCount: textContent.length, truncated })
+}
 
 // Two ways in:
 // - JSON `{ chatId, storagePath, mediaType? }` — the file was uploaded straight to
@@ -30,15 +42,8 @@ export async function POST(request: NextRequest) {
 
     const ext = getExtension(file.name)
     const buffer = Buffer.from(await file.arrayBuffer())
-    const { text: textContent, partial } = await extractTextFromBuffer(buffer, ext)
-
-    return NextResponse.json({
-      filename: file.name,
-      mimeType: file.type,
-      textContent,
-      charCount: textContent.length,
-      truncated: partial,
-    })
+    const { text, partial } = await extractTextFromBuffer(buffer, ext)
+    return extractResponse(file.name, file.type, text, partial)
   } catch (error) {
     return apiError(error, 'Failed to extract text from file', 500)
   }
@@ -70,15 +75,8 @@ async function extractFromStorage(request: NextRequest) {
     if (buffer.length > MAX_FILE_SIZE) {
       return NextResponse.json({ error: `File too large. Maximum size is ${MAX_FILE_SIZE / (1024 * 1024)}MB.` }, { status: 400 })
     }
-    const { text: textContent, partial } = await extractTextFromBuffer(buffer, getExtension(filename))
-
-    return NextResponse.json({
-      filename,
-      mimeType: mediaType,
-      textContent,
-      charCount: textContent.length,
-      truncated: partial,
-    })
+    const { text, partial } = await extractTextFromBuffer(buffer, getExtension(filename))
+    return extractResponse(filename, mediaType, text, partial)
   } catch (error) {
     return apiError(error, 'Failed to extract text from file', 500)
   } finally {

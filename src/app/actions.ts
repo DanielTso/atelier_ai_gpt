@@ -809,6 +809,7 @@ export async function saveMessageAttachments(
     // all-or-nothing, so a partial upload must not leave stray blobs).
     const rows: typeof messageAttachments.$inferInsert[] = []
     const uploaded: string[] = []
+    let inserted: typeof messageAttachments.$inferSelect[]
     try {
       for (const [i, a] of attachments.entries()) {
         const path = `attachments/${chatId}/${messageId}/${i}-${sanitizeAttachmentName(a.filename)}`
@@ -816,14 +817,26 @@ export async function saveMessageAttachments(
         uploaded.push(path)
         rows.push({ messageId, chatId, filename: a.filename, mediaType: a.mediaType, storagePath: path, dataUrl: null, fileSize: a.fileSize })
       }
-      return await db.insert(messageAttachments).values(rows).returning()
+      inserted = await db.insert(messageAttachments).values(rows).returning()
     } catch (e) {
       if (uploaded.length) await removeObjects(uploaded).catch(() => {})
       throw e
     }
+    // Each saved row comes back with a signed URL, in the same order as the input,
+    // so the client can drop the inline data URLs from its live transcript — later
+    // turns then stop re-sending the image bytes in the /api/chat body (U4).
+    // Best-effort: the attachments ARE saved, so a signing failure just leaves
+    // `url` null (the client keeps the data URL).
+    const urlMap = await createSignedDownloadUrls(uploaded, ATTACHMENT_URL_TTL_SECONDS).catch(() => new Map<string, string>())
+    const byPath = new Map(inserted.map(r => [r.storagePath, r]))
+    return rows.flatMap(r => {
+      const row = byPath.get(r.storagePath ?? null)
+      return row ? [{ ...row, url: (r.storagePath && urlMap.get(r.storagePath)) || null }] : []
+    })
   }
   const rows = attachments.map(a => ({ messageId, chatId, filename: a.filename, mediaType: a.mediaType, dataUrl: a.dataUrl, fileSize: a.fileSize }))
-  return await db.insert(messageAttachments).values(rows).returning()
+  const saved = await db.insert(messageAttachments).values(rows).returning()
+  return saved.map(row => ({ ...row, url: null as string | null }))
 }
 
 // Link an already-uploaded generated image (from the generate_image tool) to a message.

@@ -29,8 +29,30 @@ const MAX_IMAGE_SIZE = 10 * 1024 * 1024 // 10MB, after client-side downscaling
 export const CHAT_IMAGE_BUDGET_BYTES = 3 * 1024 * 1024
 export const IMAGE_BUDGET_MESSAGE = 'Images too large to send together (max 3 MB)'
 
+// Some platforms (Windows drag-and-drop, certain file pickers) report an empty
+// MIME type; the extension then decides, for the supported types only.
+const IMAGE_TYPE_BY_EXTENSION: Record<string, string> = {
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif',
+}
+
+function imageTypeFromExtension(name: string): string | undefined {
+  return IMAGE_TYPE_BY_EXTENSION[name.split('.').pop()?.toLowerCase() ?? '']
+}
+
 export function isImageFile(file: File): boolean {
-  return IMAGE_MIME_TYPES.has(file.type)
+  if (IMAGE_MIME_TYPES.has(file.type)) return true
+  return file.type === '' && imageTypeFromExtension(file.name) !== undefined
+}
+
+/**
+ * A supported image with its media type filled in from the extension when the
+ * platform left it empty — otherwise its data URL would read
+ * `data:application/octet-stream` and the provider would reject it.
+ */
+export function withImageMediaType(file: File): File {
+  if (file.type !== '') return file
+  const type = imageTypeFromExtension(file.name)
+  return type ? new File([file], file.name, { type, lastModified: file.lastModified }) : file
 }
 
 /** An image Claude can't read (SVG, HEIC, AVIF, …) — refuse it rather than treat it as a document. */
@@ -52,7 +74,7 @@ export function exceedsImageBudget(images: AttachedImage[]): boolean {
 
 export function fileToAttachedImage(file: File): Promise<AttachedImage> {
   if (file.size > MAX_IMAGE_SIZE) {
-    return Promise.reject(new Error(`Image too large (${formatFileSize(file.size)}). Maximum is 10MB.`))
+    return Promise.reject(new Error(`Image too large: ${file.name} (${formatFileSize(file.size)}). Maximum is 10MB.`))
   }
   return new Promise((resolve, reject) => {
     const reader = new FileReader()

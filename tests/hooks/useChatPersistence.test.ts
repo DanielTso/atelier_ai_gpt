@@ -285,6 +285,48 @@ describe('useChatPersistence', () => {
     ])
   })
 
+  it('swaps the saved images\' inline data URLs for their signed URLs in that chat\'s live transcript', async () => {
+    const first = { name: 'a.png', mediaType: 'image/png', dataUrl: 'data:image/png;base64,AAA', size: 3 } as AttachedImage
+    const second = { name: 'b.png', mediaType: 'image/png', dataUrl: 'data:image/png;base64,BBB', size: 3 } as AttachedImage
+    mockSaveMessageAttachments.mockResolvedValue([{ url: 'https://storage.example/a?sig=1' }, { url: 'https://storage.example/b?sig=2' }])
+    const opts = makeOpts({ activeChatId: 9, pendingImages: new Map([[3, [first, second]]]) })
+    const { result } = renderHook(() => useChatPersistence(opts))
+
+    await act(async () => {
+      await result.current.onTurnFinish(makeTurn(makeMessage({ metadata: meta({ chatId: 3, userMessageDbId: 30 }) })))
+    })
+    await settle()
+
+    expect(opts.updateChatMessages).toHaveBeenCalledWith(3, expect.any(Function))
+    const updater = opts.updateChatMessages.mock.calls.find(c => c[0] === 3)![1]
+    const user = {
+      id: 'u', role: 'user',
+      parts: [
+        { type: 'file', mediaType: 'image/png', url: first.dataUrl },
+        { type: 'file', mediaType: 'image/png', url: second.dataUrl },
+        { type: 'text', text: 'two photos' },
+      ],
+    } as unknown as UIMessage
+    const [swapped] = updater([user])
+    expect(swapped.parts.flatMap(p => (p.type === 'file' ? [p.url] : []))).toEqual([
+      'https://storage.example/a?sig=1', 'https://storage.example/b?sig=2',
+    ])
+  })
+
+  it('keeps the inline data URLs when the images were saved without Storage', async () => {
+    const image = { name: 'a.png', mediaType: 'image/png', dataUrl: 'data:image/png;base64,AAA', size: 3 } as AttachedImage
+    mockSaveMessageAttachments.mockResolvedValue([{ url: null }])
+    const opts = makeOpts({ pendingImages: new Map([[3, [image]]]) })
+    const { result } = renderHook(() => useChatPersistence(opts))
+
+    await act(async () => {
+      await result.current.onTurnFinish(makeTurn(makeMessage({ metadata: meta({ chatId: 3, userMessageDbId: 30 }) })))
+    })
+    await settle()
+
+    expect(opts.updateChatMessages).not.toHaveBeenCalled()
+  })
+
   it('links generated images to the assistant row from the metadata and updates that chat\'s store', async () => {
     const opts = makeOpts({ activeChatId: 9 })
     const { result } = renderHook(() => useChatPersistence(opts))

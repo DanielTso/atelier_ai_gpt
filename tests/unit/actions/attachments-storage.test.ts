@@ -70,6 +70,35 @@ describe('attachment storage lifecycle', () => {
     expect(mime).toBe('image/png')
   })
 
+  it('configured → returns each saved row with a signed url, in input order', async () => {
+    const saved = await saveMessageAttachments(messageId, chatId, [
+      { filename: 'a.png', mediaType: 'image/png', dataUrl: 'data:image/png;base64,QUJD', fileSize: 3 },
+      { filename: 'b.png', mediaType: 'image/png', dataUrl: 'data:image/png;base64,QUJD', fileSize: 3 },
+    ])
+    expect(saved.map(r => r.url)).toEqual([
+      `signed:attachments/${chatId}/${messageId}/0-a.png`,
+      `signed:attachments/${chatId}/${messageId}/1-b.png`,
+    ])
+  })
+
+  it('configured → a signing failure still saves the rows, with a null url', async () => {
+    mockCreateSignedDownloadUrls.mockRejectedValue(new Error('sign failed'))
+    const saved = await saveMessageAttachments(messageId, chatId, [
+      { filename: 'a.png', mediaType: 'image/png', dataUrl: 'data:image/png;base64,QUJD', fileSize: 3 },
+    ])
+    expect(saved).toHaveLength(1)
+    expect(saved[0].url).toBeNull()
+    expect(mockRemoveObjects).not.toHaveBeenCalled()
+  })
+
+  it('NOT configured → returns a null url (the data URL stays the source)', async () => {
+    mockIsStorageConfigured.mockReturnValue(false)
+    const [row] = await saveMessageAttachments(messageId, chatId, [
+      { filename: 'pic.png', mediaType: 'image/png', dataUrl: 'data:image/png;base64,QUJD', fileSize: 3 },
+    ])
+    expect(row.url).toBeNull()
+  })
+
   it('NOT configured → saves dataUrl, null storagePath, uploadBuffer NOT called', async () => {
     mockIsStorageConfigured.mockReturnValue(false)
     const dataUrl = 'data:image/png;base64,QUJD'

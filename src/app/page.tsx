@@ -38,8 +38,8 @@ import { useDocScope, scopeProjectIdFor } from "@/hooks/useDocScope"
 import { PersonaSuggestionBanner } from "@/components/chat/PersonaSuggestionBanner"
 import { ProjectLandingPage } from "@/components/chat/ProjectLandingPage"
 import type { AttachedFile, AttachedImage } from "@/lib/fileAttachments"
-import { buildFileMessage, exceedsImageBudget, IMAGE_BUDGET_MESSAGE } from "@/lib/fileAttachments"
-import type { FileUIPart } from "ai"
+import { exceedsImageBudget, IMAGE_BUDGET_MESSAGE } from "@/lib/fileAttachments"
+import { buildComposerMessage, chatRequestSizeError } from "@/lib/chatRequestSize"
 import type { Model, ArtifactSummary, ChatPreview, DocumentSummary } from "@/types"
 import { useChatTitle } from "@/hooks/useChatTitle"
 import { useFollowUps } from "@/hooks/useFollowUps"
@@ -299,6 +299,7 @@ export default function Home() {
     sendToChat,
     isChatBusy,
     updateChatMessages,
+    peekChatMessages,
     stop,
     status,
     error: chatError
@@ -816,36 +817,41 @@ export default function Home() {
     else pendingImagesRef.current.delete(chatId)
     groundedAtSendRef.current.set(chatId, groundedRef.current)
 
-    const userMessage = attachedFiles.length > 0
-      ? buildFileMessage(input.trim(), attachedFiles)
-      : input.trim()
-
-    // Build FileUIPart[] from attached images
-    const fileParts: FileUIPart[] = attachedImages.map(img => ({
-      type: 'file' as const,
-      mediaType: img.mediaType,
-      url: img.dataUrl,
-    }))
+    const message = buildComposerMessage(input, attachedFiles, attachedImages)
 
     setInput("")
     setAttachedFiles([])
     setAttachedImages([])
 
-    if (fileParts.length > 0) {
-      await sendToChat(chatId, { text: userMessage, files: fileParts })
-    } else {
-      await sendToChat(chatId, { text: userMessage })
-    }
+    await sendToChat(chatId, message)
   }, [input, attachedFiles, attachedImages, sendToChat])
 
-  const handleSendMessage = async () => {
-    if ((!input.trim() && attachedFiles.length === 0 && attachedImages.length === 0) || isLoading) return
+  // Refuse a send whose /api/chat body would pass the platform's request limit —
+  // measured as the real request: the target chat's whole live transcript (earlier
+  // inline images, attached files' text) plus the new message. `chatId` null means
+  // a chat that doesn't exist yet (empty transcript). Returns true when refused.
+  const refuseOversizedSend = useCallback((chatId: number | null): boolean => {
     // Images ride inline in the /api/chat body; over budget the platform rejects
     // the request outright. Refuse before creating a chat or sending anything.
     if (exceedsImageBudget(attachedImages)) {
       toast.error(IMAGE_BUDGET_MESSAGE)
-      return
+      return true
     }
+    const problem = chatRequestSizeError(
+      chatId == null ? [] : peekChatMessages(chatId),
+      buildComposerMessage(input, attachedFiles, attachedImages),
+    )
+    if (problem) {
+      toast.error(problem)
+      return true
+    }
+    return false
+  }, [input, attachedFiles, attachedImages, peekChatMessages])
+
+  const handleSendMessage = async () => {
+    if ((!input.trim() && attachedFiles.length === 0 && attachedImages.length === 0) || isLoading) return
+    // Checked before creating a chat, so a refused send leaves nothing behind.
+    if (refuseOversizedSend(activeChatId)) return
 
     // No chat yet → create it now (deferred create). In a project compose, create the
     // chat in that project and persist the (default) system prompt; otherwise a quick
@@ -912,10 +918,8 @@ export default function Home() {
   // local values to avoid setState-then-read timing bugs (mirrors handleSendMessage).
   const handleProjectLandingCompose = useCallback(async () => {
     if ((!input.trim() && attachedFiles.length === 0 && attachedImages.length === 0) || isLoading) return
-    if (exceedsImageBudget(attachedImages)) {
-      toast.error(IMAGE_BUDGET_MESSAGE)
-      return
-    }
+    // Always a new chat: only the message itself is measured.
+    if (refuseOversizedSend(null)) return
     const projectId = activeProjectIdRef.current
     if (projectId == null) return
 
@@ -974,7 +978,7 @@ export default function Home() {
     }
 
     await sendComposerMessage(newChatId)
-  }, [input, attachedFiles, attachedImages, isLoading, getPersonaById, sendComposerMessage, currentSystemPrompt, applyGroundedDefault, models])
+  }, [input, attachedFiles, attachedImages, isLoading, getPersonaById, sendComposerMessage, refuseOversizedSend, currentSystemPrompt, applyGroundedDefault, models])
 
   const handleProjectLandingKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
