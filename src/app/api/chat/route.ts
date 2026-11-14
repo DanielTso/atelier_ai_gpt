@@ -17,13 +17,11 @@ import { after } from 'next/server';
 import { recordUsage, sumUsage } from '@/lib/usage';
 import { createAssistantTurnRecorder, isDbMessageId, type TurnMetadata } from '@/lib/chatTurn';
 import { messageText } from '@/lib/messageParts';
+import { recentTail, stubOldToolOutputs } from '@/lib/contextBudget';
 
 // Experience-mode turns run long: web research + several image generations + an
 // HTML artifact build in one streamed response. Make the time budget explicit.
 export const maxDuration = 300;
-
-// Configuration for hybrid context management
-const RECENT_MESSAGES_LIMIT = 20; // Keep last N messages in full detail
 
 // Reinforces chat-first behavior when the tools are available, so the model writes answers
 // (emails, summaries, drafts) directly in the conversation and only reaches for a tool on an
@@ -64,6 +62,47 @@ const GROUNDED_GUIDANCE =
   'GROUNDED MODE: answer EXCLUSIVELY from the provided project-document context and the read_document tool. ' +
   'If the documents do not contain the answer, reply "Not found in project documents" (optionally noting which document might cover it). ' +
   'Do not use general knowledge to fill gaps.';
+
+// What the client is told when a provider call fails mid-stream. Each failure
+// class gets a fixed message the user can act on; the provider's own text is
+// logged server-side (Vercel logs) and never sent, since it can echo request
+// details. Anything that is not a provider API error stays generic.
+const PROVIDER_ERROR_MESSAGES = {
+  auth: 'The AI provider rejected the API key. Check it in Settings → API Keys.',
+  rateLimit: 'The AI provider rate limit was reached. Wait a moment and try again, or check your plan and credits.',
+  credits: 'The AI provider account is out of credits. Add credits in the provider console, then try again.',
+  contextTooLarge: 'This conversation is too large for the model to read in one request. Start a new chat, or remove large attachments, and try again.',
+  retention: 'This model requires 30-day data retention to be enabled for your Anthropic organization. Pick another model or change the retention setting.',
+  invalid: 'The AI provider rejected this request. Try again, or pick another model.',
+  overloaded: 'The AI provider is overloaded or unavailable right now. Try again in a moment.',
+} as const;
+const GENERIC_ERROR_MESSAGE = 'An error occurred.';
+
+function providerErrorMessage(error: unknown): string {
+  // After maxRetries on a 429/529 the SDK throws a RetryError that wraps the
+  // last provider error (duck-typed: the class is not needed for the check).
+  const lastError = error && typeof error === 'object' && 'lastError' in error
+    ? (error as { lastError: unknown }).lastError
+    : undefined;
+  const apiErr = APICallError.isInstance(error) ? error : APICallError.isInstance(lastError) ? lastError : null;
+  if (!apiErr || typeof apiErr.statusCode !== 'number') return GENERIC_ERROR_MESSAGE;
+
+  const status = apiErr.statusCode;
+  const raw = String(apiErr.message ?? '');
+  console.error('[chat] provider error', status, raw.slice(0, 500));
+
+  if (status === 401 || status === 403) return PROVIDER_ERROR_MESSAGES.auth;
+  if (status === 429) return PROVIDER_ERROR_MESSAGES.rateLimit;
+  if (status === 413) return PROVIDER_ERROR_MESSAGES.contextTooLarge;
+  if (status === 400) {
+    if (/prompt is too long|too many tokens|context (window|length)|maximum context/i.test(raw)) return PROVIDER_ERROR_MESSAGES.contextTooLarge;
+    if (/credit balance/i.test(raw)) return PROVIDER_ERROR_MESSAGES.credits;
+    if (/retention/i.test(raw)) return PROVIDER_ERROR_MESSAGES.retention;
+    return PROVIDER_ERROR_MESSAGES.invalid;
+  }
+  if (status === 529 || status >= 500) return PROVIDER_ERROR_MESSAGES.overloaded;
+  return GENERIC_ERROR_MESSAGE;
+}
 
 function buildContextPrefix(
   documentContext: string | null,
@@ -138,8 +177,16 @@ export async function POST(req: Request) {
     const [userMessageDbId, { modelName, model: selectedModel, tools: providerTools, providerOptions }] =
       await Promise.all([saveUserTurn(), resolveProvider()]);
 
-    // Build context with hybrid approach: system prompt + semantic context + summary + recent messages
-    let contextMessages = messages as unknown as UIMessage[];
+    // Build context with hybrid approach: system prompt + semantic context + summary + recent messages.
+    //
+    // Recent messages (layer 5), bounded before anything else is added. The client
+    // posts its whole live store, so: keep every message newer than the summary
+    // boundary (at least 20, at most 60 — a failed fold can no longer open a gap
+    // between the summary and the tail, audit B4), and stub the `read_document`
+    // windows of all but the last assistant turn so they are not re-billed on every
+    // later turn (audit B3). See src/lib/contextBudget.ts.
+    const summaryBoundary = chat?.summary ? chat.summaryUpToMessageId ?? null : null;
+    let contextMessages = stubOldToolOutputs(recentTail(messages as unknown as UIMessage[], summaryBoundary));
     let systemPrompt: string | undefined;
     let semanticContext: string | null = null;
     let documentContext: string | null = null;
@@ -180,17 +227,7 @@ export async function POST(req: Request) {
       // 3. Build context prefix (document chunks + semantic context + summary)
       const contextPrefix = buildContextPrefix(documentContext, semanticContext, chat?.summary ?? null);
       if (contextPrefix.length > 0) {
-        // When a summary exists, send only the recent tail in full. RECENT_MESSAGES_LIMIT
-        // (20) is intentionally >= the count the summarizer leaves un-summarized (it keeps
-        // the last ~10 in full, summarizing older ones up to summaryUpToMessageId), so the
-        // tail always covers everything after the summary boundary — i.e. NO gap. Some
-        // overlap (a message both summarized and re-sent) is accepted as the safe side of
-        // the tradeoff: client-side messages carry UUID ids, not DB ids, so we can't slice
-        // precisely by the cutoff here (see the recent-id dedup note in retrieval.ts).
-        const recentMessages = chat?.summary
-          ? contextMessages.slice(-RECENT_MESSAGES_LIMIT)
-          : contextMessages;
-        contextMessages = [...contextPrefix, ...recentMessages];
+        contextMessages = [...contextPrefix, ...contextMessages];
       }
 
       // 4. Merge Claude tools when Storage is configured. Prepend chat-first
@@ -228,8 +265,11 @@ export async function POST(req: Request) {
       }
     }
 
-    // Convert UIMessage to ModelMessage format for streamText
-    const modelMessages = await convertToModelMessages(contextMessages);
+    // Convert UIMessage to ModelMessage format for streamText. A tool call that
+    // never got its result (Stop or a dropped connection mid-tool) is dropped:
+    // without this the SDK throws MissingToolResultsError before the provider is
+    // called, and every later send in the session fails until a reload (audit B1).
+    const modelMessages = await convertToModelMessages(contextMessages, { ignoreIncompleteToolCalls: true });
 
     // Usage capture (spec C6). Best-effort: a usage-write failure must never
     // fail the chat turn. `after()` keeps the Vercel function alive until the
@@ -383,21 +423,12 @@ export async function POST(req: Request) {
         messageMetadata: ({ part }: { part: { type: string } }) =>
           part.type === 'start' || part.type === 'finish' ? turnMetadata() : undefined,
       }),
-      // streamText() is synchronous — a provider error (e.g. Fable's 30-day
-      // retention requirement, or a per-model thinking/effort combination the
-      // registry doesn't model) is never thrown into the surrounding try/catch;
-      // it's routed here instead. The default onError returns the generic
-      // string below to avoid leaking server details, which is exactly what
-      // masked these provider 400s before this fix. Only a genuine provider
-      // API error with a 400 status gets its (truncated) message surfaced —
-      // everything else stays generic. This is a residual gap, accepted by
-      // design: capability derivation (C4) can't cover every org-level rule.
-      onError: (error) => {
-        if (APICallError.isInstance(error) && error.statusCode === 400) {
-          return String(error.message).slice(0, 300);
-        }
-        return 'An error occurred.';
-      },
+      // streamText() is synchronous — a provider error (bad key, rate/credit
+      // limit, an oversized context, an overload, Fable's 30-day retention
+      // requirement) is never thrown into the surrounding try/catch; it's routed
+      // here instead. See providerErrorMessage: a specific, fixed message per
+      // failure class, never the provider's raw text.
+      onError: providerErrorMessage,
     });
 
   } catch (error) {

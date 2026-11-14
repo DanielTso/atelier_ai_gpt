@@ -6,12 +6,11 @@ import { getChatMessages } from '@/app/actions'
 export const SUMMARIZATION_THRESHOLD = 30
 export const MESSAGES_TO_KEEP = 10
 // Delta gate: past the threshold, fold at most once per this many NEW messages
-// (the server window is now incremental, so each fold is cheap). MUST stay
-// <= RECENT_MESSAGES_LIMIT - MESSAGES_TO_KEEP (the chat route sends `summary` +
-// the last RECENT_MESSAGES_LIMIT=20 messages): a larger value lets the lagging
-// summary boundary and the recent tail drift apart, leaving the messages between
-// them in NEITHER layer — a silent context gap. 20-10 = 10 keeps it gapless.
-// Imported by useChatPersistence's onFinish trigger.
+// (the server window is now incremental, so each fold is cheap). The chat route
+// sends `summary` + every message after the summary boundary (at least 20, at
+// most 60 — `recentTail` in src/lib/contextBudget.ts), so a failed fold opens no
+// gap unless the summary falls more than 60 messages behind; keeping this at
+// 20-10 = 10 keeps that tail near its minimum. Imported by useChatPersistence's onFinish trigger.
 export const SUMMARIZE_EVERY = 10
 
 /**

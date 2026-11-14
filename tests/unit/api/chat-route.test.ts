@@ -220,6 +220,73 @@ describe('POST /api/chat', () => {
     expect(passedMessages[1].id).toBe('summary-ack')
   })
 
+  it('tail-covers-summary-gap: sends every message after the summary boundary, not just the last 20', async () => {
+    // Summary covers rows 1..22; a later fold failed, so rows 23..51 are in no summary.
+    const [project] = await createProject('P')
+    const [chat] = await createChat(project.id, 'Chat')
+    await updateChatSummary(chat.id, 'Summary of 1..22', 22)
+    const history = Array.from({ length: 51 }, (_, i) => ({
+      id: String(i + 1),
+      role: i % 2 === 0 ? 'user' : 'assistant',
+      parts: [{ type: 'text', text: `m${i + 1}` }],
+    }))
+
+    const response = await postChat({ messages: history, model: 'gemini-3.5-flash', chatId: chat.id })
+    expect(response.status).toBe(200)
+    const passed = mockConvertToModelMessages.mock.calls[0][0] as Array<{ id: string }>
+    expect(passed.slice(0, 2).map(m => m.id)).toEqual(['summary-context', 'summary-ack'])
+    expect(passed.slice(2).map(m => m.id)).toEqual(Array.from({ length: 29 }, (_, i) => String(i + 23)))
+  })
+
+  it('caps a summary-less history at 60 messages', async () => {
+    const [chat] = await createStandaloneChat('Long chat')
+    const history = Array.from({ length: 80 }, (_, i) => ({
+      id: String(i + 1),
+      role: i % 2 === 0 ? 'user' : 'assistant',
+      parts: [{ type: 'text', text: `m${i + 1}` }],
+    }))
+    await postChat({ messages: history, model: 'gemini-3.5-flash', chatId: chat.id })
+    const passed = mockConvertToModelMessages.mock.calls[0][0] as Array<{ id: string }>
+    expect(passed).toHaveLength(60)
+    expect(passed[0].id).toBe('21')
+    expect(passed[59].id).toBe('80')
+  })
+
+  it('stubs-old-read-document-outputs and drops incomplete tool calls before converting', async () => {
+    const [chat] = await createStandaloneChat('Chat')
+    const bigOutput = (documentId: number) => ({ documentId, filename: 'f.pdf', text: 'x'.repeat(100_000), nextOffset: 100_000, firstPage: 1 })
+    const history = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'list every sheet' }] },
+      { id: 'a1', role: 'assistant', parts: [
+        { type: 'tool-read_document', toolCallId: 'c1', state: 'output-available', input: { documentId: 3 }, output: bigOutput(3) },
+        { type: 'tool-read_document', toolCallId: 'c2', state: 'output-available', input: { documentId: 3, offset: 100_000 }, output: bigOutput(3) },
+        { type: 'text', text: 'Here they are.' },
+      ] },
+      { id: 'u2', role: 'user', parts: [{ type: 'text', text: 'now the specs' }] },
+      { id: 'a2', role: 'assistant', parts: [
+        { type: 'tool-read_document', toolCallId: 'c3', state: 'output-available', input: { documentId: 4 }, output: bigOutput(4) },
+        { type: 'text', text: 'Done.' },
+      ] },
+      { id: 'u3', role: 'user', parts: [{ type: 'text', text: 'which is newest?' }] },
+    ]
+
+    await postChat({ messages: history, model: 'gemini-3.5-flash', chatId: chat.id })
+    const [passed, options] = mockConvertToModelMessages.mock.calls[0] as [
+      Array<{ id: string; parts: Array<{ type: string; output?: { stubbed?: boolean; text?: string } }> }>,
+      { ignoreIncompleteToolCalls?: boolean },
+    ]
+    // B1: an interrupted tool call must never reach the provider as a dangling tool-call.
+    expect(options).toMatchObject({ ignoreIncompleteToolCalls: true })
+
+    const outputsOf = (id: string) => passed.find(m => m.id === id)!.parts.filter(p => p.type === 'tool-read_document').map(p => p.output)
+    expect(outputsOf('a1')).toEqual([
+      { stubbed: true, documentId: 3, fromPage: 1, nextOffset: 100_000, note: 're-read if needed' },
+      { stubbed: true, documentId: 3, fromPage: 1, nextOffset: 100_000, note: 're-read if needed' },
+    ])
+    // The current (most recent) assistant turn keeps its full window.
+    expect(outputsOf('a2')[0]?.text).toHaveLength(100_000)
+  })
+
   it('passes system prompt when chat has one', async () => {
     const [project] = await createProject('P')
     const [chat] = await createChat(project.id, 'Chat')
@@ -703,7 +770,7 @@ describe('POST /api/chat', () => {
     expect(mockRecordUsage).not.toHaveBeenCalled()
   })
 
-  it('passes an onError to toUIMessageStreamResponse that surfaces a provider 400 message instead of the generic string', async () => {
+  it('surfaces-provider-errors: onError maps provider failures to specific, sanitized messages', async () => {
     // streamText() is synchronous — a provider error never reaches the route's
     // try/catch. It's routed through toUIMessageStreamResponse's onError
     // instead, which the mocked toUIMessageStreamResponse lets us capture.
@@ -715,14 +782,41 @@ describe('POST /api/chat', () => {
     const options = mockToUIMessageStreamResponse.mock.calls[0][0] as { onError: (error: unknown) => string }
     expect(typeof options.onError).toBe('function')
 
-    const providerError = new MockAPICallError({ message: 'Fable requires 30-day data retention to be enabled for this organization.', statusCode: 400 })
-    expect(options.onError(providerError)).toBe('Fable requires 30-day data retention to be enabled for this organization.')
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      // Raw provider text carries a marker; it must never appear in what the client sees.
+      const RAW = 'RAW-PROVIDER-TEXT'
+      const api = (statusCode: number, message = `${RAW} details`) => new MockAPICallError({ message, statusCode })
+      const messages = new Map<string, string>()
+      const check = (label: string, error: unknown, pattern: RegExp) => {
+        const msg = options.onError(error)
+        expect(msg, label).toMatch(pattern)
+        expect(msg, label).not.toContain(RAW)
+        messages.set(label, msg)
+      }
 
-    // Non-provider / non-400 errors still fall back to the generic string —
-    // never leak arbitrary server error details to the client.
-    expect(options.onError(new Error('some internal error'))).toBe('An error occurred.')
-    const provider500 = new MockAPICallError({ message: 'upstream 500', statusCode: 500 })
-    expect(options.onError(provider500)).toBe('An error occurred.')
+      check('401', api(401), /api key/i)
+      check('403', api(403), /api key/i)
+      check('429', api(429), /rate|credit/i)
+      check('413', api(413), /too large/i)
+      check('400 prompt too long', api(400, `prompt is too long: 250000 tokens > 200000 maximum ${RAW}`), /too large/i)
+      check('400 credits', api(400, `Your credit balance is too low to access the Anthropic API. ${RAW}`), /credit/i)
+      check('400 retention', api(400, `Fable requires 30-day data retention to be enabled for this organization. ${RAW}`), /retention/i)
+      check('400 other', api(400), /rejected/i)
+      check('529', api(529), /overloaded|unavailable/i)
+      check('503', api(503), /overloaded|unavailable/i)
+      // A retry wrapper (429/529 after maxRetries) is unwrapped to its last provider error.
+      check('retry-wrapped 529', Object.assign(new Error(`Failed after 3 attempts. ${RAW}`), { lastError: api(529) }), /overloaded|unavailable/i)
+
+      // Each class gets its own message, distinct from the generic fallback.
+      expect(new Set([...messages.values()]).size).toBeGreaterThanOrEqual(7)
+      for (const msg of messages.values()) expect(msg).not.toBe('An error occurred.')
+
+      // Non-provider errors still fall back to the generic string.
+      expect(options.onError(new Error(`some internal error ${RAW}`))).toBe('An error occurred.')
+    } finally {
+      errSpy.mockRestore()
+    }
   })
 
   it('returns 500 on error', async () => {
@@ -1014,6 +1108,37 @@ describe('POST /api/chat — server-side turn persistence', () => {
       await response.text()
       const rows = await settledRows(chat.id)
       expect(rows.map(r => [r.role, r.content])).toEqual([['user', 'Newest question'], ['assistant', 'Full answer.']])
+    })
+  })
+
+  describe('ignores-incomplete-tool-calls', () => {
+    it('answers the next message after a turn was stopped mid tool call', async () => {
+      // Client state after Stop while generate_image was executing: the tool part
+      // never got a result. Before the fix the SDK threw MissingToolResultsError
+      // and the provider was never called (audit B1, sdk-probe.mjs).
+      const [chat] = await createStandaloneChat('Chat')
+      const model = scriptedModel('Retainage is ', 'withheld payment.')
+      const response = await postTurn({
+        messages: [
+          userMessage('draw a crane', 'earlierUserMsg001'),
+          { id: 'earlierAsstMsg01', role: 'assistant', parts: [
+            { type: 'step-start' },
+            { type: 'text', text: 'Sure, generating…' },
+            { type: 'tool-generate_image', toolCallId: 'call_1', state: 'input-available', input: { prompt: 'a crane' } },
+          ] },
+          userMessage('never mind, what is retainage?'),
+        ],
+        chatId: chat.id,
+      }, { model })
+
+      const chunks = await readChunks(response)
+      expect(chunks.some(c => c.type === 'error')).toBe(false)
+      expect((model as MockLanguageModelV3).doStreamCalls).toHaveLength(1)
+      const rows = await settledRows(chat.id)
+      expect(rows.map(r => [r.role, r.content])).toEqual([
+        ['user', 'never mind, what is retainage?'],
+        ['assistant', 'Retainage is withheld payment.'],
+      ])
     })
   })
 
