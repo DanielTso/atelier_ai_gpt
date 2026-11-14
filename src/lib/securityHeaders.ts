@@ -1,0 +1,69 @@
+// Single source of truth for the app's response security headers (consumed by
+// next.config.ts). Kept free of imports so the config can load it directly.
+
+// Next's App Router injects inline scripts/styles (hydration data, streaming) and
+// has no nonce pipeline configured here, so 'unsafe-inline' is required. 'unsafe-eval'
+// is dev-only (React Refresh). Images allow data:/blob: for AI-generated images.
+//
+// SECURITY TRADEOFF (accepted): 'unsafe-inline' on script-src weakens CSP as an XSS
+// backstop for the top-level origin. This is accepted for now because (a) the app is
+// single-user and password-gated (no untrusted authors), and (b) the one surface that
+// runs untrusted/model-generated HTML — the artifact preview — is isolated in an
+// iframe with sandbox="allow-scripts" and NO allow-same-origin, so it executes on an
+// opaque origin and cannot reach app cookies/storage (see ArtifactPreview.tsx).
+//
+// NONCE PIPELINE ATTEMPTED & REVERTED (2026-06-27): the standard Next 16 middleware
+// nonce + script-src 'nonce-…' 'strict-dynamic' was implemented and browser-verified
+// against a prod build — Next did NOT stamp the nonce onto its bootstrap/chunk inline
+// scripts (Turbopack build nonce-propagation gap), so 'strict-dynamic' blocked all JS
+// and the page failed to hydrate. Dropping 'unsafe-inline' here needs either a
+// non-Turbopack build or a hash-based CSP — out of scope for a cleanup. Keeping
+// 'unsafe-inline' (the tradeoff above) until then.
+//
+// connect-src is limited to 'self' plus the Supabase origin (browser signed uploads).
+// A blanket `https:` would let script in an auto-opened HTML artifact exfiltrate data
+// to any host (audit S1). When the origin is unknown it falls back to `https:` so the
+// app keeps working if the env var is absent.
+export function buildContentSecurityPolicy(
+  supabaseOrigin: string | null,
+  isDev = process.env.NODE_ENV !== 'production',
+): string {
+  const origin = supabaseOrigin || 'https:'
+  return [
+    "default-src 'self'",
+    `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ''}`,
+    "style-src 'self' 'unsafe-inline'",
+    // i.ytimg.com: video thumbnail-card images in HTML artifacts (embedded players
+    // can't work in the sandboxed preview — no Referer from an opaque origin — so
+    // artifacts render click-out thumbnail cards instead).
+    `img-src 'self' data: blob: ${origin} https://i.ytimg.com`,
+    "font-src 'self' data:",
+    `connect-src 'self' ${origin}`,
+    `frame-src 'self' ${origin}`,
+    // 'self' (not 'none') so the app can frame its OWN same-origin routes — the PDF
+    // artifact preview embeds /api/artifacts/:id/raw. Cross-origin framing of the app
+    // (clickjacking) is still blocked. Pairs with X-Frame-Options: SAMEORIGIN.
+    "frame-ancestors 'self'",
+    "base-uri 'self'",
+    // 'self' (not 'none'): Chromium's PDF viewer (post-OOPIF migration) treats an
+    // iframe'd PDF as plugin content governed by the EMBEDDER's object-src — 'none'
+    // blocks the in-app PDF artifact preview with "This content is blocked" (seen
+    // live). 'self' allows only same-origin plugin docs (our own /api/artifacts/:id/raw
+    // PDFs); cross-origin embeds stay blocked, and the sandboxed artifact HTML preview
+    // has an opaque origin, which never matches 'self'.
+    "object-src 'self'",
+    "form-action 'self'",
+  ].join('; ')
+}
+
+export function buildSecurityHeaders(supabaseOrigin: string | null) {
+  return [
+    { key: 'Content-Security-Policy', value: buildContentSecurityPolicy(supabaseOrigin) },
+    { key: 'X-Content-Type-Options', value: 'nosniff' },
+    { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+    { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+    { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
+    { key: 'X-DNS-Prefetch-Control', value: 'off' },
+    { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
+  ]
+}
