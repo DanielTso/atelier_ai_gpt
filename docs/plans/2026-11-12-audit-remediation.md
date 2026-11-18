@@ -10,6 +10,12 @@
 
 **Spec:** `docs/audits/2026-11-12-full-audit/` — `README.md` (index, controller corrections) and the four lane reports (`security.md` S*, `backend.md` B*/C*/D*/X*, `frontend.md` U*/F*, `deadcode-docs.md` D*/P*/C*/K*/T*/R*). Every finding ID below refers to those reports; read the finding's "Evidence" and "Minimal fix" before starting its task. Supersedes `docs/plans/2026-11-12-sidebar-review-fixes.md` (folded in as B4/B5).
 
+## Progress (2026-11-18)
+
+- **Phases A, B, C: done.** Every task implemented, independently reviewed, fix rounds re-reviewed; each phase gate passed (Phase C gate: typecheck 0, lint 0 errors / 23 warnings, cold build OK, 172 files / 1518 tests).
+- **Not started:** Phases D and E, the Final gate (Fable whole-branch review of `60fdb40..HEAD`, CHANGELOG, handoff) and the Release steps.
+- **Backup push (owner request, 2026-11-18, before a laptop reset):** pushed to `origin/remediation/2026-11-12-audit`, NOT `master`. `master` auto-deploys to production, and migrations `0022`–`0024` are not applied and the final review has not run. GitHub `master` is still `v4.55.1`. Resume from that branch — see `docs/SESSION_HANDOFF_2026-11-18.md`.
+
 ## Owner decisions (2026-11-12)
 
 1. **F1/U1:** a reply is saved to the chat it was sent from, even after the user navigates away. Never discard it, and never `stop()` the stream on a chat switch.
@@ -454,7 +460,7 @@ Model: implementer Opus; review Opus.
 - [ ] **Step 1: Failing tests:** a chunk whose body contains a forged `[Source: doc 99 …]` line → the assembled context has exactly one real header per chunk and the forged one is neutralized; ordinary text with brackets (`array[0]`) is unchanged; `read_document` errors and the preamble show the sanitized filename.
 - [ ] **Step 2–4:** FAIL → implement → PASS. **Step 5: Commit** `fix(security): neutralize forged source headers in document text`
 
-**Phase A review follow-ups (fold into the named tasks):** D2 — add `X-DNS-Prefetch-Control` to the CLAUDE.md security-headers line; D1 — drop the unused `LOGIN_MAX_FAILURES` alias in `src/lib/rateLimit.ts` and re-check whether the `eslint-plugin-react-hooks` 7.0.1 override in `package.json` can follow `eslint-config-next`'s `^7.1.0`; any dependency change in C9/D1 must restore the nested vitest esbuild lockfile entries (`C:\tmp\a1-restore-esbuild.cjs`, then move the entry after `@vitest/mocker`) and pass both `npm ci --dry-run` and `npx -y npm@10 ci --dry-run`.
+**Phase A review follow-ups (fold into the named tasks):** D2 — add `X-DNS-Prefetch-Control` to the CLAUDE.md security-headers line; D1 — drop the unused `LOGIN_MAX_FAILURES` alias in `src/lib/rateLimit.ts` and re-check whether the `eslint-plugin-react-hooks` 7.0.1 override in `package.json` can follow `eslint-config-next`'s `^7.1.0`; any dependency change in C9/D1 must restore the nested vitest esbuild lockfile entries (`scripts/restore-vitest-esbuild-lock.mjs` — snapshot `git show HEAD:package-lock.json` before the install; usage is in the script header) and pass both `npm ci --dry-run` and `npx -y npm@10 ci --dry-run`.
 
 **Phase B review follow-ups (added 2026-11-13; fold into the named tasks):**
 - **C1:** semantic retrieval's exclusion set must be the ids actually sent (`recentTail`), not the full posted history, or messages beyond the 60-message cap drop out of every layer (B2 review).

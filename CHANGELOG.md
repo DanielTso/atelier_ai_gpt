@@ -2,6 +2,59 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased] — Audit remediation (2026-11-12 audit), phases A–C
+
+Source: `docs/audits/2026-11-12-full-audit/`. Plan: `docs/plans/2026-11-12-audit-remediation.md`. On branch `remediation/2026-11-12-audit`, not yet on `master` or deployed. Phases D–E, the Fable final review, and this entry's final per-finding form are still to come. **Release order:** apply migrations `0022`–`0024` before deploying.
+
+### Security
+
+- **Dependencies** (A1): `next` 16.4.6; axios, follow-redirects, xmldom, zod patched.
+- **Headers** (A2, S1/C7/K15): CSP `connect-src` is limited to self plus the Supabase origin, so HTML artifacts can't exfiltrate; `X-Powered-By` is off; `Permissions-Policy` is added. Headers are built in `src/lib/securityHeaders.ts`.
+- **Access gate** (A3, S2/S3/S4/S6):
+  - Login attempts are reserved before any await and keyed on the rightmost `X-Forwarded-For` hop.
+  - `next` redirects are same-origin only.
+  - `/login` is exempt for GET/HEAD only.
+  - Production returns 503 without `AUTH_SECRET`.
+- **Prompt delimiting** (A4, S5): document names pass through `promptSafeLabel` before entering prompts.
+
+### Fixed
+
+- **Chat turns persist server-side** (B1, U1/F1/F3): `/api/chat` saves the user message and the reply to the chat the request was sent from, and reports DB ids as message metadata. Each chat has its own session, so switching chats never stops a reply.
+- **Context assembly** (B2): interrupted tool calls no longer break a chat, old tool outputs are stubbed, provider errors are sanitized, and history is capped at 60 messages without a summary.
+- **Moving a chat** (B3) moves its artifacts, embeddings and usage rows.
+- **Navigation** (B4/B5): deep links are validated after every list loads; archived chats open and can be restored; dead sidebar actions are removed.
+- **Attachments** (B6): large files go through Storage; image payloads are budgeted; errors name the size limit.
+- **Retrieval** (C1):
+  - Each leg degrades on its own, with 4 s timeouts and `maxRetries: 0`.
+  - Fused hits survive MMR.
+  - Identifier hits (sheet numbers) are not crowded out.
+  - FTS is OR-joined.
+  - Semantic retrieval excludes exactly the messages sent.
+- **Embeddings and summaries** (C2): embed failures return 502; the embed pool fails fast; an empty summary keeps the old one; a failed summary retries with backoff. New `scripts/backfill-embeddings.ts`.
+- **Artifacts** (C3):
+  - Nested lists, per-list numbering, code line breaks and smart quotes are kept.
+  - Sheet names are sanitized.
+  - The formula guard covers `= + - @` TAB CR, while real numbers stay numbers.
+  - Truncated regenerations are rejected (422), and regenerate streams.
+- **Documents** (C4): a failed replace keeps the document's prior status; the processing claim is compare-and-set; ingest is atomic. Migration `0022` de-duplicates chunks and adds a unique `(document_id, chunk_index)` index.
+- **Extraction** (C5): every page is anchored, so hybrid PDFs cite the right page; skipped and capped pages are recorded; `read_document` windows end on page boundaries.
+- **Models and cost ledger** (C6):
+  - The last good live catalog is served when a refresh fails, and resolvers never throw.
+  - Prices are verified against Anthropic's pricing page: Sonnet 5 is $2/$10, cache-read rates are per model, and Haiku 5.5 has long-context pricing.
+  - Five more LLM call sites are recorded; migration `0023` widens the purpose CHECK.
+- **Front end** (C7): a double-send guard; a page-level error banner that stays until dismissed; success and failure feedback on every action.
+- **Restored features** (C8): project settings menus, message Delete and Regenerate (the reply is replaced in place, and a failed regenerate keeps the old one), and the default system prompt.
+
+### Removed
+
+- `/api/classify`, `saveChatTopics`/`getChatTopics`, and the `chat_topics` table (C9, migration `0024`). Gemini Google Search grounding is removed too.
+
+### Docs
+
+- Architecture docs are updated alongside each task.
+- New `docs/SESSION_HANDOFF_2026-11-18.md`.
+- New `scripts/restore-vitest-esbuild-lock.mjs` for the npm 10/11 lockfile issue.
+
 ## [4.55.1] - 2026-11-12 — Sidebar review findings + relocation handoff
 
 Docs-only release; no code changes. Cut so the repo can be re-cloned off OneDrive with every finding and plan committed.
