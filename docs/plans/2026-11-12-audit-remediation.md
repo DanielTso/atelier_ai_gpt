@@ -647,6 +647,9 @@ Model: implementer **Sonnet**; review Sonnet.
    - the Stop-mid-stream single `usage_events` row (handoff item 7)
    - B1 turn persistence: switch chats mid-reply, press Stop, and close the tab mid-reply; each partial reply is saved to the chat it was sent from (unit-verified only; `after()` keep-alive on Vercel is untested live)
    - live CSP header check
+   - the deploy build must accept the `vercel.json` `functions` pattern; if it reports an unmatched pattern, try `app/api/chat/route.ts`
+   - on production, press Stop about 5 s into a long reply, then send a follow-up: the saved reply equals what was shown, the follow-up's rows come after it, and `usage_events` has one row for the stopped turn with partial output tokens
+   - if Stop still does not abort the request, open a follow-up for an explicit stop endpoint (R2 keeps the transcript correct meanwhile)
 4. Backfill missing message embeddings in production (handoff item 4) with `scripts/backfill-embeddings.ts`. Dry run first:
    - `npx -y tsx --env-file=.env.local scripts/backfill-embeddings.ts --dry-run` (add `--since 2026-10-16` to scope it). This is a read-only count of `remaining`, with no embedding calls.
    - Then `npx -y tsx --env-file=.env.local scripts/backfill-embeddings.ts --since 2026-10-16 --limit 200`. Repeat until `remaining` is 0. Each run embeds up to `--limit` messages (max 1000), oldest first.
