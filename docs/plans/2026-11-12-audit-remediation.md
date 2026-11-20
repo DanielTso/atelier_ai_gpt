@@ -517,7 +517,7 @@ Model: implementer **Opus**; review Opus.
   - `update(id, text): Promise<void>` — a content-only rewrite of that row.
 - **Checkpoint** (fired from `transform`, **never awaited** — it must add no latency to the stream): writes the text so far, by `save` when no row exists yet and by `update` afterwards. It fires
   1. as soon as the turn first has savable content — the existing persist rule, `text.trim() || hasMedia`;
-  2. on every `tool-call` and `finish-step` part (text written before a long tool run must not wait for it);
+  2. on every `tool-input-start`, `tool-call` and `finish-step` part (text written before a long tool-input stream or tool run must not wait for it; `tool-input-start` added in fix round 1);
   3. on a `text-delta` when `now() - lastWriteStartedAt >= checkpointMs`.
   It is skipped while another write is in flight (no overlap, no queue), when there is nothing savable, when the text equals the last written text and a row exists, and once `persist()` has started. A failed checkpoint is logged like a failed save and never breaks the stream; the next checkpoint or `persist()` tries again.
 - `persist()` keeps its contract — first call wins, awaited before `finish` / `abort` is forwarded, idempotent, never rejects: it waits for an in-flight checkpoint, then returns if nothing is savable; inserts through `save` if no row exists; otherwise `update`s when the text differs from the last written text. Exactly one row per turn, and the id is on the `finish` chunk as today.
