@@ -474,6 +474,155 @@ Model: implementer Opus; review Opus.
 
 ---
 
+## Phase R — Code-review findings (2026-11-20)
+
+Added 2026-11-20 (owner-approved scope edit). `/code-review` of Phases A–C raised 7 findings (4 Important, 3 nits); all 7 were verified against the code before planning. Four are gaps in B1's server-side turn persistence. Tasks run in order R1 → R5, one local commit each, TDD. The Global Constraints above bind every task. No schema change, so no migration.
+
+Owner-visible decisions: **R3** enables Vercel request cancellation, so a closed tab or a dropped connection cuts the reply (the partial is saved) — the behaviour `route.ts` and `data-flow.md` already describe; switching chats inside the app still never cuts a reply. **R4** keeps an image that an artifact embeds instead of deleting the artifact (artifacts carry no `messageId`). **R4** sweeps stale pending uploads opportunistically, with no cron.
+
+### Task R1: Never send before the chat's history has loaded (review finding 1)
+
+Model: implementer **Opus**; review Opus.
+
+**Problem:** `loadMessages` (`src/app/page.tsx:565`) returns early when `isChatBusy(cid)` (`:596`), and `handleSendMessage` (`:953`) has no way to know a history load is pending. Type a draft on Home, open an existing chat and press Enter before `getChatMessages` resolves: the turn starts, `loadMessages` bails, the session holds only the new message, `/api/chat` receives `messages=[new message]` (the route builds model context from the posted messages only) and passes `excludeChatId`, so semantic retrieval cannot bring the turns back. Every later turn in that session repeats the truncated history. The same hole exists after a load that threw ("Failed to load messages." then send).
+
+**Files:** Modify `src/app/page.tsx`; Tests `tests/hooks/page-chat-turns.test.tsx` (the real `<Home/>` with an actions Proxy mock and a controllable SSE fetch stub — follow its patterns).
+
+**Interfaces:**
+- `loadMessages(cid)` returns `Promise<boolean>`: `true` when the transcript was applied, or when the chat's live session is authoritative (the `isChatBusy` early return); `false` when the load was stale (`activeChatIdRef.current !== cid`) or threw.
+- A new `historyLoadRef = useRef<{ chatId: number; done: Promise<boolean> } | null>(null)`, set by the chat-change effect (`:685-731`) to the load it starts. The `skipLoadOnceRef` branch (deferred create) starts no load and must leave no stale entry for that chat.
+- `handleSendMessage`: after the existing empty-composer / `isLoading` / `sendingRef.current` guards, set `sendingRef.current = true` and, when `activeChatId` is set and `historyLoadRef.current?.chatId === activeChatId`, **await `done` before** `refuseOversizedSend(activeChatId)` and `takeComposer()` — the size check must see the real transcript, and the draft stays in the composer while waiting. If the load returned `false`: retry `loadMessages(activeChatId)` once (recording it in `historyLoadRef`); if that is also `false`, or `activeChatIdRef.current !== activeChatId` after any await, do **not** send — keep the draft, `toast.error("Couldn't load this chat's history — your message was not sent")` and return. `sendingRef.current` is reset in a `finally`, as today.
+- Unchanged: the textarea stays enabled (`e2e/chat-flow.spec.ts:10`); `handleProjectLandingCompose` and the deferred-create branch of `startSend` (they create a chat and set `skipLoadOnceRef`); `handleRegenerate`; `handleDeleteMessage`.
+
+- [ ] **Step 1: Failing tests:**
+  - `send-waits-for-history`: `getChatMessages` for an existing chat returns a deferred promise. Type a draft, open the chat, press Enter → no `/api/chat` request yet. Resolve the history with two rows → exactly one `/api/chat` request whose posted `messages` are the two history messages followed by the new one.
+  - `send-refused-after-failed-load`: `getChatMessages` rejects (also on the retry). Enter → no `/api/chat` request, the composer still holds the draft, an error toast is shown.
+  - `send-after-load-unchanged`: once the history has loaded, a send behaves as before (one request, history + new message).
+- [ ] **Step 2:** Run → FAIL (the first two).
+- [ ] **Step 3:** Implement per Interfaces.
+- [ ] **Step 4:** Run → PASS, plus all of `tests/hooks/`.
+- [ ] **Step 5: Commit** `fix(chat): wait for the chat history before sending`
+
+### Task R2: Checkpoint the reply while it streams (review finding 2; client half of finding 4)
+
+Model: implementer **Opus**; review Opus.
+
+**Problem:** the turn recorder (`createAssistantTurnRecorder`, `src/lib/chatTurn.ts:142`) writes the assistant row only at the stream's `finish` / `abort` / flush, or in the route's post-drain catch-all (`src/app/api/chat/route.ts:442-454`). None of those runs when the function is killed (`maxDuration = 300`, a crash, a deploy), and the client no longer saves reply text, so a reply the user watched stream is lost and its generated images are linked to no message (`getAssistantReplyId` finds no row). The same missing row is why a Stop whose abort never reaches the server leaves the reply without an id.
+
+**Files:** Modify `src/lib/chatTurn.ts`, `src/lib/chatTurnDb.ts`, `src/app/api/chat/route.ts` (`:358-366`); Tests `tests/unit/lib/chatTurn.test.ts`, `tests/unit/lib/chatTurnDb.test.ts`, `tests/unit/api/chat-route.test.ts` (the real-SDK `describe('... server-side turn persistence')` block: `controlledModel`, `postTurn`, `settledRows`); Docs `docs/architecture/data-flow.md` ("Chat turns").
+
+**Interfaces:**
+- `createAssistantTurnRecorder({ save, update, checkpointMs = 3000, now = Date.now })`.
+  - `save(text): Promise<number | null>` — the first write, unchanged in meaning: insert the row, or `replaceAssistantReply` on a regenerate. Returns the row id.
+  - `update(id, text): Promise<void>` — a content-only rewrite of that row.
+- **Checkpoint** (fired from `transform`, **never awaited** — it must add no latency to the stream): writes the text so far, by `save` when no row exists yet and by `update` afterwards. It fires
+  1. as soon as the turn first has savable content — the existing persist rule, `text.trim() || hasMedia`;
+  2. on every `tool-call` and `finish-step` part (text written before a long tool run must not wait for it);
+  3. on a `text-delta` when `now() - lastWriteStartedAt >= checkpointMs`.
+  It is skipped while another write is in flight (no overlap, no queue), when there is nothing savable, when the text equals the last written text and a row exists, and once `persist()` has started. A failed checkpoint is logged like a failed save and never breaks the stream; the next checkpoint or `persist()` tries again.
+- `persist()` keeps its contract — first call wins, awaited before `finish` / `abort` is forwarded, idempotent, never rejects: it waits for an in-flight checkpoint, then returns if nothing is savable; inserts through `save` if no row exists; otherwise `update`s when the text differs from the last written text. Exactly one row per turn, and the id is on the `finish` chunk as today.
+- `assistantMessageDbId()` returns the id as soon as the first write lands.
+- New in `src/lib/chatTurnDb.ts`: `updateAssistantReplyContent(chatId: number, id: number, text: string): Promise<void>` — `UPDATE messages SET content` scoped to `id` + `chat_id` + `role = 'assistant'`, with the same `MAX_MESSAGE_LEN` slice. A row that no longer exists is a logged no-op (a deleted message is never resurrected).
+- `route.ts`: pass `save` (the existing callback) and `update: (id, text) => updateAssistantReplyContent(chat.id, id, text)`. Regenerate keeps its rule: nothing savable streamed ⇒ the old reply is untouched; once savable content exists the first checkpoint replaces it in place (`replaceAssistantReply`), which is what any stop mid-stream already did. `replyHasSavedContent` (client mirror) stays exact — do not change it.
+- No change to `messageMetadata` (ids still ride on `start` and `finish`); a stopped or failed turn keeps using the client's `getAssistantReplyId` lookup, which now finds the row.
+
+- [ ] **Step 1: Failing tests:**
+  - Recorder (`chatTurn.test.ts`, injected `now`): `checkpoints-first-savable-content` (one `save` after the first non-blank delta, none for whitespace-only or reasoning-only streams); `throttles-text-checkpoints` (deltas inside `checkpointMs` → no extra write; past it → one `update` with the text so far); `checkpoints-at-step-boundaries` (`tool-call` / `finish-step` → `update` when the text changed); `never-overlaps-writes` (a slow `save` in flight → no second write; `persist()` waits for it, then `update`s the final text); `failed-checkpoint-then-persist` (a rejecting `save` → `persist()` saves; the stream is not broken); `final-update-only-when-text-changed`; the existing finish / abort / flush / first-wins / media-only tests still pass with the new signature.
+  - `chatTurnDb.test.ts`: `updateAssistantReplyContent` rewrites content in place, is scoped to chat and role, slices at `MAX_MESSAGE_LEN`, and is a no-op for a missing row.
+  - Route (`chat-route.test.ts`, real-SDK style): `reply-survives-server-death` (push deltas and never close the stream → one assistant row holding the streamed text); `checkpointed-turn-ends-with-one-row` (deltas, checkpoint, more deltas, finish → exactly one row with the full text; the finish metadata carries its id); `regenerate-checkpoint-replaces-in-place` (the old row id carries the new partial text; still one assistant row); the existing abort-before-text → no row test still passes.
+- [ ] **Step 2:** Run → FAIL.
+- [ ] **Step 3:** Implement per Interfaces; update `data-flow.md` "Chat turns": when the row is first written, the checkpoint cadence, and that a killed turn keeps the text up to its last checkpoint.
+- [ ] **Step 4:** Run → PASS, plus all of `tests/unit/api/`, `tests/unit/lib/chatTurn*.test.ts` and `tests/hooks/`.
+- [ ] **Step 5: Commit** `fix(chat): checkpoint the reply while it streams`
+
+### Task R3: Make Stop reach the server on Vercel (review finding 4, server half)
+
+Model: implementer **Sonnet**; review Opus.
+
+**Problem:** the partial reply on Stop is saved, and the upstream generation cancelled, only when `req.signal` aborts (`route.ts:397`). Vercel delivers request cancellation to Node functions only when it is enabled per path with `supportsCancellation` (Vercel docs: "Cancellation is opt-in"), and the repo has no `vercel.json`. Without it a stopped turn runs to completion and is billed in full.
+
+**Files:** Create `vercel.json`, `tests/unit/lib/vercelConfig.test.ts`; Docs `docs/architecture/data-flow.md` ("Chat turns" — the `abortSignal` sentence), `CLAUDE.md` (Deployment), this plan's Release step 3.
+
+**Interfaces:**
+- `vercel.json` (repo root), exactly:
+
+```json
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "src/app/api/chat/route.ts": {
+      "supportsCancellation": true
+    }
+  }
+}
+```
+
+- The in-file `export const maxDuration = 300` stays where it is.
+- `CLAUDE.md` Deployment: one sentence — `vercel.json` exists only to enable request cancellation for `/api/chat` (Stop, tab close and a dropped connection abort `req.signal`; work that must survive is in `after()`), and the `functions` key must be updated if the route file moves.
+- Release step 3 gains: (a) the deploy build must accept the `functions` pattern — if it reports an unmatched pattern, try `app/api/chat/route.ts`; (b) on production, press Stop about 5 s into a long reply, then send a follow-up → the saved reply equals what was shown, the follow-up's rows come after it, and `usage_events` has one row for the stopped turn with partial output tokens; (c) if Stop still does not abort the request, open a follow-up for an explicit stop endpoint (R2 keeps the transcript correct meanwhile).
+
+- [ ] **Step 1: Failing test** `vercelConfig.test.ts`: `vercel.json` parses; every key of `functions` is a file that exists in the repo; `functions['src/app/api/chat/route.ts'].supportsCancellation === true`.
+- [ ] **Step 2:** Run → FAIL.
+- [ ] **Step 3:** Create `vercel.json`; update the two docs and Release step 3.
+- [ ] **Step 4:** Run → PASS.
+- [ ] **Step 5: Commit** `fix(chat): enable request cancellation for the chat route`
+
+### Task R4: Keep artifact-embedded images; sweep stale pending uploads (review findings 3 and 5)
+
+Model: implementer **Opus**; review Opus.
+
+**Problem (finding 3):** `replaceAssistantReply` (`src/lib/chatTurnDb.ts:58`) and `deleteMessage` (`src/app/actions.ts:217`, through `removeAttachmentObjects` at `:35`) remove every Storage object attached to the reply, including `attachments/<chatId>/generated/<uuid>.<ext>` images. An HTML artifact from the same reply embeds those images through the permanent `/api/files/raw?path=…&sig=…` URL (`embedUrl`, built in `src/lib/image/tool.ts:38` with the path URL-encoded) and survives both operations (artifacts have a `chatId` but no `messageId`), so it then shows broken images (502).
+
+**Problem (finding 5):** a chat attachment uploaded for text extraction goes to `attachments/<chatId|compose>/pending/<uuid>-<name>` and is removed only in the `finally` of `/api/extract`. If that request never arrives (tab closed, network drop) the object stays for good; no row references it.
+
+**Files:** Modify `src/lib/chatTurnDb.ts`, `src/app/actions.ts` (`deleteMessage`, `deleteChat`), `src/lib/storage.ts`, `src/app/api/attachments/upload-url/route.ts`; Create `src/lib/attachmentSweep.ts`; Tests `tests/unit/lib/chatTurnDb.test.ts`, `tests/unit/actions/attachments-storage.test.ts`, `tests/unit/api/attachments-upload-url.test.ts`, `tests/unit/lib/attachmentSweep.test.ts` (new); Docs `docs/architecture/multimodal-artifacts.md`, `docs/architecture/data-flow.md` (replace the "Known gap" sentence about pending objects, around line 15).
+
+**Interfaces:**
+- `pathsSafeToRemove(chatId: number, paths: string[]): Promise<string[]>` in `src/lib/chatTurnDb.ts` (server-only). A path containing `/generated/` is dropped from the result when its file name (the last path segment, `<uuid>.<ext>` — unique, and unaffected by the `%2F` encoding inside `embedUrl`) occurs in `artifacts.content` of that chat, or in `artifact_versions.content` of an artifact of that chat (an older version can be restored). Every other path is returned unchanged. One query for all candidate names, not one per path. If the lookup throws, return only the non-`generated` paths (a kept object is recoverable; a deleted one is not).
+- `replaceAssistantReply`: filter `storagePaths` through `pathsSafeToRemove(chatId, …)` before `removeObjects`. The attachment **rows** are still deleted.
+- `deleteMessage(id)`: read the row's `chatId`, select the attachment paths, filter them through `pathsSafeToRemove`, remove the rest, then delete the row. `removeAttachmentObjects` itself is unchanged — `deleteChat` keeps using it unfiltered.
+- `src/lib/storage.ts`: `listObjects(prefix: string): Promise<Array<{ name: string; createdAt: string | null }>>` — supabase-js `.list(prefix, { limit: 1000 })` on the private bucket; `name` is the object name inside the prefix.
+- `src/lib/attachmentSweep.ts`: `sweepPrefix(prefix: string, olderThanMs: number, now = Date.now()): Promise<number>` — lists the prefix, removes (`removeObjects`) the objects whose `createdAt` is older than `olderThanMs` (all of them when `olderThanMs` is 0), returns the count, never throws (logs a warning). `PENDING_ATTACHMENT_MAX_AGE_MS = 60 * 60 * 1000`. No-op when `!isStorageConfigured()`.
+- `/api/attachments/upload-url`: after building the response, best-effort `after(() => sweepPrefix(<pending prefix of the requested scope>, PENDING_ATTACHMENT_MAX_AGE_MS))`, using `pendingAttachmentPrefix` from `src/lib/attachmentPaths.ts`; outside a request scope (`after` throws in unit tests) run it un-awaited, the pattern `route.ts` in `/api/chat` uses.
+- `deleteChat(id)`: after its existing cleanup, best-effort `sweepPrefix` with age 0 over that chat's `pending/` prefix and over `attachments/<id>/generated/` (so an image kept above does not outlive its chat). Never fails the delete.
+
+- [ ] **Step 1: Failing tests:**
+  - `chatTurnDb.test.ts`: `keeps-generated-image-an-artifact-embeds` (current `artifacts.content` holding the URL-encoded `embedUrl`), `keeps-image-referenced-by-an-older-version`, `removes-unreferenced-generated-image`, `ignores-artifacts-of-other-chats`, `lookup-failure-keeps-generated-objects`; the attachment rows are gone in every case.
+  - `attachments-storage.test.ts`: `deleteMessage` keeps an artifact-embedded image object and removes an unreferenced one; `deleteChat` sweeps the chat's `pending/` and `generated/` prefixes and still succeeds when the sweep fails.
+  - `attachmentSweep.test.ts`: removes only objects past the age; age 0 removes all; a `listObjects` or `removeObjects` failure resolves to 0; Storage not configured → no calls.
+  - `attachments-upload-url.test.ts`: a request for chat 7 sweeps chat 7's pending prefix with the 1 h age (compose scope → the compose prefix); a sweep failure does not change the response.
+- [ ] **Step 2:** Run → FAIL.
+- [ ] **Step 3:** Implement per Interfaces; update the two docs.
+- [ ] **Step 4:** Run → PASS, plus all of `tests/unit/actions/` and `tests/unit/api/`.
+- [ ] **Step 5: Commit** `fix(storage): keep artifact-embedded images and sweep stale pending uploads`
+
+### Task R5: Embed request cap and stale regenerate comments (review findings 6 and 7)
+
+Model: implementer **Sonnet**; review Sonnet.
+
+**Problem (finding 6):** `embedRequestSchema` caps `content` at 500,000 characters (`src/lib/validation.ts:65`) — the per-file `CHAT_ATTACHMENT_MAX_CHARS` — while `postEmbed` (`src/hooks/useChatPersistence.ts:32`) posts the whole message text (file text + header + typed text). A message with one full-size attachment is rejected with 400 and only a `console.warn`, although the route embeds just the first `EMBED_MAX_CHARS` (8,000).
+
+**Problem (finding 7):** the comments at `src/lib/validation.ts:32-34` and `src/app/page.tsx:1410-1414` say `/api/chat` deletes the replaced reply before answering. It does not: `replaceAssistantReply` writes over the row when the new reply is persisted, and `handleRegenerate`'s restore logic depends on that.
+
+**Files:** Modify `src/lib/validation.ts`, `src/hooks/useChatPersistence.ts`, `src/app/page.tsx` (comment only); Test `tests/hooks/useChatPersistence.test.ts`.
+
+**Interfaces:**
+- `export const EMBED_CONTENT_MAX_CHARS = 500_000` in `validation.ts`, used by `embedRequestSchema` (`.max(EMBED_CONTENT_MAX_CHARS)`).
+- `postEmbed` sends `content: body.content.slice(0, EMBED_CONTENT_MAX_CHARS)`. The server guard and `tests/unit/api/embed-route.test.ts` are unchanged.
+- Both comments reworded to: the request carries `regenerate: true` and the replaced reply's DB id; `/api/chat` writes the new reply over that row when it is persisted (nothing is deleted up front), so a regenerate that saves nothing keeps the old reply.
+
+- [ ] **Step 1: Failing test** `caps-embed-content`: a turn whose user message text is 600,000 characters posts a 500,000-character `content` to `/api/embed`.
+- [ ] **Step 2:** Run → FAIL.
+- [ ] **Step 3:** Implement; reword the two comments.
+- [ ] **Step 4:** Run → PASS, plus `tests/unit/api/embed-route.test.ts` and `tests/unit/lib/validation.test.ts`.
+- [ ] **Step 5: Commit** `fix(embed): cap the embed request body on the client`
+
+**Phase R gate:** `rm -rf .next && npm run build`, then the full `npm test`; record the counts. Then a scoped re-review of the Phase R commits against the 7 findings (Opus). The Fable whole-branch review stays in the Final gate.
+
+**Recorded, not fixed:** a killed function still leaves no `usage_events` row for that turn (usage is only known at step end); `generate_image` / `generate_artifact` do not take the abort signal; artifact Storage files on chat delete (X4) and project-delete sweeps.
+
+---
+
 ## Final gate
 
 1. Whole-branch review on **Fable** of `60fdb40..HEAD`. Brief: the audit index, the Review Focus list, the owner decisions. The reviewer verifies each finding ID is fixed or explicitly marked moot, and runs the full gate itself. Flag explicitly: B1's reply persistence relies on `streamText`'s **`experimental_transform`** (ai@6.0.230). Any AI SDK upgrade must re-verify it, and the handoff must say so.
