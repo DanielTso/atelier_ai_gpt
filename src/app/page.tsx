@@ -112,6 +112,10 @@ export default function Home() {
   // handleSendMessage, so the deferred-create optimistic + streaming state isn't
   // clobbered by an empty/partial DB snapshot.
   const skipLoadOnceRef = useRef<number | null>(null)
+  // The history load the chat-change effect started for the active chat. A send
+  // waits on it: /api/chat builds the model's context from the posted transcript
+  // only, so a message sent before the history lands would go out truncated.
+  const historyLoadRef = useRef<{ chatId: number; done: Promise<boolean> } | null>(null)
 
   // Data State
   const [projects, setProjects] = useState<Project[]>([])
@@ -562,7 +566,10 @@ export default function Home() {
   // with skeletons instead of flashing empty-then-pop.
   const [messagesLoading, setMessagesLoading] = useState(false)
 
-  const loadMessages = useCallback(async (cid: number) => {
+  // Resolves to true when the chat's transcript is in its session (applied here,
+  // or a turn in flight makes the live session authoritative), false when the
+  // load went stale or failed.
+  const loadMessages = useCallback(async (cid: number): Promise<boolean> => {
     try {
       const [msgs, attachments, artifactsData] = await Promise.all([
         getChatMessages(cid),
@@ -573,7 +580,7 @@ export default function Home() {
       ])
       // Bail if the active chat changed while we were awaiting — a stale load must not
       // clobber the chat the user switched to (or a freshly-created chat's live state).
-      if (activeChatIdRef.current !== cid) return
+      if (activeChatIdRef.current !== cid) return false
 
       // Apply artifacts result (best-effort — null means the fetch failed or returned non-ok;
       // on success always set to the list or [] so a chat with no artifacts clears stale cards)
@@ -589,11 +596,11 @@ export default function Home() {
 
       // Re-check after the artifact fetch's awaits: don't overwrite the live message
       // list if the user switched chats (or the deferred-create stream started) meanwhile.
-      if (activeChatIdRef.current !== cid) return
-      // A turn is in flight in this chat (the user left mid-stream and came back, or
-      // sent while this load was pending): its session holds the live transcript, and
-      // the DB snapshot — which has no reply yet — must not replace it.
-      if (isChatBusy(cid)) return
+      if (activeChatIdRef.current !== cid) return false
+      // A turn is in flight in this chat (the user left mid-stream and came back):
+      // its session holds the live transcript, and the DB snapshot — which has no
+      // reply yet — must not replace it.
+      if (isChatBusy(cid)) return true
 
       // Convert DB messages to AI SDK UIMessage format with parts
       setMessages(msgs.map(m => {
@@ -622,9 +629,11 @@ export default function Home() {
           createdAt: m.createdAt ?? new Date(),
         }
       }))
+      return true
     } catch (e) {
       console.error(e)
       setError("Failed to load messages.")
+      return false
     }
   }, [setMessages, isChatBusy])
 
@@ -690,6 +699,8 @@ export default function Home() {
       // them. Subsequent opens of the same chat load normally.
       if (skipLoadOnceRef.current === activeChatId) {
         skipLoadOnceRef.current = null
+        // No load to wait for: the new chat's session is the whole transcript.
+        historyLoadRef.current = null
       } else {
         // Opening an existing chat always starts ungrounded (review F2/F4): a
         // previous chat's or compose surface's grounded state must not leak in —
@@ -708,7 +719,9 @@ export default function Home() {
         if (!turnInFlight) setMessages([])
         setArtifacts([])
         setMessagesLoading(!turnInFlight)
-        loadMessages(activeChatId).finally(() => {
+        const done = loadMessages(activeChatId)
+        historyLoadRef.current = { chatId: activeChatId, done }
+        done.finally(() => {
           // A stale finish must not clear the loading state of the chat we switched to.
           if (activeChatIdRef.current === activeChatId) setMessagesLoading(false)
         })
@@ -950,15 +963,35 @@ export default function Home() {
     return false
   }, [input, attachedFiles, attachedImages, peekChatMessages])
 
+  // Waits for the history load of the chat a send targets; true once its whole
+  // transcript is in its session and the chat is still the active one. A failed
+  // or stale load is retried once.
+  const awaitChatHistory = async (chatId: number): Promise<boolean> => {
+    const load = historyLoadRef.current
+    if (load?.chatId !== chatId) return true
+    if (await load.done) return activeChatIdRef.current === chatId
+    if (activeChatIdRef.current !== chatId) return false
+    const retry = loadMessages(chatId)
+    historyLoadRef.current = { chatId, done: retry }
+    return (await retry) && activeChatIdRef.current === chatId
+  }
+
   const handleSendMessage = async () => {
     if ((!input.trim() && attachedFiles.length === 0 && attachedImages.length === 0) || isLoading || sendingRef.current) return
-    // Checked before creating a chat, so a refused send leaves nothing behind
-    // (and the composer keeps the message).
-    if (refuseOversizedSend(activeChatId)) return
     sendingRef.current = true
-    const composed = takeComposer()
-    let started: StartedSend | null
+    let started: StartedSend | null = null
     try {
+      // The posted messages are the model's whole context: never send before the
+      // chat's history is in its session. The draft stays in the composer meanwhile.
+      if (activeChatId && !(await awaitChatHistory(activeChatId))) {
+        toast.error("Couldn't load this chat's history — your message was not sent")
+        return
+      }
+      // Checked before creating a chat, so a refused send leaves nothing behind
+      // (and the composer keeps the message). After the history wait, so the
+      // measured transcript is the real one.
+      if (refuseOversizedSend(activeChatId)) return
+      const composed = takeComposer()
       started = await startSend(composed)
     } finally {
       sendingRef.current = false

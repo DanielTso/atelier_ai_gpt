@@ -20,6 +20,7 @@ vi.mock('@/app/actions', () =>
   }),
 )
 
+import { toast } from 'sonner'
 import Home from '@/app/page'
 import type { Model } from '@/types'
 
@@ -225,5 +226,108 @@ describe('Home — a reply left streaming when the user moves on', () => {
     expect(await screen.findByText('Answer A so far, still going. Done.')).toBeTruthy()
     expect(chatCalls).toHaveLength(1)
     expect(callA.signal?.aborted).toBe(false)
+  })
+})
+
+// Review finding 1 (Phase R): a message sent while an existing chat's history is
+// still loading must not go out with a truncated transcript — /api/chat builds
+// the model's context from the posted messages only.
+describe('Home — a send while the chat history is loading', () => {
+  const OLD_CHAT = { id: 7, projectId: null, title: 'Old chat' }
+  const HISTORY = [
+    { id: 701, chatId: 7, role: 'user', content: 'Earlier question', createdAt: new Date() },
+    { id: 702, chatId: 7, role: 'assistant', content: 'Earlier answer', createdAt: new Date() },
+  ]
+  const REFUSED = "Couldn't load this chat's history — your message was not sent"
+  let toastError: ReturnType<typeof vi.spyOn>
+  let consoleError: ReturnType<typeof vi.spyOn> | null = null
+
+  beforeEach(() => {
+    action('getStandaloneChats').mockResolvedValue([OLD_CHAT])
+    toastError = vi.spyOn(toast, 'error')
+  })
+
+  afterEach(() => {
+    toastError.mockRestore()
+    consoleError?.mockRestore()
+    consoleError = null
+  })
+
+  async function typeDraft(text: string) {
+    const textarea = await screen.findByPlaceholderText(/type a message/i)
+    fireEvent.change(textarea, { target: { value: text } })
+  }
+
+  // Opens the chat and waits for the chat view's composer to replace Home's (the
+  // exiting view keeps its last props until its exit animation ends).
+  async function openOldChat() {
+    const entry = await screen.findByText('Old chat')
+    const homeComposer = await screen.findByPlaceholderText(/type a message/i)
+    await act(async () => { fireEvent.click(entry) })
+    await waitFor(() => expect(screen.getByPlaceholderText(/type a message/i)).not.toBe(homeComposer))
+  }
+
+  async function pressEnter() {
+    const textarea = await screen.findByPlaceholderText(/type a message/i)
+    await act(async () => { fireEvent.keyDown(textarea, { key: 'Enter' }) })
+  }
+
+  const settle = () => act(async () => { await new Promise(r => setTimeout(r, 30)) })
+
+  it('send-waits-for-history: holds the send until the history lands, then posts history + the new message', async () => {
+    let resolveHistory!: (rows: typeof HISTORY) => void
+    action('getChatMessages').mockImplementation(() => new Promise(resolve => { resolveHistory = resolve }))
+    render(<Home />)
+
+    await typeDraft('New question')
+    await openOldChat()
+    await waitFor(() => expect(action('getChatMessages')).toHaveBeenCalledWith(7))
+    await pressEnter()
+    await settle()
+    expect(chatCalls).toHaveLength(0)
+    // The draft stays in the composer while the send waits.
+    expect((screen.getByPlaceholderText(/type a message/i) as HTMLTextAreaElement).value).toBe('New question')
+
+    await act(async () => { resolveHistory(HISTORY) })
+    await waitFor(() => expect(chatCalls).toHaveLength(1))
+    expect(chatCalls[0].body.chatId).toBe(7)
+    expect(texts(chatCalls[0])).toEqual(['user:Earlier question', 'assistant:Earlier answer', 'user:New question'])
+    await settle()
+    expect(chatCalls).toHaveLength(1)
+    expect(toastError).not.toHaveBeenCalled()
+  })
+
+  it('send-refused-after-failed-load: keeps the draft, sends nothing and says so', async () => {
+    // The page logs each failed history load; keep the output clean.
+    consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    action('getChatMessages').mockRejectedValue(new Error('db down'))
+    render(<Home />)
+
+    await openOldChat()
+    expect(await screen.findByText('Failed to load messages.')).toBeTruthy()
+    const loadsBefore = action('getChatMessages').mock.calls.length
+    await typeDraft('New question')
+    await pressEnter()
+
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith(REFUSED))
+    // The failed load was retried once before giving up.
+    expect(action('getChatMessages').mock.calls.length).toBe(loadsBefore + 1)
+    await settle()
+    expect(chatCalls).toHaveLength(0)
+    expect((screen.getByPlaceholderText(/type a message/i) as HTMLTextAreaElement).value).toBe('New question')
+  })
+
+  it('send-after-load-unchanged: once the history has loaded, a send posts history + the new message', async () => {
+    action('getChatMessages').mockResolvedValue(HISTORY)
+    render(<Home />)
+
+    await openOldChat()
+    expect(await screen.findByText('Earlier answer')).toBeTruthy()
+    const call = await sendFromComposer('New question')
+    expect(call.body.chatId).toBe(7)
+    expect(texts(call)).toEqual(['user:Earlier question', 'assistant:Earlier answer', 'user:New question'])
+    await settle()
+    expect(chatCalls).toHaveLength(1)
+    expect(toastError).not.toHaveBeenCalled()
   })
 })
