@@ -24,8 +24,9 @@ import type { ArtifactSummary } from '@/types'
 export const MEMORY_SUGGEST_EVERY = 6
 
 // A stopped or failed turn has no finish chunk, so the reply's row id is looked up
-// instead. The server writes that row as the connection drops, i.e. about when
-// this runs — retry briefly rather than race it. Delays before each attempt, ms.
+// instead. The row exists from the reply's first savable content and is finalised
+// at finish/abort; the retries only cover a stop before that first write lands.
+// Delays before each attempt, ms.
 const REPLY_LOOKUP_DELAYS_MS = [0, 300, 900]
 
 // Best-effort: a failed embed (502, or 503 with no provider) leaves the message for
@@ -209,7 +210,7 @@ export function useChatPersistence(opts: UseChatPersistenceOpts) {
       // Normally done at turn start; this covers a start that never reported.
       runUserMessageSteps(turn, messages)
 
-      // ---- The assistant's reply (saved by the server at finish/abort) ----
+      // ---- The assistant's reply (saved by the server from its first savable content, finalised at finish/abort) ----
       // Extract text content from message parts
       const textContent = extractText(message.parts)
       // Images produced by the generate_image tool (surfaced as tool-result parts).
@@ -231,7 +232,8 @@ export function useChatPersistence(opts: UseChatPersistenceOpts) {
 
       // The reply's row id arrives on the finish chunk. A stopped or failed turn
       // never gets one — but the server still saved the partial reply, so look it
-      // up. After a CLEAN finish a null id is authoritative (no row was written).
+      // up. After a CLEAN finish a null id is authoritative (no row was written, or
+      // another turn took the row over).
       let assistantMessageDbId = turn.assistantMessageDbId
       if (assistantMessageDbId == null && userMessageDbId != null && (isAbort || isError || isDisconnect)) {
         assistantMessageDbId = await lookUpAssistantReplyId(chatId, userMessageDbId)

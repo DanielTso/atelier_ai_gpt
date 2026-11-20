@@ -619,7 +619,7 @@ Model: implementer **Sonnet**; review Sonnet.
 
 **Phase R gate:** `rm -rf .next && npm run build`, then the full `npm test`; record the counts. Then a scoped re-review of the Phase R commits against the 7 findings (Opus). The Fable whole-branch review stays in the Final gate.
 
-**Recorded, not fixed:** a killed function still leaves no `usage_events` row for that turn (usage is only known at step end); `generate_image` / `generate_artifact` do not take the abort signal; artifact Storage files on chat delete (X4) and project-delete sweeps.
+**Recorded, not fixed:** a killed function still leaves no `usage_events` row for that turn (usage is only known at step end); a reply stopped during its first step writes no `usage_events` row either (the provider bills the partial tokens; the app's ledger does not see them); a first `save` that rejects after its INSERT committed could insert a second assistant row on retry; `generate_image` / `generate_artifact` do not take the abort signal; artifact Storage files on chat delete (X4) and project-delete sweeps.
 
 ---
 
@@ -644,12 +644,12 @@ Model: implementer **Sonnet**; review Sonnet.
 2. First, read-only: count duplicate `(document_id, chunk_index)` pairs and total `document_chunks` rows, so the owner knows what migration `0022`'s dedup will delete. Also read-only: confirm nothing hand-made in the dashboard depends on `chat_topics` (`SELECT … FROM pg_depend d JOIN pg_class c ON c.oid = d.refobjid WHERE c.relname = 'chat_topics' AND d.deptype = 'n'`), since `0024`'s `DROP … CASCADE` would drop it silently. Then apply migrations `0022`–`0025` to Supabase with `DIRECT_URL=… npx drizzle-kit migrate` **before** pushing. Then verify `drizzle.__drizzle_migrations` has 26 rows.
 3. Push → deploy, then live smoke:
    - Review Focus 1–4 on production
-   - the Stop-mid-stream single `usage_events` row (handoff item 7)
+   - the Stop-mid-stream `usage_events` result (handoff item 7): no `usage_events` row when the reply was stopped during its first step; one row holding the completed steps' tokens when at least one step had finished
    - B1 turn persistence: switch chats mid-reply, press Stop, and close the tab mid-reply; each partial reply is saved to the chat it was sent from (unit-verified only; `after()` keep-alive on Vercel is untested live)
    - live CSP header check
    - the deploy build must accept the `vercel.json` `functions` pattern; if it reports an unmatched pattern, try `app/api/chat/route.ts`
-   - on production, press Stop about 5 s into a long reply, then send a follow-up: the saved reply equals what was shown, the follow-up's rows come after it, and `usage_events` has one row for the stopped turn with partial output tokens
-   - if Stop still does not abort the request, open a follow-up for an explicit stop endpoint (R2 keeps the transcript correct meanwhile)
+   - on production, press Stop about 5 s into a long reply, then send a follow-up: the saved reply equals what was shown, the follow-up's rows come after it, and the ledger shows no `usage_events` row when the reply was stopped during its first step; one row holding the completed steps' tokens when at least one step had finished
+   - if Stop still does not abort the request, open a follow-up for an explicit stop endpoint (without cancellation, R2 keeps the stopped reply's row id and its position before the follow-up, but the turn still runs to the end, so the saved reply is the full text rather than what was shown, and it is billed in full)
 4. Backfill missing message embeddings in production (handoff item 4) with `scripts/backfill-embeddings.ts`. Dry run first:
    - `npx -y tsx --env-file=.env.local scripts/backfill-embeddings.ts --dry-run` (add `--since 2026-10-16` to scope it). This is a read-only count of `remaining`, with no embedding calls.
    - Then `npx -y tsx --env-file=.env.local scripts/backfill-embeddings.ts --since 2026-10-16 --limit 200`. Repeat until `remaining` is 0. Each run embeds up to `--limit` messages (max 1000), oldest first.

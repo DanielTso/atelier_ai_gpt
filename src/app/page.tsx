@@ -908,11 +908,14 @@ export default function Home() {
   // once the message is handed to its chat session — NOT when the reply ends:
   // sending from another chat while a reply streams in the background is allowed.
   // Without it, a second Enter during the deferred-create round-trips created a
-  // second chat. The composer is also cleared before the first await, so a
-  // second keypress finds nothing to send.
+  // second chat. It is also what blocks a second Enter while handleSendMessage
+  // waits for the chat's history load: the draft stays in the composer until
+  // that wait and the oversized-request check are done.
   const sendingRef = useRef(false)
 
-  // Snapshot the composer and clear it — synchronously, before any await.
+  // Snapshot the composer and clear it, synchronously. handleSendMessage calls it
+  // after the history wait and the oversized-request check (the landing compose
+  // path before its first await); `sendingRef` guards the send until then.
   const takeComposer = useCallback((): ComposerSnapshot => {
     const snapshot = { input, files: attachedFiles, images: attachedImages }
     setInput("")

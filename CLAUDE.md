@@ -154,7 +154,7 @@ Model ids, pricing, effort capabilities and persona tiers come from the live reg
 - **Look models up through `registry.byId` / `resolveRequestedModel()` only.** The live catalog often ships a family with only a dated snapshot id; a lookup that assumed a bare alias once made every Haiku request silently resolve to Opus (5× cost).
 - **Resolvers never throw** — an unknown/retired id falls back to the default. The default is the first **Anthropic** entry in `curated`, never `curated[0]` literally.
 - **`usage.inputTokens` from the AI SDK is inclusive of cache tokens.** Use `usageTokens()` (`usage.ts`); never bill from the raw field, or cached tokens are double-counted.
-- **Usage writes never fail a request:** every call site is `void recordUsage({...}).catch(() => {})`, and `/api/chat` writes exactly one row per request (first-wins guard across `onAbort`/`onFinish`).
+- **Usage writes never fail a request:** every call site is `void recordUsage({...}).catch(() => {})`, and `/api/chat` writes at most one row per request (first-wins guard across `onAbort`/`onFinish`), none when a turn is stopped or dies before its first step completes.
 - **`resolveTier()` is server-only** (it reads API keys) — never import it into the `'use client'` persona hook; client-side resolution uses the `GET /api/models` list.
 - **Contract Abstract stays pinned to the exact `claude-fable-5`** — its locked 22-field extraction schema must not follow a tier.
 - **`ChatContextMenu` imports `@/app/actions` dynamically** — a static import pulls `@/db` into jsdom test renders and throws on a missing `DATABASE_URL`.
