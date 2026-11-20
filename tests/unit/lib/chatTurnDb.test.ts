@@ -17,7 +17,7 @@ vi.mock('@/lib/storage', () => ({
 }))
 
 import { createStandaloneChat, saveMessage, saveGeneratedImage, saveMessageEmbedding } from '@/app/actions'
-import { replaceAssistantReply } from '@/lib/chatTurnDb'
+import { replaceAssistantReply, updateAssistantReplyContent } from '@/lib/chatTurnDb'
 
 describe('replaceAssistantReply (regenerate, audit D2)', () => {
   let chatId: number
@@ -107,5 +107,69 @@ describe('replaceAssistantReply (regenerate, audit D2)', () => {
       expect(await testDb.select().from(messageEmbeddings).where(eq(messageEmbeddings.messageId, id))).toHaveLength(1)
     }
     expect(mockRemoveObjects).not.toHaveBeenCalled()
+  })
+})
+
+describe('updateAssistantReplyContent (streaming checkpoints)', () => {
+  let chatId: number
+
+  beforeEach(async () => {
+    await createTestDb()
+    const [chat] = await createStandaloneChat('Chat')
+    chatId = chat.id
+  })
+
+  const rows = () => testDb.select().from(messages).where(eq(messages.chatId, chatId)).orderBy(asc(messages.id))
+
+  it('rewrites the reply\'s content in place: same id, same created_at', async () => {
+    await saveMessage(chatId, 'user', 'Question')
+    const [reply] = await saveMessage(chatId, 'assistant', 'Partial')
+
+    await updateAssistantReplyContent(chatId, reply.id, 'Partial, then more')
+
+    const after = await rows()
+    expect(after.map(r => [r.id, r.role, r.content])).toEqual([[after[0].id, 'user', 'Question'], [reply.id, 'assistant', 'Partial, then more']])
+    expect(after[1].createdAt?.getTime()).toBe(reply.createdAt?.getTime())
+  })
+
+  it('never rewrites a user row or another chat\'s reply', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const [user] = await saveMessage(chatId, 'user', 'Question')
+      const [other] = await createStandaloneChat('Other')
+      const [foreign] = await saveMessage(other.id, 'assistant', 'Foreign answer')
+
+      await updateAssistantReplyContent(chatId, user.id, 'X')
+      await updateAssistantReplyContent(chatId, foreign.id, 'Y')
+
+      expect((await rows()).map(r => [r.role, r.content])).toEqual([['user', 'Question']])
+      const [stillForeign] = await testDb.select().from(messages).where(eq(messages.id, foreign.id))
+      expect(stillForeign.content).toBe('Foreign answer')
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('caps the content at the same length saveMessage does', async () => {
+    const [reply] = await saveMessage(chatId, 'assistant', 'Start')
+    await updateAssistantReplyContent(chatId, reply.id, 'x'.repeat(200_005))
+    const [row] = await testDb.select().from(messages).where(eq(messages.id, reply.id))
+    expect(row.content).toHaveLength(200_000)
+  })
+
+  it('is a logged no-op when the row is gone — a deleted reply is never resurrected', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      await saveMessage(chatId, 'user', 'Question')
+      const [reply] = await saveMessage(chatId, 'assistant', 'Partial')
+      await testDb.delete(messages).where(eq(messages.id, reply.id))
+
+      await expect(updateAssistantReplyContent(chatId, reply.id, 'More')).resolves.toBeUndefined()
+
+      expect((await rows()).map(r => [r.role, r.content])).toEqual([['user', 'Question']])
+      expect(warn).toHaveBeenCalledOnce()
+    } finally {
+      warn.mockRestore()
+    }
   })
 })

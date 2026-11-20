@@ -27,7 +27,42 @@ async function run(recorder: ReturnType<typeof createAssistantTurnRecorder>, par
   return out
 }
 
+/**
+ * Feed parts one at a time and keep the stream open — no finish/abort/flush
+ * follows unless the test sends one — so checkpoint writes can be observed on
+ * their own. The output side is drained so the transform never backs up.
+ */
+function open(recorder: ReturnType<typeof createAssistantTurnRecorder>) {
+  const stream = recorder.transform() as unknown as TransformStream<Part, Part>
+  const out: Part[] = []
+  void (async () => {
+    const reader = stream.readable.getReader()
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      out.push(value)
+    }
+  })()
+  const writer = stream.writable.getWriter()
+  return { out, write: (part: Part) => writer.write(part) }
+}
+
+/** Let un-awaited checkpoint writes settle. */
+const settle = () => new Promise(r => setTimeout(r, 0))
+
 const delta = (text: string): Part => ({ type: 'text-delta', id: 't', text })
+const toolCall: Part = { type: 'tool-call', toolCallId: 'c1', toolName: 'generate_image', input: {} }
+const finishStep: Part = { type: 'finish-step' }
+
+/** A recorder whose `update` is a no-op spy unless one is given. */
+function recorderWith(
+  save: (text: string) => Promise<number | null>,
+  opts: { update?: (id: number, text: string) => Promise<void>; checkpointMs?: number; now?: () => number } = {},
+) {
+  const update = vi.fn(opts.update ?? (async () => {}))
+  const recorder = createAssistantTurnRecorder({ save, update, checkpointMs: opts.checkpointMs, now: opts.now })
+  return { recorder, update }
+}
 
 describe('isDbMessageId', () => {
   it('accepts the stringified integer ids loadMessages assigns to DB rows', () => {
@@ -131,7 +166,10 @@ describe('createAssistantTurnRecorder', () => {
   it('saves the text of every step, joined like the client joins text parts, before the finish part is forwarded', async () => {
     const order: string[] = []
     const save = vi.fn(async (text: string) => { order.push(`save:${text}`); return 41 })
-    const recorder = createAssistantTurnRecorder(save)
+    const { recorder, update } = recorderWith(save, {
+      update: async (id, text) => { order.push(`update:${id}:${text}`) },
+      now: () => 0,
+    })
 
     const out = await run(recorder, [
       { type: 'start' },
@@ -142,18 +180,21 @@ describe('createAssistantTurnRecorder', () => {
     ])
     for (const p of out) order.push(`out:${p.type}`)
 
-    expect(save).toHaveBeenCalledExactlyOnceWith('Step one. Step two.')
+    // One row: inserted at the first checkpoint, then brought up to the full text.
+    expect(save).toHaveBeenCalledExactlyOnceWith('Step one. ')
+    expect(update).toHaveBeenLastCalledWith(41, 'Step one. Step two.')
     expect(recorder.assistantMessageDbId()).toBe(41)
     // Every part is passed through untouched and in order.
     expect(out.map(p => p.type)).toEqual(['start', 'text-delta', 'finish-step', 'text-delta', 'finish'])
-    // The id exists before `finish` leaves the transform — that is what lets the
-    // synchronous messageMetadata callback put it on the finish chunk.
-    expect(order.indexOf('save:Step one. Step two.')).toBeLessThan(order.indexOf('out:finish'))
+    // The full text is written before `finish` leaves the transform — that is
+    // what lets the synchronous messageMetadata callback put the id on the
+    // finish chunk, and what the client reads afterwards.
+    expect(order.indexOf('update:41:Step one. Step two.')).toBeLessThan(order.indexOf('out:finish'))
   })
 
   it('saves the text streamed so far when the stream aborts', async () => {
     const save = vi.fn(async () => 7)
-    const recorder = createAssistantTurnRecorder(save)
+    const { recorder } = recorderWith(save)
     await run(recorder, [{ type: 'start' }, delta('Partial ans'), { type: 'abort' }])
     expect(save).toHaveBeenCalledExactlyOnceWith('Partial ans')
     expect(recorder.assistantMessageDbId()).toBe(7)
@@ -161,53 +202,54 @@ describe('createAssistantTurnRecorder', () => {
 
   it('saves on flush when the stream ends with neither a finish nor an abort part (provider error)', async () => {
     const save = vi.fn(async () => 9)
-    const recorder = createAssistantTurnRecorder(save)
+    const { recorder } = recorderWith(save)
     await run(recorder, [{ type: 'start' }, delta('Before the error'), { type: 'error', error: new Error('boom') }])
     expect(save).toHaveBeenCalledExactlyOnceWith('Before the error')
   })
 
   it('writes exactly once across finish, flush and a late persist() call', async () => {
     const save = vi.fn(async () => 5)
-    const recorder = createAssistantTurnRecorder(save)
+    const { recorder, update } = recorderWith(save)
     await run(recorder, [delta('Once'), { type: 'finish', finishReason: 'stop' }])
     await recorder.persist()
     await recorder.persist()
     expect(save).toHaveBeenCalledOnce()
+    expect(update).not.toHaveBeenCalled()
   })
 
   it('persist() saves what was recorded when the pipeline died before any terminal part', async () => {
     // A stream that ERRORS (not an error part) skips flush entirely — the route
-    // calls persist() after draining as the catch-all.
+    // calls persist() after draining as the catch-all. The first checkpoint has
+    // already written the row; persist() leaves it as is.
     const save = vi.fn(async () => 12)
-    const recorder = createAssistantTurnRecorder(save)
-    const stream = recorder.transform() as unknown as TransformStream<Part, Part>
-    const reader = stream.readable.getReader()
-    void stream.writable.getWriter().write(delta('Half a rep'))
-    await reader.read() // the delta went through; no finish/abort/flush follows
-    expect(save).not.toHaveBeenCalled()
+    const { recorder, update } = recorderWith(save)
+    const { write } = open(recorder)
+    await write(delta('Half a rep')) // the delta went through; no finish/abort/flush follows
     await recorder.persist()
     expect(save).toHaveBeenCalledExactlyOnceWith('Half a rep')
+    expect(update).not.toHaveBeenCalled()
     expect(recorder.assistantMessageDbId()).toBe(12)
   })
 
   it('writes nothing for a turn with no text and no media', async () => {
     const save = vi.fn(async () => 1)
-    const recorder = createAssistantTurnRecorder(save)
-    await run(recorder, [{ type: 'start' }, delta('   '), { type: 'tool-result', toolName: 'web_search', output: {} }, { type: 'abort' }])
+    const { recorder, update } = recorderWith(save)
+    await run(recorder, [{ type: 'start' }, delta('   '), { type: 'tool-result', toolName: 'web_search', output: {} }, finishStep, { type: 'abort' }])
     expect(save).not.toHaveBeenCalled()
+    expect(update).not.toHaveBeenCalled()
     expect(recorder.assistantMessageDbId()).toBeNull()
   })
 
   it('still writes an (empty-text) row for a media-only turn', async () => {
     const image = vi.fn(async () => 2)
-    await run(createAssistantTurnRecorder(image), [
+    await run(recorderWith(image).recorder, [
       { type: 'tool-result', toolName: 'generate_image', output: { storagePath: 'attachments/1/generated/a.png', url: 'u', mediaType: 'image/png' } },
       { type: 'finish', finishReason: 'stop' },
     ])
     expect(image).toHaveBeenCalledExactlyOnceWith('')
 
     const artifact = vi.fn(async () => 3)
-    await run(createAssistantTurnRecorder(artifact), [
+    await run(recorderWith(artifact).recorder, [
       { type: 'tool-result', toolName: 'generate_artifact', output: { artifactId: 4 } },
       { type: 'finish', finishReason: 'stop' },
     ])
@@ -215,13 +257,15 @@ describe('createAssistantTurnRecorder', () => {
 
     // Gemini image models emit the picture as a `file` part.
     const file = vi.fn(async () => 4)
-    await run(createAssistantTurnRecorder(file), [{ type: 'file', file: {} }, { type: 'finish', finishReason: 'stop' }])
+    const { recorder, update } = recorderWith(file)
+    await run(recorder, [{ type: 'file', file: {} }, finishStep, { type: 'finish', finishReason: 'stop' }])
     expect(file).toHaveBeenCalledExactlyOnceWith('')
+    expect(update).not.toHaveBeenCalled()
   })
 
   it('does not count a failed generate_image call (in-band error output) as media', async () => {
     const save = vi.fn(async () => 1)
-    await run(createAssistantTurnRecorder(save), [
+    await run(recorderWith(save).recorder, [
       { type: 'tool-result', toolName: 'generate_image', output: { error: 'Image storage is not configured.' } },
       { type: 'finish', finishReason: 'stop' },
     ])
@@ -232,14 +276,201 @@ describe('createAssistantTurnRecorder', () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     try {
       const save = vi.fn(async () => { throw new Error('db down') })
-      const recorder = createAssistantTurnRecorder(save)
+      const { recorder } = recorderWith(save)
       const out = await run(recorder, [delta('Answer'), { type: 'finish', finishReason: 'stop' }])
       expect(out.map(p => p.type)).toEqual(['text-delta', 'finish'])
       expect(recorder.assistantMessageDbId()).toBeNull()
       await expect(recorder.persist()).resolves.toBeUndefined()
-      expect(save).toHaveBeenCalledOnce()
+      // The first checkpoint tried, then persist() tried again — and gave up quietly.
+      expect(save).toHaveBeenCalledTimes(2)
     } finally {
       errSpy.mockRestore()
     }
+  })
+
+  describe('checkpoints while the reply streams', () => {
+    it('checkpoints-first-savable-content: one save after the first non-blank delta, none before', async () => {
+      const save = vi.fn(async () => 41)
+      const { recorder, update } = recorderWith(save, { now: () => 0 })
+      const { write } = open(recorder)
+
+      await write({ type: 'start' })
+      await write({ type: 'reasoning-delta', id: 'r', text: 'Thinking it over' })
+      await write(delta('  \n'))
+      await settle()
+      expect(save).not.toHaveBeenCalled()
+
+      await write(delta('Hello'))
+      expect(save).toHaveBeenCalledExactlyOnceWith('  \nHello')
+      await settle()
+      expect(recorder.assistantMessageDbId()).toBe(41)
+
+      await write(delta(' there'))
+      await settle()
+      expect(save).toHaveBeenCalledOnce()
+      expect(update).not.toHaveBeenCalled()
+    })
+
+    it('checkpoints-first-savable-content: writes nothing for a whitespace-only or reasoning-only stream', async () => {
+      const save = vi.fn(async () => 1)
+      const { recorder, update } = recorderWith(save, { now: () => 0 })
+      const { write } = open(recorder)
+      await write({ type: 'reasoning-delta', id: 'r', text: 'Only thoughts' })
+      await write(delta('   '))
+      await write(toolCall)
+      await write(finishStep)
+      await settle()
+      expect(save).not.toHaveBeenCalled()
+      expect(update).not.toHaveBeenCalled()
+    })
+
+    it('throttles-text-checkpoints: no extra write inside checkpointMs, one update with the text so far past it', async () => {
+      let clock = 1_000
+      const save = vi.fn(async () => 41)
+      const { recorder, update } = recorderWith(save, { checkpointMs: 3000, now: () => clock })
+      const { write } = open(recorder)
+
+      await write(delta('A'))
+      await settle()
+      expect(save).toHaveBeenCalledExactlyOnceWith('A')
+
+      clock = 3_999
+      await write(delta('B'))
+      await settle()
+      expect(update).not.toHaveBeenCalled()
+
+      clock = 4_000
+      await write(delta('C'))
+      await settle()
+      expect(update).toHaveBeenCalledExactlyOnceWith(41, 'ABC')
+
+      // The clock restarted at that write.
+      clock = 6_999
+      await write(delta('D'))
+      await settle()
+      expect(update).toHaveBeenCalledOnce()
+      clock = 7_000
+      await write(delta('E'))
+      await settle()
+      expect(update).toHaveBeenLastCalledWith(41, 'ABCDE')
+      expect(save).toHaveBeenCalledOnce()
+    })
+
+    it('checkpoints-at-step-boundaries: tool-call and finish-step write the text when it changed', async () => {
+      const save = vi.fn(async () => 41)
+      const { recorder, update } = recorderWith(save, { now: () => 0 })
+      const { write } = open(recorder)
+
+      await write(delta('Let me draw that. '))
+      await settle()
+      await write(delta('One moment.'))
+      await write(toolCall)
+      await settle()
+      expect(update).toHaveBeenCalledExactlyOnceWith(41, 'Let me draw that. One moment.')
+
+      // Nothing new since the last write: no write.
+      await write(finishStep)
+      await settle()
+      expect(update).toHaveBeenCalledOnce()
+
+      await write(delta(' Here it is.'))
+      await write(finishStep)
+      await settle()
+      expect(update).toHaveBeenLastCalledWith(41, 'Let me draw that. One moment. Here it is.')
+      expect(update).toHaveBeenCalledTimes(2)
+      expect(save).toHaveBeenCalledOnce()
+    })
+
+    it('never-overlaps-writes: no second write while a slow save is in flight; persist() waits, then updates', async () => {
+      let clock = 0
+      let landSave!: (id: number) => void
+      const save = vi.fn(() => new Promise<number>(resolve => { landSave = resolve }))
+      const { recorder, update } = recorderWith(save, { checkpointMs: 3000, now: () => clock })
+      const { write } = open(recorder)
+
+      await write(delta('Slow '))
+      expect(save).toHaveBeenCalledOnce()
+      clock = 10_000
+      await write(delta('save, '))
+      await write(toolCall)
+      await write(finishStep)
+      await write(delta('still going.'))
+      await settle()
+      expect(save).toHaveBeenCalledOnce()
+      expect(update).not.toHaveBeenCalled()
+      expect(recorder.assistantMessageDbId()).toBeNull()
+
+      let persisted = false
+      const persisting = recorder.persist().then(() => { persisted = true })
+      await settle()
+      expect(persisted).toBe(false)
+      expect(update).not.toHaveBeenCalled()
+
+      landSave(41)
+      await persisting
+      expect(update).toHaveBeenCalledExactlyOnceWith(41, 'Slow save, still going.')
+      expect(save).toHaveBeenCalledOnce()
+      expect(recorder.assistantMessageDbId()).toBe(41)
+    })
+
+    it('failed-checkpoint-then-persist: a rejected checkpoint is logged, the stream goes on, persist() saves', async () => {
+      const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      try {
+        const save = vi.fn<(text: string) => Promise<number | null>>()
+          .mockRejectedValueOnce(new Error('db blip'))
+          .mockResolvedValue(9)
+        const { recorder } = recorderWith(save, { now: () => 0 })
+        const out = await run(recorder, [delta('Answer'), delta(' text'), { type: 'finish', finishReason: 'stop' }])
+        expect(out.map(p => p.type)).toEqual(['text-delta', 'text-delta', 'finish'])
+        expect(save.mock.calls).toEqual([['Answer'], ['Answer text']])
+        expect(recorder.assistantMessageDbId()).toBe(9)
+        expect(String(errSpy.mock.calls[0]?.[0])).toMatch(/failed to save the assistant message/)
+      } finally {
+        errSpy.mockRestore()
+      }
+    })
+
+    it('calls save again when the first save found nothing to write to (resolved null)', async () => {
+      const save = vi.fn<(text: string) => Promise<number | null>>()
+        .mockResolvedValueOnce(null)
+        .mockResolvedValue(9)
+      const { recorder, update } = recorderWith(save, { now: () => 0 })
+      const { write } = open(recorder)
+      await write(delta('Answer'))
+      await settle()
+      expect(recorder.assistantMessageDbId()).toBeNull()
+      await write(toolCall)
+      await settle()
+      expect(save.mock.calls).toEqual([['Answer'], ['Answer']])
+      expect(recorder.assistantMessageDbId()).toBe(9)
+      expect(update).not.toHaveBeenCalled()
+    })
+
+    it('final-update-only-when-text-changed', async () => {
+      const unchanged = vi.fn(async () => 3)
+      const first = recorderWith(unchanged, { now: () => 0 })
+      await run(first.recorder, [delta('Done.'), finishStep, { type: 'finish', finishReason: 'stop' }])
+      expect(unchanged).toHaveBeenCalledExactlyOnceWith('Done.')
+      expect(first.update).not.toHaveBeenCalled()
+
+      const changed = vi.fn(async () => 4)
+      const second = recorderWith(changed, { now: () => 0 })
+      await run(second.recorder, [delta('Do'), delta('ne.'), { type: 'finish', finishReason: 'stop' }])
+      expect(changed).toHaveBeenCalledExactlyOnceWith('Do')
+      expect(second.update).toHaveBeenCalledExactlyOnceWith(4, 'Done.')
+    })
+
+    it('starts no checkpoint once persist() has begun', async () => {
+      const save = vi.fn(async () => 5)
+      const { recorder, update } = recorderWith(save, { now: () => 0 })
+      const { write } = open(recorder)
+      await write(delta('Before'))
+      await recorder.persist()
+      await write(delta(' after'))
+      await write(toolCall)
+      await settle()
+      expect(save).toHaveBeenCalledOnce()
+      expect(update).not.toHaveBeenCalled()
+    })
   })
 })

@@ -118,45 +118,96 @@ export function replyHasSavedContent(parts: ReadonlyArray<{ type: string; [key: 
   return text.trim().length > 0
 }
 
+export type AssistantTurnRecorderOptions = {
+  /** The first write: insert the row (or, on a regenerate, replace the old reply in place). Returns its id. */
+  save: (text: string) => Promise<number | null>
+  /** A content-only rewrite of the row `save` returned. */
+  update: (id: number, text: string) => Promise<void>
+  /** Minimum gap between two text-delta checkpoints. */
+  checkpointMs?: number
+  /** Clock for the checkpoint throttle (injectable for tests). */
+  now?: () => number
+}
+
 /**
- * Records one assistant turn from the model stream and saves it exactly once.
+ * Records one assistant turn from the model stream into exactly one row, written
+ * while the reply streams and completed when it ends.
  *
  * Wired into `streamText` as an `experimental_transform`, which sits on the base
  * stream that `result.consumeStream()` drains — so it runs to the end whether or
- * not a client is still reading the response. Doing the write here (instead of in
- * `onFinish`/`onAbort`) buys two things, both verified against ai@6.0.230:
+ * not a client is still reading the response. Doing the final write here (instead
+ * of in `onFinish`/`onAbort`) buys two things, both verified against ai@6.0.230:
  *
  * 1. Ordering. Every part passes through in order, so on `finish` or `abort` the
  *    accumulated text is exactly what streamed. `onAbort` is called un-awaited
  *    from upstream of the transforms and can run before in-flight deltas land.
  * 2. The id on the wire. `messageMetadata` is a synchronous callback evaluated as
- *    the `finish` part is converted to a UI chunk. Awaiting the insert before
+ *    the `finish` part is converted to a UI chunk. Awaiting the write before
  *    forwarding `finish` means the row id exists by then; `onFinish` runs in the
  *    stream's flush, after `finish` has already been forwarded.
  *
- * `save` is called with the text of every step concatenated — the same thing the
- * client renders (`extractText` joins text parts with ''). A turn with no text and
- * no media writes nothing. A failed save is logged and leaves the id null; it never
- * breaks the stream.
+ * Checkpoints (audit R2): a function killed mid-stream (timeout, crash, deploy)
+ * never reaches `finish`/`abort`/flush, so the row is also written WHILE the reply
+ * streams — un-awaited, adding nothing to the stream. The first checkpoint fires as
+ * soon as there is savable content (`save`); later ones (`update`) on every
+ * `tool-call` and `finish-step` part, and on a text delta once `checkpointMs` has
+ * passed since the last write started. A checkpoint is skipped while another write
+ * is in flight (dropped, not queued: the next one carries the newer text), when the
+ * text has not changed, and once `persist()` has started.
+ *
+ * The text written is every step's text concatenated — the same thing the client
+ * renders (`extractText` joins text parts with ''). A turn with no text and no
+ * media writes nothing. A failed write is logged and never breaks the stream; the
+ * next checkpoint or `persist()` tries again.
  */
-export function createAssistantTurnRecorder(save: (text: string) => Promise<number | null>) {
+export function createAssistantTurnRecorder({ save, update, checkpointMs = 3000, now = Date.now }: AssistantTurnRecorderOptions) {
   let text = ''
   let hasMedia = false
   let assistantMessageDbId: number | null = null
-  let write: Promise<void> | undefined
+  // The text the row holds, once a write has landed.
+  let writtenText: string | null = null
+  let inFlight: Promise<void> | undefined
+  let lastWriteStartedAt: number | undefined
+  let persisting: Promise<void> | undefined
+
+  // The persist rule — mirrored on the client by `replyHasSavedContent`.
+  const hasSavableContent = () => text.trim().length > 0 || hasMedia
+
+  // One write of `snapshot`: insert when no row exists yet (a `save` that
+  // resolved null left none), rewrite it afterwards. Never rejects.
+  const writeRow = async (snapshot: string) => {
+    try {
+      if (assistantMessageDbId == null) {
+        assistantMessageDbId = await save(snapshot)
+        if (assistantMessageDbId != null) writtenText = snapshot
+      } else {
+        await update(assistantMessageDbId, snapshot)
+        writtenText = snapshot
+      }
+    } catch (e) {
+      console.error('[chat] failed to save the assistant message:', e instanceof Error ? e.message : e)
+    }
+  }
+
+  // Fire-and-forget: the transform never awaits it.
+  const checkpoint = () => {
+    if (persisting || inFlight || !hasSavableContent()) return
+    if (assistantMessageDbId != null && text === writtenText) return
+    lastWriteStartedAt = now()
+    inFlight = writeRow(text).finally(() => { inFlight = undefined })
+  }
 
   // First call wins; later calls (flush after finish, the route's post-drain
-  // catch-all) await the same write.
+  // catch-all) await the same write. Waits for an in-flight checkpoint first, so
+  // writes never overlap and the final text always lands last.
   const persist = (): Promise<void> => {
-    write ??= (async () => {
-      if (!text.trim() && !hasMedia) return
-      try {
-        assistantMessageDbId = await save(text)
-      } catch (e) {
-        console.error('[chat] failed to save the assistant message:', e instanceof Error ? e.message : e)
-      }
+    persisting ??= (async () => {
+      await inFlight
+      if (!hasSavableContent()) return
+      if (assistantMessageDbId != null && text === writtenText) return
+      await writeRow(text)
     })()
-    return write
+    return persisting
   }
 
   const transform = <TOOLS extends ToolSet>() =>
@@ -169,9 +220,18 @@ export function createAssistantTurnRecorder(save: (text: string) => Promise<numb
         } else if (part.type === 'tool-result') {
           if (isMediaToolResult(part.toolName, part.output)) hasMedia = true
         } else if (part.type === 'finish' || part.type === 'abort') {
-          // Save BEFORE forwarding, so the id is known when `finish` reaches the
+          // Write BEFORE forwarding, so the id is known when `finish` reaches the
           // UI stream's metadata callback.
           await persist()
+        }
+
+        if (part.type === 'tool-call' || part.type === 'finish-step') {
+          checkpoint()
+        } else if (lastWriteStartedAt === undefined) {
+          // No write yet: checkpoint as soon as there is savable content.
+          checkpoint()
+        } else if (part.type === 'text-delta' && now() - lastWriteStartedAt >= checkpointMs) {
+          checkpoint()
         }
         controller.enqueue(part)
       },
@@ -184,9 +244,9 @@ export function createAssistantTurnRecorder(save: (text: string) => Promise<numb
   return {
     /** Pass as `experimental_transform`. */
     transform,
-    /** Save what was recorded, if nothing has yet. Idempotent; never rejects. */
+    /** Write the final text (insert, or update the checkpointed row). Idempotent; never rejects. */
     persist,
-    /** The saved row's id — null until saved, or if the turn had nothing to save. */
+    /** The row's id — set when the first write lands; null if the turn had nothing to save. */
     assistantMessageDbId: () => assistantMessageDbId,
   }
 }

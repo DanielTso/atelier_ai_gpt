@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { asc, eq } from 'drizzle-orm'
 import { MockLanguageModelV3 } from 'ai/test'
 import { createTestDb, testDb } from '../../helpers/test-db'
@@ -1101,6 +1101,63 @@ describe('POST /api/chat — server-side turn persistence', () => {
     })
   })
 
+  describe('checkpoints-while-streaming', () => {
+    // The route uses the recorder's default 3 s text throttle and Date.now; fake
+    // only Date so the test can step past the throttle without waiting.
+    // Timers stay real (PGlite, vi.waitFor and the SDK keep working).
+    beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }) })
+    afterEach(() => { vi.useRealTimers() })
+
+    const assistantRows = async (chatId: number) => (await rowsFor(chatId)).filter(r => r.role === 'assistant')
+
+    it('reply-survives-server-death: the streamed text is in the DB although the stream never ends', async () => {
+      const [chat] = await createStandaloneChat('Chat')
+      const { model, push } = controlledModel()
+      await postTurn({ messages: [userMessage('Question')], chatId: chat.id }, { model })
+
+      push(...START, textDelta('Streamed '))
+      await vi.waitFor(async () => {
+        expect((await assistantRows(chat.id)).map(r => r.content)).toEqual(['Streamed '])
+      }, { timeout: 5000, interval: 20 })
+
+      vi.setSystemTime(Date.now() + 3000)
+      push(textDelta('so far'))
+      await vi.waitFor(async () => {
+        expect((await assistantRows(chat.id)).map(r => r.content)).toEqual(['Streamed so far'])
+      }, { timeout: 5000, interval: 20 })
+      // The function "dies" here: no finish, no abort, no drain, no persist().
+      expect((await rowsFor(chat.id)).map(r => [r.role, r.content])).toEqual([['user', 'Question'], ['assistant', 'Streamed so far']])
+    })
+
+    it('checkpointed-turn-ends-with-one-row: the finish rewrites the checkpointed row, and its id is on the finish chunk', async () => {
+      const [chat] = await createStandaloneChat('Chat')
+      const { model, push, close } = controlledModel()
+      const response = await postTurn({ messages: [userMessage('Question')], chatId: chat.id }, { model })
+
+      push(...START, textDelta('First part. '))
+      let checkpointId = 0
+      await vi.waitFor(async () => {
+        const rows = await assistantRows(chat.id)
+        expect(rows.map(r => r.content)).toEqual(['First part. '])
+        checkpointId = rows[0].id
+      }, { timeout: 5000, interval: 20 })
+
+      vi.setSystemTime(Date.now() + 3000)
+      push(textDelta('Second '))
+      await vi.waitFor(async () => {
+        expect((await assistantRows(chat.id)).map(r => r.content)).toEqual(['First part. Second '])
+      }, { timeout: 5000, interval: 20 })
+
+      push(textDelta('part.'), ...END)
+      close()
+      const chunks = await readChunks(response)
+      const rows = await settledRows(chat.id)
+      expect(rows.map(r => [r.role, r.content])).toEqual([['user', 'Question'], ['assistant', 'First part. Second part.']])
+      expect(rows[1].id).toBe(checkpointId)
+      expect(chunks.find(c => c.type === 'finish')?.messageMetadata).toMatchObject({ assistantMessageDbId: checkpointId })
+    })
+  })
+
   describe('persists-user-message-once', () => {
     it('inserts a client-id user message exactly once, before any reply text exists', async () => {
       const [chat] = await createStandaloneChat('Chat')
@@ -1287,6 +1344,24 @@ describe('POST /api/chat — server-side turn persistence', () => {
 
       const rows = await rowsWithReply(chat.id, 'Partial answer')
       expect(rows.map(r => r.id)).toEqual([user.id, reply.id])
+    })
+
+    it('regenerate-checkpoint-replaces-in-place: the old row carries the new partial text while it streams', async () => {
+      const { chat, user, reply } = await chatWithTurn()
+      const { model, push, close } = controlledModel()
+      const response = await postTurn(regenerateBody(chat.id, user.id, reply.id), { model })
+
+      // No finish, abort or drain yet: the first checkpoint alone rewrites the row.
+      push(...START, textDelta('New partial'))
+      const partial = await rowsWithReply(chat.id, 'New partial')
+      expect(partial.map(r => [r.id, r.role])).toEqual([[user.id, 'user'], [reply.id, 'assistant']])
+
+      push(textDelta(' and the rest.'), ...END)
+      close()
+      const chunks = await readChunks(response)
+      const rows = await rowsWithReply(chat.id, 'New partial and the rest.')
+      expect(rows.map(r => [r.id, r.role])).toEqual([[user.id, 'user'], [reply.id, 'assistant']])
+      expect(chunks.find(c => c.type === 'finish')?.messageMetadata).toMatchObject({ assistantMessageDbId: reply.id })
     })
 
     it('two regenerates in a row leave one assistant row, with the latest text', async () => {

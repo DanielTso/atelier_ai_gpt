@@ -12,9 +12,10 @@ const MAX_MESSAGE_LEN = 200_000
 /**
  * Regenerate (audit D2): save the new reply IN PLACE of the reply it replaces —
  * same row id, same `created_at` (getChatMessages orders by it) — and return the
- * row id. Called by `/api/chat`'s turn recorder at persist time, so a regenerate
- * that fails, or is stopped before its first token, persists nothing and the old
- * reply survives; a stop mid-stream replaces it with the partial text.
+ * row id. Called by `/api/chat`'s turn recorder at its first write — once the
+ * reply has savable content — so a regenerate that fails, or is stopped before
+ * its first token, persists nothing and the old reply survives; from then on the
+ * row holds the new (partial) text, kept current by `updateAssistantReplyContent`.
  *
  * One transaction: drop the old reply's attachment rows and embedding (they
  * describe the old text), then rewrite its content. The UPDATE is scoped to this
@@ -60,4 +61,20 @@ export async function replaceAssistantReply(chatId: number, replaceMessageDbId: 
       console.warn('[attachments] storage cleanup failed for paths:', storagePaths, e instanceof Error ? e.message : e))
   }
   return id
+}
+
+/**
+ * Streaming checkpoint (audit R2): rewrite the content of the assistant row the
+ * turn recorder already wrote — nothing else (no attachment, embedding or
+ * project changes). Scoped to this chat's assistant row, like
+ * `replaceAssistantReply`. If the row is gone (deleted meanwhile, e.g. by message
+ * Delete in another tab) this is a logged no-op: a deleted reply is never
+ * resurrected by a later checkpoint.
+ */
+export async function updateAssistantReplyContent(chatId: number, id: number, text: string): Promise<void> {
+  const [updated] = await db.update(messages)
+    .set({ content: text.slice(0, MAX_MESSAGE_LEN) })
+    .where(and(eq(messages.id, id), eq(messages.chatId, chatId), eq(messages.role, 'assistant')))
+    .returning({ id: messages.id })
+  if (!updated) console.warn(`[chat] assistant message ${id} of chat ${chatId} is gone; reply text not updated`)
 }

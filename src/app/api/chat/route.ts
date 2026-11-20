@@ -1,6 +1,6 @@
 import { streamText, convertToModelMessages, stepCountIs, APICallError, type UIMessage, type LanguageModelUsage } from 'ai';
 import { getChatWithContext, getProjectContext, getProjectDocuments, getRegenerateTarget, saveMessage } from '@/app/actions';
-import { replaceAssistantReply } from '@/lib/chatTurnDb';
+import { replaceAssistantReply, updateAssistantReplyContent } from '@/lib/chatTurnDb';
 import { buildProjectPreamble } from '@/lib/projectPreamble';
 import { retrieveContext } from '@/lib/retrieval';
 import { createProvider } from '@/lib/providers';
@@ -158,8 +158,9 @@ export async function POST(req: Request) {
     // when it carries a client id — it was sent this session) and its row is
     // reported as the turn's `userMessageDbId`. Nothing is deleted up front: the
     // turn recorder writes the new reply over the old row (replaceAssistantReply)
-    // when it persists, so a regenerate that fails or is stopped before its first
-    // token leaves the old reply exactly as it was.
+    // at its first write — once the reply has savable content — so a regenerate
+    // that fails or is stopped before its first token leaves the old reply
+    // exactly as it was.
     const isRegenerate = regenerate === true || trigger === 'regenerate-message' || replaceMessageDbId != null;
     let regenerateUserRowId: number | null = null;
     if (isRegenerate) {
@@ -347,21 +348,27 @@ export async function POST(req: Request) {
     };
 
     // Turn persistence, assistant half (audit U1/F1). The reply is saved by the
-    // server, to the request's chat, exactly once — at the stream's `finish`, or
-    // at its `abort` with the text streamed so far — whatever the client is doing
-    // by then (another chat, another view, a closed tab). The recorder is a stream
-    // transform rather than onFinish/onAbort code so that the row id exists before
-    // the `finish` chunk is sent; see createAssistantTurnRecorder for the SDK
-    // details. No chat (a chat-less request) → nothing to persist.
-    // A regenerate writes over the reply it replaces (same row id), and only here
-    // — at persist time — so a regenerate that saves nothing keeps the old reply.
+    // server, to the request's chat, as exactly one row — whatever the client is
+    // doing by then (another chat, another view, a closed tab). The row is first
+    // written as soon as the reply has savable content and checkpointed while it
+    // streams (audit R2: a function killed mid-stream keeps the text up to its
+    // last checkpoint); its final text lands at the stream's `finish`, or at its
+    // `abort` with the text streamed so far. The recorder is a stream transform
+    // rather than onFinish/onAbort code so that the row id exists before the
+    // `finish` chunk is sent; see createAssistantTurnRecorder for the SDK details.
+    // No chat (a chat-less request) → nothing to persist.
+    // A regenerate writes over the reply it replaces (same row id), and only once
+    // savable content exists, so a regenerate that saves nothing keeps the old reply.
     const recorder = chat
-      ? createAssistantTurnRecorder(async (text) => {
-          if (isRegenerate && replaceMessageDbId != null) {
-            return replaceAssistantReply(chat.id, replaceMessageDbId, text);
-          }
-          const [row] = await saveMessage(chat.id, 'assistant', text);
-          return row?.id ?? null;
+      ? createAssistantTurnRecorder({
+          save: async (text) => {
+            if (isRegenerate && replaceMessageDbId != null) {
+              return replaceAssistantReply(chat.id, replaceMessageDbId, text);
+            }
+            const [row] = await saveMessage(chat.id, 'assistant', text);
+            return row?.id ?? null;
+          },
+          update: (id, text) => updateAssistantReplyContent(chat.id, id, text),
         })
       : null;
     // `projectId` here is the chat ROW's project — the client never supplies it.
@@ -463,7 +470,7 @@ export async function POST(req: Request) {
       // Server-authoritative ids for the client's post-turn steps. On `start`:
       // the chat, its DB project and the user row. On `finish`: the same plus
       // the assistant row (already saved — the recorder holds `finish` back
-      // until the insert returns).
+      // until the final write returns).
       ...(recorder && {
         messageMetadata: ({ part }: { part: { type: string } }) =>
           part.type === 'start' || part.type === 'finish' ? turnMetadata() : undefined,
