@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { isStorageConfigured, createSignedUploadUrl, storageBucketName, sanitizeStorageName } from '@/lib/storage'
 import { MAX_FILE_SIZE, isSupported } from '@/lib/fileExtraction'
-import { buildPendingAttachmentPath } from '@/lib/attachmentPaths'
+import { buildPendingAttachmentPath, pendingAttachmentPrefix } from '@/lib/attachmentPaths'
+import { sweepPrefix, PENDING_ATTACHMENT_MAX_AGE_MS } from '@/lib/attachmentSweep'
 import { attachmentUploadUrlRequestSchema } from '@/lib/validation'
 import { apiError } from '@/lib/errors'
 
@@ -27,7 +28,18 @@ export async function POST(request: NextRequest) {
 
     const path = buildPendingAttachmentPath(chatId, sanitizeStorageName(filename))
     const { token } = await createSignedUploadUrl(path)
-    return NextResponse.json({ path, token, bucket: storageBucketName })
+    const response = NextResponse.json({ path, token, bucket: storageBucketName })
+
+    // Sweep this scope's abandoned pending uploads (an extract call that never
+    // arrived) once the response is out. Best-effort: never affects the response.
+    // Outside a request scope (unit tests) after() throws; run it un-awaited.
+    const sweep = () => sweepPrefix(pendingAttachmentPrefix(chatId), PENDING_ATTACHMENT_MAX_AGE_MS).catch(() => 0)
+    try {
+      after(sweep)
+    } catch {
+      void sweep()
+    }
+    return response
   } catch (error) {
     return apiError(error, 'Failed to start upload', 500, true)
   }

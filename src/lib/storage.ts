@@ -120,6 +120,19 @@ export async function signedArtifactUrls(paths: (string | null | undefined)[]): 
   return new Map([...htmlMap, ...otherMap])
 }
 
+/**
+ * The files directly under `prefix` (one page of up to 1000), as their names inside
+ * the prefix plus their creation time. Folder entries (no id / metadata in a
+ * supabase-js listing) are skipped.
+ */
+export async function listObjects(prefix: string): Promise<Array<{ name: string; createdAt: string | null }>> {
+  const { data, error } = await bucket().list(prefix, { limit: 1000 })
+  if (error || !data) throw error ?? new Error('Failed to list objects')
+  return data
+    .filter(item => item.id && item.metadata)
+    .map(item => ({ name: item.name, createdAt: item.created_at ?? null }))
+}
+
 export async function removeObjects(paths: string[]): Promise<void> {
   const valid = paths.filter(Boolean)
   if (valid.length === 0) return

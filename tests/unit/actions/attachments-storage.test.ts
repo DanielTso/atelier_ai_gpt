@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { eq } from 'drizzle-orm'
 import { createTestDb, testDb } from '../../helpers/test-db'
+import { artifacts, chats, messageAttachments } from '@/db/schema'
 
 vi.mock('@/db', () => ({
   get db() {
@@ -11,7 +13,8 @@ const mockIsStorageConfigured = vi.fn(() => true)
 const mockUploadBuffer = vi.fn(async () => {})
 const mockCreateSignedDownloadUrl = vi.fn(async (p: string) => `signed:${p}`)
 const mockCreateSignedDownloadUrls = vi.fn(async (paths: string[]) => new Map(paths.map((p: string) => [p, `signed:${p}`])))
-const mockRemoveObjects = vi.fn(async () => {})
+const mockRemoveObjects = vi.fn<(paths: string[]) => Promise<void>>(async () => {})
+const mockListObjects = vi.fn<(prefix: string) => Promise<Array<{ name: string; createdAt: string | null }>>>(async () => [])
 
 vi.mock('@/lib/storage', () => ({
   get isStorageConfigured() { return mockIsStorageConfigured },
@@ -19,6 +22,7 @@ vi.mock('@/lib/storage', () => ({
   get createSignedDownloadUrl() { return mockCreateSignedDownloadUrl },
   get createSignedDownloadUrls() { return mockCreateSignedDownloadUrls },
   get removeObjects() { return mockRemoveObjects },
+  get listObjects() { return mockListObjects },
 }))
 
 import {
@@ -47,6 +51,8 @@ describe('attachment storage lifecycle', () => {
     mockCreateSignedDownloadUrls.mockImplementation(async (paths: string[]) => new Map(paths.map((p: string) => [p, `signed:${p}`])))
     mockRemoveObjects.mockReset()
     mockRemoveObjects.mockResolvedValue(undefined)
+    mockListObjects.mockReset()
+    mockListObjects.mockResolvedValue([])
 
     const [project] = await createProject('P')
     const [chat] = await createChat(project.id, 'Chat')
@@ -229,5 +235,56 @@ describe('attachment storage lifecycle', () => {
 
     expect(mockRemoveObjects).toHaveBeenCalledExactlyOnceWith([`attachments/${chatId}/${messageId}/0-p.png`])
     expect((await getChatAttachments(chatId)).map(a => a.messageId)).toEqual([other.id])
+  })
+
+  it('configured → deleteMessage keeps a generated image an artifact of the chat embeds, removes an unreferenced one', async () => {
+    const embedded = `attachments/${chatId}/generated/0b7f6a2e-1c3d-4e5f-8a9b-0c1d2e3f4a5b.png`
+    const unreferenced = `attachments/${chatId}/generated/9f8e7d6c-5b4a-4321-8fed-cba987654321.png`
+    const [reply] = await saveMessage(chatId, 'assistant', 'Here is the page')
+    await saveGeneratedImage(reply.id, chatId, [
+      { storagePath: embedded, mediaType: 'image/png', filename: 'generated-image.png' },
+      { storagePath: unreferenced, mediaType: 'image/png', filename: 'generated-image.png' },
+    ])
+    await testDb.insert(artifacts).values({
+      chatId, type: 'html', title: 'Page', storagePath: `artifacts/${chatId}/page.html`, format: 'html',
+      content: `<img src="/api/files/raw?path=${encodeURIComponent(embedded)}&sig=deadbeef">`,
+    })
+
+    expect(await deleteMessage(reply.id)).toBe(true)
+
+    expect(mockRemoveObjects).toHaveBeenCalledExactlyOnceWith([unreferenced])
+    expect(await testDb.select().from(messageAttachments).where(eq(messageAttachments.messageId, reply.id))).toEqual([])
+  })
+
+  it('configured → deleteChat sweeps the chat\'s pending/ and generated/ prefixes', async () => {
+    mockListObjects.mockImplementation(async (prefix: string) => (
+      prefix === `attachments/${chatId}/pending`
+        ? [{ name: 'a1b2c3d4-0000-4000-8000-000000000000-notes.txt', createdAt: new Date().toISOString() }]
+        : prefix === `attachments/${chatId}/generated`
+          ? [{ name: 'kept.png', createdAt: null }]
+          : []
+    ))
+
+    await deleteChat(chatId)
+
+    expect(mockListObjects.mock.calls.map(c => c[0]).sort()).toEqual([`attachments/${chatId}/generated`, `attachments/${chatId}/pending`])
+    expect(mockRemoveObjects.mock.calls.map(c => c[0]).sort()).toEqual([
+      [`attachments/${chatId}/generated/kept.png`],
+      [`attachments/${chatId}/pending/a1b2c3d4-0000-4000-8000-000000000000-notes.txt`],
+    ])
+    expect(await testDb.select().from(chats).where(eq(chats.id, chatId))).toEqual([])
+  })
+
+  it('configured → deleteChat still succeeds when the sweep fails', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      mockListObjects.mockRejectedValue(new Error('storage down'))
+
+      await expect(deleteChat(chatId)).resolves.toBeUndefined()
+
+      expect(await testDb.select().from(chats).where(eq(chats.id, chatId))).toEqual([])
+    } finally {
+      warn.mockRestore()
+    }
   })
 })

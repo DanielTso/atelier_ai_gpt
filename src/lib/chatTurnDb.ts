@@ -1,13 +1,46 @@
 // Server-only DB writes for chat turns that must NOT be callable from the
 // browser. Deliberately not in the 'use server' actions module (every export
-// there is a network endpoint); import it from route handlers only.
+// there is a network endpoint); import it from route handlers and other server
+// modules only (the actions module may import it; it must not re-export it).
 import { and, eq, sql } from 'drizzle-orm'
 import { db } from '@/db'
-import { messages, messageAttachments, messageEmbeddings } from '@/db/schema'
+import { messages, messageAttachments, messageEmbeddings, artifacts, artifactVersions } from '@/db/schema'
 import { isStorageConfigured, removeObjects } from '@/lib/storage'
 
 // Same cap saveMessage applies (actions.ts MAX_MESSAGE_LEN).
 const MAX_MESSAGE_LEN = 200_000
+
+/**
+ * The subset of a reply's attachment `paths` whose Storage objects may be removed
+ * when the reply is regenerated or deleted (audit R4). A generated image
+ * (`attachments/<chatId>/generated/<uuid>.<ext>`) is kept when an artifact of the
+ * same chat embeds it — in its current content or in any of its versions (an
+ * older one can be restored) — because the artifact outlives the reply. The
+ * embedded URL carries the path URL-encoded, so the match is on the file name
+ * (the last segment, a UUID), a plain substring of the content. Every other path
+ * is returned unchanged. If the lookup fails, every generated path is kept: a
+ * kept object is recoverable, a deleted one is not. `deleteChat` sweeps what is
+ * kept here.
+ */
+export async function pathsSafeToRemove(chatId: number, paths: string[]): Promise<string[]> {
+  const fileName = (p: string) => p.slice(p.lastIndexOf('/') + 1)
+  const isGenerated = (p: string) => p.includes('/generated/')
+  const names = [...new Set(paths.filter(isGenerated).map(fileName))]
+  if (names.length === 0) return paths
+  try {
+    const candidates = sql.join(names.map(n => sql`(${n}::text)`), sql`, `)
+    const embedded = await db.select({ name: sql<string>`n.name` })
+      .from(sql`(VALUES ${candidates}) AS n(name)`)
+      .where(sql`EXISTS (SELECT 1 FROM ${artifacts} WHERE ${artifacts.chatId} = ${chatId} AND strpos(${artifacts.content}, n.name) > 0)
+        OR EXISTS (SELECT 1 FROM ${artifactVersions} JOIN ${artifacts} ON ${artifacts.id} = ${artifactVersions.artifactId}
+          WHERE ${artifacts.chatId} = ${chatId} AND strpos(${artifactVersions.content}, n.name) > 0)`)
+    const keep = new Set(embedded.map(r => r.name))
+    return paths.filter(p => !(isGenerated(p) && keep.has(fileName(p))))
+  } catch (e) {
+    console.warn('[attachments] artifact lookup failed; keeping generated images:', e instanceof Error ? e.message : e)
+    return paths.filter(p => !isGenerated(p))
+  }
+}
 
 /**
  * Regenerate (audit D2): save the new reply IN PLACE of the reply it replaces —
@@ -22,7 +55,8 @@ const MAX_MESSAGE_LEN = 200_000
  * chat's assistant row, so it can never touch anything else; if it matches no
  * row (deleted meanwhile, e.g. by message Delete in another tab), a fresh
  * assistant row is inserted instead. The old attachments' Storage objects are
- * removed after the commit, best-effort (the paths are logged on failure).
+ * removed after the commit, best-effort (the paths are logged on failure) —
+ * except generated images an artifact of the chat embeds (`pathsSafeToRemove`).
  */
 export async function replaceAssistantReply(chatId: number, replaceMessageDbId: number, text: string): Promise<number> {
   const content = text.slice(0, MAX_MESSAGE_LEN)
@@ -57,8 +91,12 @@ export async function replaceAssistantReply(chatId: number, replaceMessageDbId: 
     .catch(e => console.error('[replaceAssistantReply] project touch failed:', e))
 
   if (storagePaths.length > 0 && isStorageConfigured()) {
-    await removeObjects(storagePaths).catch(e =>
-      console.warn('[attachments] storage cleanup failed for paths:', storagePaths, e instanceof Error ? e.message : e))
+    // A generated image an artifact of this chat embeds stays (pathsSafeToRemove).
+    const removable = await pathsSafeToRemove(chatId, storagePaths)
+    if (removable.length > 0) {
+      await removeObjects(removable).catch(e =>
+        console.warn('[attachments] storage cleanup failed for paths:', removable, e instanceof Error ? e.message : e))
+    }
   }
   return id
 }

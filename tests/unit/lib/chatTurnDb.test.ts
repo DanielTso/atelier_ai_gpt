@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { asc, eq } from 'drizzle-orm'
 import { createTestDb, testDb } from '../../helpers/test-db'
-import { messages, messageAttachments, messageEmbeddings } from '@/db/schema'
+import { messages, messageAttachments, messageEmbeddings, artifacts, artifactVersions } from '@/db/schema'
 
 vi.mock('@/db', () => ({
   get db() {
@@ -169,6 +169,109 @@ describe('updateAssistantReplyContent (streaming checkpoints)', () => {
       expect((await rows()).map(r => [r.role, r.content])).toEqual([['user', 'Question']])
       expect(warn).toHaveBeenCalledOnce()
     } finally {
+      warn.mockRestore()
+    }
+  })
+})
+
+describe('replaceAssistantReply keeps generated images an artifact embeds (audit R4)', () => {
+  let chatId: number
+  let replyId: number
+  let uploadPath: string
+  let embeddedPath: string
+  let otherPath: string
+
+  // The permanent URL generate_image hands to an HTML artifact (src/lib/image/tool.ts).
+  const embedUrl = (path: string) => `/api/files/raw?path=${encodeURIComponent(path)}&sig=deadbeef`
+  const html = (path: string) => `<html><body><img src="${embedUrl(path)}" alt="hero"></body></html>`
+
+  beforeEach(async () => {
+    await createTestDb()
+    mockIsStorageConfigured.mockReturnValue(true)
+    mockRemoveObjects.mockReset()
+    mockRemoveObjects.mockResolvedValue(undefined)
+    const [chat] = await createStandaloneChat('Chat')
+    chatId = chat.id
+    await saveMessage(chatId, 'user', 'Make a landing page')
+    const [reply] = await saveMessage(chatId, 'assistant', 'Here it is')
+    replyId = reply.id
+    uploadPath = `attachments/${chatId}/${replyId}/0-chart.png`
+    embeddedPath = `attachments/${chatId}/generated/0b7f6a2e-1c3d-4e5f-8a9b-0c1d2e3f4a5b.png`
+    otherPath = `attachments/${chatId}/generated/9f8e7d6c-5b4a-4321-8fed-cba987654321.webp`
+    await saveGeneratedImage(replyId, chatId, [
+      { storagePath: uploadPath, mediaType: 'image/png', filename: 'chart.png' },
+      { storagePath: embeddedPath, mediaType: 'image/png', filename: 'generated-image.png' },
+      { storagePath: otherPath, mediaType: 'image/webp', filename: 'generated-image.webp' },
+    ])
+  })
+
+  const insertArtifact = async (ownerChatId: number, content: string | null) => {
+    const [row] = await testDb.insert(artifacts)
+      .values({ chatId: ownerChatId, type: 'html', title: 'Page', storagePath: `artifacts/${ownerChatId}/page.html`, format: 'html', content })
+      .returning()
+    return row
+  }
+  const removed = () => (mockRemoveObjects.mock.calls[0]?.[0] ?? []).slice().sort()
+  const attachmentRows = () => testDb.select().from(messageAttachments).where(eq(messageAttachments.messageId, replyId))
+
+  it('keeps-generated-image-an-artifact-embeds', async () => {
+    await insertArtifact(chatId, html(embeddedPath))
+
+    await replaceAssistantReply(chatId, replyId, 'New answer')
+
+    expect(mockRemoveObjects).toHaveBeenCalledOnce()
+    expect(removed()).toEqual([otherPath, uploadPath].sort())
+    expect(await attachmentRows()).toEqual([])
+  })
+
+  it('keeps-image-referenced-by-an-older-version', async () => {
+    // The current version no longer shows the image, but version 1 can be restored.
+    const artifact = await insertArtifact(chatId, '<html><body>No images now</body></html>')
+    await testDb.insert(artifactVersions).values([
+      { artifactId: artifact.id, version: 1, type: 'html', title: 'Page', format: 'html', content: html(embeddedPath), storagePath: `artifacts/${chatId}/page-v1.html` },
+      { artifactId: artifact.id, version: 2, type: 'html', title: 'Page', format: 'html', content: '<html><body>No images now</body></html>', storagePath: `artifacts/${chatId}/page.html` },
+    ])
+
+    await replaceAssistantReply(chatId, replyId, 'New answer')
+
+    expect(removed()).toEqual([otherPath, uploadPath].sort())
+    expect(await attachmentRows()).toEqual([])
+  })
+
+  it('removes-unreferenced-generated-image', async () => {
+    await insertArtifact(chatId, '<html><body>No images</body></html>')
+    await insertArtifact(chatId, null)
+
+    await replaceAssistantReply(chatId, replyId, 'New answer')
+
+    expect(removed()).toEqual([embeddedPath, otherPath, uploadPath].sort())
+    expect(await attachmentRows()).toEqual([])
+  })
+
+  it('ignores-artifacts-of-other-chats', async () => {
+    const [other] = await createStandaloneChat('Other')
+    const foreign = await insertArtifact(other.id, html(embeddedPath))
+    await testDb.insert(artifactVersions).values({
+      artifactId: foreign.id, version: 1, type: 'html', title: 'Page', format: 'html', content: html(embeddedPath), storagePath: `artifacts/${other.id}/page.html`,
+    })
+
+    await replaceAssistantReply(chatId, replyId, 'New answer')
+
+    expect(removed()).toEqual([embeddedPath, otherPath, uploadPath].sort())
+    expect(await attachmentRows()).toEqual([])
+  })
+
+  it('lookup-failure-keeps-generated-objects', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const select = vi.spyOn(testDb, 'select').mockImplementationOnce(() => { throw new Error('db down') })
+    try {
+      await replaceAssistantReply(chatId, replyId, 'New answer')
+
+      expect(select).toHaveBeenCalled()
+      expect(mockRemoveObjects).toHaveBeenCalledExactlyOnceWith([uploadPath])
+      expect(await attachmentRows()).toEqual([])
+    } finally {
+      select.mockRestore()
       warn.mockRestore()
     }
   })

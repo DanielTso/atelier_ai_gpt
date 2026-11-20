@@ -10,6 +10,9 @@ import { renderArtifact } from '@/lib/artifacts/render'
 import { artifactStoragePath } from '@/lib/artifacts/path'
 import type { ArtifactType, SheetSpec } from '@/lib/artifacts/types'
 import type { MonthlyUsageRow } from '@/types'
+import { pathsSafeToRemove } from '@/lib/chatTurnDb'
+import { sweepPrefix } from '@/lib/attachmentSweep'
+import { pendingAttachmentPrefix } from '@/lib/attachmentPaths'
 
 function sanitizeAttachmentName(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/^\.+$/, '_')
@@ -196,6 +199,12 @@ export async function createStandaloneChat(title: string) {
 export async function deleteChat(id: number) {
   await removeAttachmentObjects(eq(messageAttachments.chatId, id))
   await db.delete(chats).where(eq(chats.id, id))
+  // Objects no row anchors (audit R4): abandoned extraction uploads, and generated
+  // images kept because an artifact embedded them. Best-effort; never throws.
+  await Promise.all([
+    sweepPrefix(pendingAttachmentPrefix(id), 0),
+    sweepPrefix(`attachments/${id}/generated/`, 0),
+  ])
 }
 
 export async function updateChatTitle(id: number, title: string) {
@@ -212,10 +221,20 @@ export async function saveMessage(chatId: number, role: string, content: string)
 }
 
 // Removes one message (the message menu's Delete): its attachments' Storage
-// objects first, then the row (its attachment rows and embedding cascade).
-// Resolves true when a row was deleted and false when it was already gone.
+// objects first — except generated images an artifact of the chat embeds, which
+// outlive the message (pathsSafeToRemove) — then the row (its attachment rows
+// and embedding cascade). Resolves true when a row was deleted and false when it
+// was already gone.
 export async function deleteMessage(id: number): Promise<boolean> {
-  await removeAttachmentObjects(eq(messageAttachments.messageId, id))
+  if (isStorageConfigured()) {
+    const [message] = await db.select({ chatId: messages.chatId }).from(messages).where(eq(messages.id, id))
+    if (message) {
+      const rows = await db.select({ storagePath: messageAttachments.storagePath }).from(messageAttachments).where(eq(messageAttachments.messageId, id))
+      const paths = await pathsSafeToRemove(message.chatId, rows.map(r => r.storagePath).filter((p): p is string => Boolean(p)))
+      // Best-effort, like removeAttachmentObjects: log the exact paths on failure.
+      if (paths.length) await removeObjects(paths).catch(e => console.warn('[attachments] storage cleanup failed for paths:', paths, e instanceof Error ? e.message : e))
+    }
+  }
   const deleted = await db.delete(messages).where(eq(messages.id, id)).returning({ id: messages.id })
   return deleted.length > 0
 }

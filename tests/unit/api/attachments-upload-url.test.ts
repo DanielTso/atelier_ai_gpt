@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const mockIsConfigured = vi.fn()
 const mockCreateSignedUploadUrl = vi.fn()
+const mockSweepPrefix = vi.fn()
 
 // Storage is always mocked — these tests never reach Supabase.
 async function importRoute() {
@@ -11,6 +12,11 @@ async function importRoute() {
     createSignedUploadUrl: mockCreateSignedUploadUrl,
     storageBucketName: 'atelier-files',
     sanitizeStorageName: (s: string) => s.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/^\.+$/, '_'),
+  }))
+  // Keep the real PENDING_ATTACHMENT_MAX_AGE_MS; observe the sweep itself.
+  vi.doMock('@/lib/attachmentSweep', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('@/lib/attachmentSweep')>()),
+    sweepPrefix: mockSweepPrefix,
   }))
   const { POST } = await import('@/app/api/attachments/upload-url/route')
   return POST
@@ -28,6 +34,7 @@ describe('POST /api/attachments/upload-url', () => {
   beforeEach(() => {
     mockIsConfigured.mockReset().mockReturnValue(true)
     mockCreateSignedUploadUrl.mockReset().mockImplementation(async (path: string) => ({ path, token: 'tok' }))
+    mockSweepPrefix.mockReset().mockResolvedValue(0)
   })
 
   it('503 when storage is not configured (the client falls back to multipart)', async () => {
@@ -93,5 +100,37 @@ describe('POST /api/attachments/upload-url', () => {
     const { path } = await res.json()
     expect(path.startsWith('attachments/4/pending/')).toBe(true)
     expect(path.slice('attachments/4/pending/'.length)).not.toContain('/')
+  })
+
+  it('sweeps the requested chat\'s stale pending uploads (older than 1 h)', async () => {
+    const POST = await importRoute()
+    const res = await POST(req({ chatId: 7, filename: 'a.pdf', mediaType: 'application/pdf', size: 10 }) as never)
+    expect(res.status).toBe(200)
+    expect(mockSweepPrefix).toHaveBeenCalledExactlyOnceWith('attachments/7/pending/', 60 * 60 * 1000)
+  })
+
+  it('sweeps the compose prefix for a compose-scope request', async () => {
+    const POST = await importRoute()
+    const res = await POST(req({ chatId: null, filename: 'notes.txt', mediaType: 'text/plain', size: 5 }) as never)
+    expect(res.status).toBe(200)
+    expect(mockSweepPrefix).toHaveBeenCalledExactlyOnceWith('attachments/compose/pending/', 60 * 60 * 1000)
+  })
+
+  it('a sweep failure does not change the response', async () => {
+    mockSweepPrefix.mockRejectedValue(new Error('storage down'))
+    const POST = await importRoute()
+    const res = await POST(req({ chatId: 7, filename: 'a.pdf', mediaType: 'application/pdf', size: 10 }) as never)
+    expect(res.status).toBe(200)
+    const data = await res.json()
+    expect(data.token).toBe('tok')
+    expect(data.path).toMatch(new RegExp(`^attachments/7/pending/${UUID.source}-a\\.pdf$`))
+    expect(mockSweepPrefix).toHaveBeenCalledOnce()
+  })
+
+  it('does not sweep when the request is refused', async () => {
+    const POST = await importRoute()
+    const res = await POST(req({ chatId: 7, filename: 'a.exe', mediaType: 'application/octet-stream', size: 10 }) as never)
+    expect(res.status).toBe(400)
+    expect(mockSweepPrefix).not.toHaveBeenCalled()
   })
 })
