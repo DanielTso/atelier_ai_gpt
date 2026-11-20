@@ -186,6 +186,19 @@ describe('useChatPersistence', () => {
     expect(opts.lastSuggestedAtRef.current.has(7)).toBe(false)
   })
 
+  it('caps-embed-content: a 600,000-character message posts a 500,000-character content to /api/embed', async () => {
+    const { result } = renderHook(() => useChatPersistence(makeOpts()))
+    const message = makeMessage({
+      text: 'Hello',
+      metadata: { chatId: 3, projectId: 5, userMessageDbId: 30, assistantMessageDbId: 31 },
+    })
+    await act(async () => { await result.current.onTurnFinish(makeTurn(message, { userText: 'x'.repeat(600_000) })) })
+    await settle()
+
+    const userBody = fetchBodies('/api/embed').find(b => b.messageId === 30)
+    expect(userBody.content).toHaveLength(500_000)
+  })
+
   describe('onTurnStart', () => {
     const image = { name: 'site.png', mediaType: 'image/png', dataUrl: 'data:image/png;base64,AAA', size: 3 } as AttachedImage
     const userMessage = { id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'look at this' }] } as unknown as UIMessage

@@ -30,8 +30,9 @@ export const chatRequestSchema = z.object({
   grounded: z.boolean().optional(),
   excludedDocumentIds: z.array(z.number().int().positive()).max(200).optional(),
   // Regenerate (audit D2): the AI SDK sends `trigger: 'regenerate-message'`; the
-  // client adds `regenerate: true` and the DB id of the reply being replaced,
-  // which the route deletes before answering again (see /api/chat).
+  // client adds `regenerate: true` and the DB id of the reply being replaced.
+  // /api/chat writes the new reply over that row when it is persisted (nothing is
+  // deleted up front), so a regenerate that saves nothing keeps the old reply.
   trigger: z.enum(['submit-message', 'regenerate-message']).optional(),
   regenerate: z.boolean().optional(),
   replaceMessageDbId: z.number().int().positive().optional(),
@@ -54,6 +55,10 @@ export const suggestFollowupsRequestSchema = z.object({
   })).min(1).max(4),
 })
 
+// Request-size cap for POST /api/embed. The client (useChatPersistence) truncates
+// to this before posting, so the two cannot drift apart.
+export const EMBED_CONTENT_MAX_CHARS = 500_000
+
 export const embedRequestSchema = z.object({
   messageId: z.number(),
   chatId: z.number(),
@@ -62,7 +67,7 @@ export const embedRequestSchema = z.object({
   projectId: z.number().nullable().optional(),
   // Bounds the request only; the route embeds the first EMBED_MAX_CHARS
   // (src/lib/embedChunks.ts). Generous so a long message is capped, not rejected.
-  content: z.string().min(1).max(500_000),
+  content: z.string().min(1).max(EMBED_CONTENT_MAX_CHARS),
 })
 
 export const memorySuggestRequestSchema = z.object({

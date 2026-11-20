@@ -1442,9 +1442,11 @@ export default function Home() {
 
   // Regenerate (D2): the last assistant reply only. The SDK drops it from the
   // store and re-posts the transcript up to the user message; the request carries
-  // `regenerate: true` + the replaced reply's DB id, and /api/chat deletes that row
-  // before answering, so the chat keeps exactly one reply. The model, effort and
-  // grounded mode are the composer's current ones, like any send.
+  // `regenerate: true` + the replaced reply's DB id, and /api/chat writes the new
+  // reply over that row when it is persisted (nothing is deleted up front), so the
+  // chat keeps exactly one reply and a regenerate that saves nothing keeps the old
+  // one. The model, effort and grounded mode are the composer's current ones, like
+  // any send.
   const handleRegenerate = useCallback((messageId: string) => {
     const chatId = activeChatIdRef.current
     if (chatId == null || isChatBusy(chatId) || sendingRef.current) return

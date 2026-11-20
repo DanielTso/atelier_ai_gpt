@@ -15,6 +15,7 @@ import { isDbMessageId, readTurnMetadata, type TurnMetadata } from '@/lib/chatTu
 import { SUMMARIZATION_THRESHOLD, SUMMARIZE_EVERY, SUMMARIZE_RETRY_AFTER } from '@/hooks/useSummarization'
 import type { AttachedImage } from '@/lib/fileAttachments'
 import { replaceFilePartUrls } from '@/lib/chatRequestSize'
+import { EMBED_CONTENT_MAX_CHARS } from '@/lib/validation'
 import type { ArtifactSummary } from '@/types'
 
 // How many new messages must accumulate in a project chat before triggering
@@ -33,7 +34,7 @@ function postEmbed(body: { messageId: number; chatId: number; projectId: number 
   fetch('/api/embed', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ ...body, content: body.content.slice(0, EMBED_CONTENT_MAX_CHARS) }),
   })
     .then(res => { if (!res.ok) console.warn(`[post-turn] embedding message ${body.messageId} failed (HTTP ${res.status})`) })
     .catch(() => {})
