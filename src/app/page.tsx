@@ -727,7 +727,9 @@ export default function Home() {
         })
       }
       // Backfill the title if this chat is still "New Chat" but already has an exchange.
-      maybeGenerateTitle(activeChatId)
+      // Not while its turn is in flight: the DB holds only a partial checkpoint of the
+      // reply, and the turn-finish pipeline titles the chat when the reply ends.
+      if (!isChatBusy(activeChatId)) maybeGenerateTitle(activeChatId)
       // Load system prompt for this chat
       getChatWithContext(activeChatId).then(chat => {
         // Ignore a stale resolve if the user switched chats while this was in flight.

@@ -227,6 +227,56 @@ describe('Home — a reply left streaming when the user moves on', () => {
     expect(chatCalls).toHaveLength(1)
     expect(callA.signal?.aborted).toBe(false)
   })
+
+  it('does not title a still-"New Chat" chat from its partial checkpoint when it is reopened mid-reply', async () => {
+    render(<Home />)
+
+    const callA = await sendFromComposer('Question A')
+    act(() => callA.send(
+      { type: 'start', messageMetadata: turnMeta(1) },
+      { type: 'start-step' },
+      { type: 'text-start', id: 't1' },
+      delta('Answer A so far'),
+    ))
+    expect(await screen.findByText('Answer A so far')).toBeTruthy()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /new chat/i })) })
+    await waitFor(() => expect(screen.queryByText('Answer A so far')).toBeNull())
+
+    // The DB already holds the reply's streaming checkpoint: a full exchange, but
+    // a partial one.
+    action('getChatMessages').mockResolvedValue([
+      { id: 100, chatId: 1, role: 'user', content: 'Question A', createdAt: new Date() },
+      { id: 101, chatId: 1, role: 'assistant', content: 'Answer A so', createdAt: new Date() },
+    ])
+    const loadsBefore = action('getChatMessages').mock.calls.length
+    await act(async () => { fireEvent.click(screen.getByText('New Chat')) })
+    expect(await screen.findByText('Answer A so far')).toBeTruthy()
+    await waitFor(() => expect(action('getChatMessages').mock.calls.length).toBeGreaterThan(loadsBefore))
+    await act(async () => { await new Promise(r => setTimeout(r, 30)) })
+    const titleCalls = () => otherCalls.filter(c => c.url === '/api/generate-title')
+    expect(titleCalls()).toEqual([])
+    expect(action('updateChatTitle')).not.toHaveBeenCalled()
+
+    // The turn-finish pipeline titles it once the reply has ended.
+    action('getChatMessages').mockResolvedValue([
+      { id: 100, chatId: 1, role: 'user', content: 'Question A', createdAt: new Date() },
+      { id: 101, chatId: 1, role: 'assistant', content: 'Answer A so far. Done.', createdAt: new Date() },
+    ])
+    act(() => {
+      callA.send(
+        delta('. Done.'),
+        { type: 'text-end', id: 't1' },
+        { type: 'finish-step' },
+        { type: 'finish', finishReason: 'stop', messageMetadata: turnMeta(1, 101) },
+      )
+      callA.close()
+    })
+    await waitFor(() => expect(titleCalls()).toHaveLength(1))
+    expect(titleCalls()[0].body?.messages).toEqual([
+      { role: 'user', content: 'Question A' },
+      { role: 'assistant', content: 'Answer A so far. Done.' },
+    ])
+  })
 })
 
 // Review finding 1 (Phase R): a message sent while an existing chat's history is
