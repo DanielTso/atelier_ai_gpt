@@ -450,7 +450,8 @@ export async function POST(req: Request) {
     if (recorder) {
       // Catch-all: a pipeline that ERRORS (as opposed to emitting an error part)
       // skips the recorder's finish/abort/flush hooks entirely — save what
-      // streamed once the drain settles. No-op when the row was already written.
+      // streamed once the drain settles: insert the row, or bring a checkpointed
+      // row up to the final text. No-op when the final text was already written.
       const settled = drained.then(recorder.persist, recorder.persist);
       // PROMISE form of after(): the write is already in flight (it has to finish
       // before the `finish` chunk goes out), and this keeps the function alive

@@ -998,6 +998,19 @@ describe('POST /api/chat — server-side turn persistence', () => {
     return rowsFor(chatId)
   }
 
+  /**
+   * The chat's rows once the reply's content has become `content` (and stays one
+   * row). Waits for the content, not just the row: a streaming checkpoint writes
+   * the row before its final text lands.
+   */
+  async function rowsWithReply(chatId: number, content: string) {
+    await vi.waitFor(async () => {
+      expect((await rowsFor(chatId)).filter(r => r.role === 'assistant').map(r => r.content)).toEqual([content])
+    }, { timeout: 5000, interval: 20 })
+    await new Promise(r => setTimeout(r, 100))
+    return rowsFor(chatId)
+  }
+
   describe('persists-to-origin-chat-after-switch', () => {
     it('writes the full reply to the request chat when the client never reads the response', async () => {
       const [origin] = await createStandaloneChat('Origin')
@@ -1007,7 +1020,7 @@ describe('POST /api/chat — server-side turn persistence', () => {
       const response = await postTurn({ messages: [userMessage('Question for the origin chat')], chatId: origin.id })
       expect(response.status).toBe(200)
 
-      const rows = await settledRows(origin.id)
+      const rows = await rowsWithReply(origin.id, 'Full answer.')
       expect(rows.map(r => [r.role, r.content])).toEqual([
         ['user', 'Question for the origin chat'],
         ['assistant', 'Full answer.'],
@@ -1049,7 +1062,7 @@ describe('POST /api/chat — server-side turn persistence', () => {
       client.abort()
       reader.cancel().catch(() => {})
 
-      const rows = await settledRows(origin.id)
+      const rows = await rowsWithReply(origin.id, 'Partial answer')
       expect(rows.map(r => [r.role, r.content])).toEqual([
         ['user', 'Question for the origin chat'],
         ['assistant', 'Partial answer'],
@@ -1059,17 +1072,19 @@ describe('POST /api/chat — server-side turn persistence', () => {
 
     it('writes the text streamed so far when the provider stream dies mid-turn', async () => {
       // Not an abort and not an in-band error part: the stream itself throws, so
-      // the SDK pipeline errors and none of its finish/abort hooks run.
+      // the SDK pipeline errors and none of its finish/abort hooks run. The first
+      // delta is checkpointed; the second lands inside the 3 s checkpoint window,
+      // so only the route's post-drain catch-all can write it.
       const [origin] = await createStandaloneChat('Origin')
       const { model, push, fail } = controlledModel()
       const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
       try {
         const response = await postTurn({ messages: [userMessage('Question')], chatId: origin.id }, { model })
-        push(...START, textDelta('Half an ans'))
+        push(...START, textDelta('Half an '), textDelta('ans'))
         const reader = response.body!.getReader()
         const decoder = new TextDecoder()
         let received = ''
-        while (!received.includes('Half an ans')) {
+        while (!received.includes('"delta":"ans"')) {
           const { done, value } = await reader.read()
           if (done) break
           received += decoder.decode(value, { stream: true })
@@ -1077,7 +1092,7 @@ describe('POST /api/chat — server-side turn persistence', () => {
         fail(new Error('socket hang up'))
         reader.cancel().catch(() => {})
 
-        const rows = await settledRows(origin.id)
+        const rows = await rowsWithReply(origin.id, 'Half an ans')
         expect(rows.map(r => [r.role, r.content])).toEqual([['user', 'Question'], ['assistant', 'Half an ans']])
       } finally {
         errSpy.mockRestore()
@@ -1245,15 +1260,6 @@ describe('POST /api/chat — server-side turn persistence', () => {
       const [user] = await testDb.insert(messagesTable).values({ chatId: chat.id, role: 'user', content: 'Question' }).returning()
       const [reply] = await testDb.insert(messagesTable).values({ chatId: chat.id, role: 'assistant', content: 'Old answer' }).returning()
       return { chat, user, reply }
-    }
-
-    /** The chat's rows once the reply's content has become `content` (and stays one row). */
-    async function rowsWithReply(chatId: number, content: string) {
-      await vi.waitFor(async () => {
-        expect((await rowsFor(chatId)).filter(r => r.role === 'assistant').map(r => r.content)).toEqual([content])
-      }, { timeout: 5000, interval: 20 })
-      await new Promise(r => setTimeout(r, 100))
-      return rowsFor(chatId)
     }
 
     const regenerateBody = (chatId: number, userId: number | null, replyId: number) => ({

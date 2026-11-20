@@ -10,7 +10,8 @@ import type { TextStreamPart, ToolSet } from 'ai'
  * Server-authoritative ids for a turn, sent as the assistant UI message's metadata.
  * `projectId` is read from the chat's DB row — never from the client's nav state.
  *
- * - On the `start` chunk: `assistantMessageDbId` is null (no reply exists yet).
+ * - On the `start` chunk: `assistantMessageDbId` is usually null (no reply row yet;
+ *   a streaming checkpoint can occasionally land first, so do not rely on it).
  * - On the `finish` chunk: `assistantMessageDbId` is the saved row, or null when
  *   the turn produced nothing to save.
  * - A stopped/failed turn never receives `finish`; the server still saves the
@@ -150,7 +151,7 @@ export type AssistantTurnRecorderOptions = {
  * never reaches `finish`/`abort`/flush, so the row is also written WHILE the reply
  * streams — un-awaited, adding nothing to the stream. The first checkpoint fires as
  * soon as there is savable content (`save`); later ones (`update`) on every
- * `tool-call` and `finish-step` part, and on a text delta once `checkpointMs` has
+ * `tool-input-start`, `tool-call` and `finish-step` part, and on a text delta once `checkpointMs` has
  * passed since the last write started. A checkpoint is skipped while another write
  * is in flight (dropped, not queued: the next one carries the newer text), when the
  * text has not changed, and once `persist()` has started.
@@ -225,7 +226,9 @@ export function createAssistantTurnRecorder({ save, update, checkpointMs = 3000,
           await persist()
         }
 
-        if (part.type === 'tool-call' || part.type === 'finish-step') {
+        // Step boundaries: text written before a tool (whose input can stream for
+        // a long time, e.g. an artifact page) or a step ends does not wait for it.
+        if (part.type === 'tool-input-start' || part.type === 'tool-call' || part.type === 'finish-step') {
           checkpoint()
         } else if (lastWriteStartedAt === undefined) {
           // No write yet: checkpoint as soon as there is savable content.

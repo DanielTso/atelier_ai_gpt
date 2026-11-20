@@ -217,17 +217,23 @@ describe('createAssistantTurnRecorder', () => {
     expect(update).not.toHaveBeenCalled()
   })
 
-  it('persist() saves what was recorded when the pipeline died before any terminal part', async () => {
+  it('persist() brings the checkpointed row up to the full text when the pipeline died before any terminal part', async () => {
     // A stream that ERRORS (not an error part) skips flush entirely — the route
-    // calls persist() after draining as the catch-all. The first checkpoint has
-    // already written the row; persist() leaves it as is.
+    // calls persist() after draining as the catch-all. The first checkpoint wrote
+    // the first delta; the second arrived inside checkpointMs, so only persist()
+    // can write it.
     const save = vi.fn(async () => 12)
-    const { recorder, update } = recorderWith(save)
+    const { recorder, update } = recorderWith(save, { checkpointMs: 3000, now: () => 0 })
     const { write } = open(recorder)
-    await write(delta('Half a rep')) // the delta went through; no finish/abort/flush follows
-    await recorder.persist()
-    expect(save).toHaveBeenCalledExactlyOnceWith('Half a rep')
+    await write(delta('Half a '))
+    await settle()
+    await write(delta('rep')) // no finish/abort/flush follows
+    await settle()
     expect(update).not.toHaveBeenCalled()
+
+    await recorder.persist()
+    expect(save).toHaveBeenCalledExactlyOnceWith('Half a ')
+    expect(update).toHaveBeenCalledExactlyOnceWith(12, 'Half a rep')
     expect(recorder.assistantMessageDbId()).toBe(12)
   })
 
@@ -379,6 +385,25 @@ describe('createAssistantTurnRecorder', () => {
       expect(update).toHaveBeenLastCalledWith(41, 'Let me draw that. One moment. Here it is.')
       expect(update).toHaveBeenCalledTimes(2)
       expect(save).toHaveBeenCalledOnce()
+    })
+
+    it('checkpoints when a tool input starts streaming, before the tool call is complete', async () => {
+      const save = vi.fn(async () => 41)
+      const { recorder, update } = recorderWith(save, { now: () => 0 })
+      const { write } = open(recorder)
+
+      await write(delta('Building the page. '))
+      await settle()
+      await write(delta('It will take a moment.'))
+      await write({ type: 'tool-input-start', id: 'c1', toolName: 'generate_artifact' })
+      await settle()
+      expect(update).toHaveBeenCalledExactlyOnceWith(41, 'Building the page. It will take a moment.')
+
+      // The input streaming and the finished call add no text: no further write.
+      await write({ type: 'tool-input-delta', id: 'c1', delta: '{"html":"<p>' })
+      await write({ type: 'tool-call', toolCallId: 'c1', toolName: 'generate_artifact', input: {} })
+      await settle()
+      expect(update).toHaveBeenCalledOnce()
     })
 
     it('never-overlaps-writes: no second write while a slow save is in flight; persist() waits, then updates', async () => {
