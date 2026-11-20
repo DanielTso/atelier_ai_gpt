@@ -368,7 +368,7 @@ export async function POST(req: Request) {
             const [row] = await saveMessage(chat.id, 'assistant', text);
             return row?.id ?? null;
           },
-          update: (id, text) => updateAssistantReplyContent(chat.id, id, text),
+          update: (id, text, previous) => updateAssistantReplyContent(chat.id, id, text, previous),
         })
       : null;
     // `projectId` here is the chat ROW's project — the client never supplies it.

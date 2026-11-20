@@ -13,7 +13,7 @@ import type { TextStreamPart, ToolSet } from 'ai'
  * - On the `start` chunk: `assistantMessageDbId` is usually null (no reply row yet;
  *   a streaming checkpoint can occasionally land first, so do not rely on it).
  * - On the `finish` chunk: `assistantMessageDbId` is the saved row, or null when
- *   the turn produced nothing to save.
+ *   the turn produced nothing to save or its row was taken over or deleted.
  * - A stopped/failed turn never receives `finish`; the server still saves the
  *   partial reply, and the client looks the row up (see `useChatPersistence`),
  *   then writes the found id into the reply's metadata.
@@ -122,8 +122,12 @@ export function replyHasSavedContent(parts: ReadonlyArray<{ type: string; [key: 
 export type AssistantTurnRecorderOptions = {
   /** The first write: insert the row (or, on a regenerate, replace the old reply in place). Returns its id. */
   save: (text: string) => Promise<number | null>
-  /** A content-only rewrite of the row `save` returned. */
-  update: (id: number, text: string) => Promise<void>
+  /**
+   * A content-only rewrite of the row `save` returned, compare-and-set on
+   * `previous` (the text this recorder last wrote). Resolves false when the row no
+   * longer holds `previous` (deleted, or taken over by another turn).
+   */
+  update: (id: number, text: string, previous: string) => Promise<boolean>
   /** Minimum gap between two text-delta checkpoints. */
   checkpointMs?: number
   /** Clock for the checkpoint throttle (injectable for tests). */
@@ -160,13 +164,22 @@ export type AssistantTurnRecorderOptions = {
  * renders (`extractText` joins text parts with ''). A turn with no text and no
  * media writes nothing. A failed write is logged and never breaks the stream; the
  * next checkpoint or `persist()` tries again.
+ *
+ * Every `update` is compare-and-set on the text this turn last wrote. A turn
+ * whose row was replaced (another tab's regenerate took it over) or deleted is
+ * superseded: it stops writing and reports no row id, so the client links no
+ * images or embedding to a row it no longer owns. A rejected `update` (a DB
+ * error) is not supersession — it is the failed-write path above.
  */
 export function createAssistantTurnRecorder({ save, update, checkpointMs = 3000, now = Date.now }: AssistantTurnRecorderOptions) {
   let text = ''
   let hasMedia = false
   let assistantMessageDbId: number | null = null
-  // The text the row holds, once a write has landed.
-  let writtenText: string | null = null
+  // The text the row holds — the last write that landed. Meaningful once
+  // `assistantMessageDbId` is set; it is the compare value of every `update`.
+  let writtenText = ''
+  // An `update` matched no row: another turn owns it now, or it was deleted.
+  let superseded = false
   let inFlight: Promise<void> | undefined
   let lastWriteStartedAt: number | undefined
   let persisting: Promise<void> | undefined
@@ -181,9 +194,10 @@ export function createAssistantTurnRecorder({ save, update, checkpointMs = 3000,
       if (assistantMessageDbId == null) {
         assistantMessageDbId = await save(snapshot)
         if (assistantMessageDbId != null) writtenText = snapshot
-      } else {
-        await update(assistantMessageDbId, snapshot)
+      } else if (await update(assistantMessageDbId, snapshot, writtenText)) {
         writtenText = snapshot
+      } else {
+        superseded = true
       }
     } catch (e) {
       console.error('[chat] failed to save the assistant message:', e instanceof Error ? e.message : e)
@@ -192,7 +206,7 @@ export function createAssistantTurnRecorder({ save, update, checkpointMs = 3000,
 
   // Fire-and-forget: the transform never awaits it.
   const checkpoint = () => {
-    if (persisting || inFlight || !hasSavableContent()) return
+    if (superseded || persisting || inFlight || !hasSavableContent()) return
     if (assistantMessageDbId != null && text === writtenText) return
     lastWriteStartedAt = now()
     inFlight = writeRow(text).finally(() => { inFlight = undefined })
@@ -204,7 +218,7 @@ export function createAssistantTurnRecorder({ save, update, checkpointMs = 3000,
   const persist = (): Promise<void> => {
     persisting ??= (async () => {
       await inFlight
-      if (!hasSavableContent()) return
+      if (superseded || !hasSavableContent()) return
       if (assistantMessageDbId != null && text === writtenText) return
       await writeRow(text)
     })()
@@ -249,7 +263,10 @@ export function createAssistantTurnRecorder({ save, update, checkpointMs = 3000,
     transform,
     /** Write the final text (insert, or update the checkpointed row). Idempotent; never rejects. */
     persist,
-    /** The row's id — set when the first write lands; null if the turn had nothing to save. */
-    assistantMessageDbId: () => assistantMessageDbId,
+    /**
+     * The row's id — set when the first write lands; null if the turn had nothing
+     * to save, or once it is superseded (its row was taken over or deleted).
+     */
+    assistantMessageDbId: () => (superseded ? null : assistantMessageDbId),
   }
 }

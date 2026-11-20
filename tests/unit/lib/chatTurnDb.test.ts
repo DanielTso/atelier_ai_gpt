@@ -125,7 +125,7 @@ describe('updateAssistantReplyContent (streaming checkpoints)', () => {
     await saveMessage(chatId, 'user', 'Question')
     const [reply] = await saveMessage(chatId, 'assistant', 'Partial')
 
-    await updateAssistantReplyContent(chatId, reply.id, 'Partial, then more')
+    await updateAssistantReplyContent(chatId, reply.id, 'Partial, then more', 'Partial')
 
     const after = await rows()
     expect(after.map(r => [r.id, r.role, r.content])).toEqual([[after[0].id, 'user', 'Question'], [reply.id, 'assistant', 'Partial, then more']])
@@ -139,8 +139,9 @@ describe('updateAssistantReplyContent (streaming checkpoints)', () => {
       const [other] = await createStandaloneChat('Other')
       const [foreign] = await saveMessage(other.id, 'assistant', 'Foreign answer')
 
-      await updateAssistantReplyContent(chatId, user.id, 'X')
-      await updateAssistantReplyContent(chatId, foreign.id, 'Y')
+      // `previous` matches each row's content: only the scope keeps them untouched.
+      await expect(updateAssistantReplyContent(chatId, user.id, 'X', 'Question')).resolves.toBe(false)
+      await expect(updateAssistantReplyContent(chatId, foreign.id, 'Y', 'Foreign answer')).resolves.toBe(false)
 
       expect((await rows()).map(r => [r.role, r.content])).toEqual([['user', 'Question']])
       const [stillForeign] = await testDb.select().from(messages).where(eq(messages.id, foreign.id))
@@ -152,9 +153,36 @@ describe('updateAssistantReplyContent (streaming checkpoints)', () => {
 
   it('caps the content at the same length saveMessage does', async () => {
     const [reply] = await saveMessage(chatId, 'assistant', 'Start')
-    await updateAssistantReplyContent(chatId, reply.id, 'x'.repeat(200_005))
+    await updateAssistantReplyContent(chatId, reply.id, 'x'.repeat(200_005), 'Start')
     const [row] = await testDb.select().from(messages).where(eq(messages.id, reply.id))
     expect(row.content).toHaveLength(200_000)
+  })
+
+  it('update-requires-previous-content: rewrites only while the row still holds what this turn last wrote', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const [reply] = await saveMessage(chatId, 'assistant', 'Partial')
+      const content = async () => (await testDb.select().from(messages).where(eq(messages.id, reply.id)))[0].content
+
+      // Matching `previous`: updated.
+      await expect(updateAssistantReplyContent(chatId, reply.id, 'Partial, then more', 'Partial')).resolves.toBe(true)
+      expect(await content()).toBe('Partial, then more')
+
+      // Another turn took the row over (a regenerate's replaceAssistantReply).
+      await testDb.update(messages).set({ content: 'Another turn\'s reply' }).where(eq(messages.id, reply.id))
+      await expect(updateAssistantReplyContent(chatId, reply.id, 'Partial, then even more', 'Partial, then more')).resolves.toBe(false)
+      expect(await content()).toBe('Another turn\'s reply')
+      expect(String(warn.mock.calls[0]?.[0])).toMatch(/deleted or taken over/)
+
+      // Text beyond the length cap still matches on the stored (sliced) value.
+      const long = 'x'.repeat(200_005)
+      const [capped] = await saveMessage(chatId, 'assistant', long)
+      await expect(updateAssistantReplyContent(chatId, capped.id, `${long}y`, long)).resolves.toBe(true)
+      const [row] = await testDb.select().from(messages).where(eq(messages.id, capped.id))
+      expect(row.content).toHaveLength(200_000)
+    } finally {
+      warn.mockRestore()
+    }
   })
 
   it('is a logged no-op when the row is gone — a deleted reply is never resurrected', async () => {
@@ -164,7 +192,7 @@ describe('updateAssistantReplyContent (streaming checkpoints)', () => {
       const [reply] = await saveMessage(chatId, 'assistant', 'Partial')
       await testDb.delete(messages).where(eq(messages.id, reply.id))
 
-      await expect(updateAssistantReplyContent(chatId, reply.id, 'More')).resolves.toBeUndefined()
+      await expect(updateAssistantReplyContent(chatId, reply.id, 'More', 'Partial')).resolves.toBe(false)
 
       expect((await rows()).map(r => [r.role, r.content])).toEqual([['user', 'Question']])
       expect(warn).toHaveBeenCalledOnce()

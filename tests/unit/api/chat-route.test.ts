@@ -1171,6 +1171,40 @@ describe('POST /api/chat — server-side turn persistence', () => {
       expect(rows[1].id).toBe(checkpointId)
       expect(chunks.find(c => c.type === 'finish')?.messageMetadata).toMatchObject({ assistantMessageDbId: checkpointId })
     })
+
+    it('superseded-turn-does-not-overwrite: a turn whose row another turn took over stops writing and reports no row id', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        const [chat] = await createStandaloneChat('Chat')
+        const { model, push, close } = controlledModel()
+        const response = await postTurn({ messages: [userMessage('Question')], chatId: chat.id }, { model })
+
+        push(...START, textDelta('Mine, '))
+        let rowId = 0
+        await vi.waitFor(async () => {
+          const rows = await assistantRows(chat.id)
+          expect(rows.map(r => r.content)).toEqual(['Mine, '])
+          rowId = rows[0].id
+        }, { timeout: 5000, interval: 20 })
+
+        // Another turn (a regenerate from another tab) writes over the row.
+        await testDb.update(messagesTable).set({ content: 'The other turn\'s reply' }).where(eq(messagesTable.id, rowId))
+
+        vi.setSystemTime(Date.now() + 3000)
+        push(textDelta('still streaming, '), textDelta('then done.'), ...END)
+        close()
+        const chunks = await readChunks(response)
+        await new Promise(r => setTimeout(r, 100))
+
+        expect((await rowsFor(chat.id)).map(r => [r.id, r.role, r.content]))
+          .toEqual([[expect.any(Number), 'user', 'Question'], [rowId, 'assistant', 'The other turn\'s reply']])
+        const finish = chunks.find(c => c.type === 'finish')?.messageMetadata
+        expect(finish).toMatchObject({ chatId: chat.id })
+        expect(finish?.assistantMessageDbId).toBeNull()
+      } finally {
+        warn.mockRestore()
+      }
+    })
   })
 
   describe('persists-user-message-once', () => {

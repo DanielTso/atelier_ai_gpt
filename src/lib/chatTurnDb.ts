@@ -105,14 +105,25 @@ export async function replaceAssistantReply(chatId: number, replaceMessageDbId: 
  * Streaming checkpoint (audit R2): rewrite the content of the assistant row the
  * turn recorder already wrote — nothing else (no attachment, embedding or
  * project changes). Scoped to this chat's assistant row, like
- * `replaceAssistantReply`. If the row is gone (deleted meanwhile, e.g. by message
- * Delete in another tab) this is a logged no-op: a deleted reply is never
- * resurrected by a later checkpoint.
+ * `replaceAssistantReply`.
+ *
+ * Compare-and-set: the row is rewritten only while it still holds `previous`,
+ * the text this turn last wrote (capped the way it was stored). Resolves true
+ * when it was rewritten and false when no row matched — deleted meanwhile (e.g.
+ * by message Delete in another tab), or taken over by another turn (a regenerate's
+ * `replaceAssistantReply`). That is a logged no-op: a deleted reply is never
+ * resurrected, and a taken-over one is never overwritten.
  */
-export async function updateAssistantReplyContent(chatId: number, id: number, text: string): Promise<void> {
+export async function updateAssistantReplyContent(chatId: number, id: number, text: string, previous: string): Promise<boolean> {
   const [updated] = await db.update(messages)
     .set({ content: text.slice(0, MAX_MESSAGE_LEN) })
-    .where(and(eq(messages.id, id), eq(messages.chatId, chatId), eq(messages.role, 'assistant')))
+    .where(and(
+      eq(messages.id, id),
+      eq(messages.chatId, chatId),
+      eq(messages.role, 'assistant'),
+      eq(messages.content, previous.slice(0, MAX_MESSAGE_LEN)),
+    ))
     .returning({ id: messages.id })
-  if (!updated) console.warn(`[chat] assistant message ${id} of chat ${chatId} is gone; reply text not updated`)
+  if (!updated) console.warn(`[chat] assistant message ${id} of chat ${chatId} was deleted or taken over by another turn; reply text not updated`)
+  return Boolean(updated)
 }
