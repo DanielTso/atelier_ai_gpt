@@ -2,9 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased] — Audit remediation (2026-11-12 audit), phases A–C
+## [Unreleased] — Audit remediation (2026-11-12 audit), phases A–C and R
 
 Source: `docs/audits/2026-11-12-full-audit/`. Plan: `docs/plans/2026-11-12-audit-remediation.md`. On branch `remediation/2026-11-12-audit`, not yet on `master` or deployed. Phases D–E, the Fable final review, and this entry's final per-finding form are still to come. **Release order:** apply migrations `0022`–`0024` before deploying.
+
+Phase R (2026-11-20) fixes the seven findings of a code review of phases A–C; its entries are marked R1–R5 below.
 
 ### Security
 
@@ -44,6 +46,11 @@ Source: `docs/audits/2026-11-12-full-audit/`. Plan: `docs/plans/2026-11-12-audit
   - Five more LLM call sites are recorded; migration `0023` widens the purpose CHECK.
 - **Front end** (C7): a double-send guard; a page-level error banner that stays until dismissed; success and failure feedback on every action.
 - **Restored features** (C8): project settings menus, message Delete and Regenerate (the reply is replaced in place, and a failed regenerate keeps the old one), and the default system prompt.
+- **Sending while a chat loads** (R1): a send waits for the chat's history to load, so a turn is never posted with a truncated transcript. If the history cannot be loaded the message is not sent and the draft is kept.
+- **Replies survive a killed function** (R2): the reply's row is written at its first savable content and checkpointed while it streams (at tool and step boundaries, and at most every 3 s), so a timeout, crash or deploy loses only the last few seconds. A turn whose row another turn took over (a regenerate from a second tab) stops writing.
+- **Stop on Vercel** (R3): new `vercel.json` enables request cancellation for `/api/chat`, so Stop, a closed tab or a dropped connection cancels the model call and saves the partial reply. Unverified until the release smoke check (plan, Release step 3).
+- **Storage lifecycle** (R4): regenerating or deleting a reply keeps a generated image that an artifact of the same chat still embeds; abandoned extraction uploads under `pending/` are swept after an hour on the next upload in that scope, and on chat delete.
+- **Embedding long messages** (R5): the client caps the `/api/embed` body at the schema's 500,000 characters, so a message with a full-size attachment is embedded instead of rejected.
 
 ### Removed
 
@@ -52,7 +59,7 @@ Source: `docs/audits/2026-11-12-full-audit/`. Plan: `docs/plans/2026-11-12-audit
 ### Docs
 
 - Architecture docs are updated alongside each task.
-- New `docs/SESSION_HANDOFF_2026-11-18.md`.
+- New `docs/SESSION_HANDOFF_2026-11-18.md` and `docs/SESSION_HANDOFF_2026-11-20.md`.
 - New `scripts/restore-vitest-esbuild-lock.mjs` for the npm 10/11 lockfile issue.
 
 ## [4.55.1] - 2026-11-12 — Sidebar review findings + relocation handoff

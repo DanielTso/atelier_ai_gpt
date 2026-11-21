@@ -13,6 +13,7 @@
 ## Progress (2026-11-18)
 
 - **Phases A, B, C: done.** Every task implemented, independently reviewed, fix rounds re-reviewed; each phase gate passed (Phase C gate: typecheck 0, lint 0 errors / 23 warnings, cold build OK, 172 files / 1518 tests).
+- **Phase R: done (2026-11-20).** Seven `/code-review` findings on Phases A–C, fixed in Tasks R1–R5 plus one fix wave (commits `c0cc843..HEAD` of that day). Each task was independently reviewed; a phase-level review (Opus) then found one interaction bug (two turns writing one reply row) and stale usage/send-path claims, fixed in the wave and re-reviewed clean. See "Phase R" below and `docs/SESSION_HANDOFF_2026-11-20.md`.
 - **Not started:** Phases D and E, the Final gate (Fable whole-branch review of `60fdb40..HEAD`, CHANGELOG, handoff) and the Release steps.
 - **Backup push (owner request, 2026-11-18, before a laptop reset):** pushed to `origin/remediation/2026-11-12-audit`, NOT `master`. `master` auto-deploys to production, and migrations `0022`–`0024` are not applied and the final review has not run. GitHub `master` is still `v4.55.1`. Resume from that branch — see `docs/SESSION_HANDOFF_2026-11-18.md`.
 
@@ -619,7 +620,7 @@ Model: implementer **Sonnet**; review Sonnet.
 
 **Phase R gate:** `rm -rf .next && npm run build`, then the full `npm test`; record the counts. Then a scoped re-review of the Phase R commits against the 7 findings (Opus). The Fable whole-branch review stays in the Final gate.
 
-**Recorded, not fixed:** a killed function still leaves no `usage_events` row for that turn (usage is only known at step end); a reply stopped during its first step writes no `usage_events` row either (the provider bills the partial tokens; the app's ledger does not see them); a first `save` that rejects after its INSERT committed could insert a second assistant row on retry; `generate_image` / `generate_artifact` do not take the abort signal; artifact Storage files on chat delete (X4) and project-delete sweeps.
+**Recorded, not fixed:** a killed function still leaves no `usage_events` row for that turn (usage is only known at step end); a reply stopped during its first step writes no `usage_events` row either (the provider bills the partial tokens; the app's ledger does not see them); a first `save` that rejects after its INSERT committed could insert a second assistant row on retry; a checkpoint `update` that rejects after its UPDATE committed leaves the turn's compare text stale, so that turn treats itself as superseded and stops saving the rest of its reply (a retry against the rejected attempt's text would close it); a turn whose row another turn took over, and which is then stopped in its own tab, still runs the client's reply-id lookup, which can find the other turn's row and link the stopped turn's images and embedding to it (two-tab case only); a superseded turn's generated images stay in Storage unlinked until the chat is deleted; the take-over check compares text, so a take-over that stores exactly the text the turn last wrote is not detected; `generate_image` / `generate_artifact` do not take the abort signal; artifact Storage files on chat delete (X4) and project-delete sweeps.
 
 ---
 
