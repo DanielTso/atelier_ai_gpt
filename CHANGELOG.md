@@ -2,9 +2,9 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased] — Audit remediation (2026-11-12 audit), phases A–C and R
+## [4.56.0] - 2026-11-20 — Audit remediation (2026-11-12 audit), phases A–C and R
 
-Source: `docs/audits/2026-11-12-full-audit/`. Plan: `docs/plans/2026-11-12-audit-remediation.md`. On branch `remediation/2026-11-12-audit`, not yet on `master` or deployed. Phases D–E, the Fable final review, and this entry's final per-finding form are still to come. **Release order:** apply migrations `0022`–`0024` before deploying.
+Source: `docs/audits/2026-11-12-full-audit/`. Plan: `docs/plans/2026-11-12-audit-remediation.md`. Migrations `0022`–`0024` were applied to production before this deploy (`0022` found no duplicate chunks; `0024` dropped an empty table). Released at the owner's request before the plan's Phases D–E and its Fable whole-branch review; those follow in a later release.
 
 Phase R (2026-11-20) fixes the seven findings of a code review of phases A–C; its entries are marked R1–R5 below.
 

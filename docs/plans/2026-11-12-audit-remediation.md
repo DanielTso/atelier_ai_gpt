@@ -14,6 +14,7 @@
 
 - **Phases A, B, C: done.** Every task implemented, independently reviewed, fix rounds re-reviewed; each phase gate passed (Phase C gate: typecheck 0, lint 0 errors / 23 warnings, cold build OK, 172 files / 1518 tests).
 - **Phase R: done (2026-11-20).** Seven `/code-review` findings on Phases A–C, fixed in Tasks R1–R5 plus one fix wave (commits `c0cc843..HEAD` of that day). Each task was independently reviewed; a phase-level review (Opus) then found one interaction bug (two turns writing one reply row) and stale usage/send-path claims, fixed in the wave and re-reviewed clean. See "Phase R" below and `docs/SESSION_HANDOFF_2026-11-20.md`.
+- **Released as v4.56.0 (2026-11-20, owner request):** Phases A–C and R, pushed to `master` after migrations `0022`–`0024` were applied to production (pre-checks: 0 duplicate chunks, `chat_topics` empty with no dependents; `drizzle.__drizzle_migrations` = 25 rows). Release steps 1–2 are done; steps 3–5 are tracked in `docs/SESSION_HANDOFF_2026-11-20.md`. The Fable whole-branch review did NOT run before this release.
 - **Not started:** Phases D and E, the Final gate (Fable whole-branch review of `60fdb40..HEAD`, CHANGELOG, handoff) and the Release steps.
 - **Backup push (owner request, 2026-11-18, before a laptop reset):** pushed to `origin/remediation/2026-11-12-audit`, NOT `master`. `master` auto-deploys to production, and migrations `0022`–`0024` are not applied and the final review has not run. GitHub `master` is still `v4.55.1`. Resume from that branch — see `docs/SESSION_HANDOFF_2026-11-18.md`.
 

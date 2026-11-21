@@ -7,8 +7,8 @@ _Authoritative current-state bootstrap. Read this first, then the project `CLAUD
 - **Audit remediation (`docs/plans/2026-11-12-audit-remediation.md`): Phases A, B, C and R are done; D, E, the Final gate and the release are not.**
 - **Phase R (this session)** fixed the seven findings of a `/code-review` of Phases A–C. Four were gaps in B1's server-side turn persistence. Five tasks (R1–R5) plus one fix wave, each independently reviewed.
 - **Phase R gate on `c975623`:** typecheck 0, lint 0 errors / 23 warnings, cold build OK, **174 files / 1567 tests** (two consecutive clean runs; see "Flaky test" below).
-- **Nothing is pushed.** Local `master` is ahead of `origin/remediation/2026-11-12-audit` by the Phase R commits. GitHub `master` is still `v4.55.1`; production is unchanged. No migration was added (still `0022`–`0024` to apply at release).
-- **Next action:** Phase D (`D1`–`D3`), then Phase E, then the Final gate (Fable whole-branch review).
+- **Released as v4.56.0 (2026-11-20, owner request)** — Phases A–C and R, pushed to `master` (auto-deploys). Migrations `0022`–`0024` were applied to production first (`drizzle.__drizzle_migrations` = 25 rows; `0022` found 0 duplicate chunks; `0024` dropped an empty `chat_topics` with no dependents). The Fable whole-branch review did **not** run before this release.
+- **Next action:** finish the release's live checks below, then Phase D (`D1`–`D3`), Phase E and the Fable whole-branch review, as a later release.
 
 ## What Phase R changed
 
