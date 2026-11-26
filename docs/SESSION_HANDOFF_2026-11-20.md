@@ -8,6 +8,7 @@ _Authoritative current-state bootstrap. Read this first, then the project `CLAUD
 - **Phase R (this session)** fixed the seven findings of a `/code-review` of Phases A–C. Four were gaps in B1's server-side turn persistence. Five tasks (R1–R5) plus one fix wave, each independently reviewed.
 - **Phase R gate on `c975623`:** typecheck 0, lint 0 errors / 23 warnings, cold build OK, **174 files / 1567 tests** (two consecutive clean runs; see "Flaky test" below).
 - **Released as v4.56.0 (2026-11-20, owner request)** — Phases A–C and R, pushed to `master` (auto-deploys). Migrations `0022`–`0024` were applied to production first (`drizzle.__drizzle_migrations` = 25 rows; `0022` found 0 duplicate chunks; `0024` dropped an empty `chat_topics` with no dependents). The Fable whole-branch review did **not** run before this release.
+- **v4.56.1 (2026-11-26):** docs-only follow-up — `CLAUDE.md` trimmed and the env template moved to `.env.example` (from a `/doctor` pass). No code change.
 - **Next action:** finish the release's live checks below, then Phase D (`D1`–`D3`), Phase E and the Fable whole-branch review, as a later release.
 
 ## What Phase R changed

@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.56.1] - 2026-11-26 — CLAUDE.md trim and `.env.example`
+
+Docs and config only; no application code changes.
+
+### Docs
+
+- `CLAUDE.md` is about 14% shorter: the styling swatch and token lists (they live in `globals.css`), the provider and effort gotchas that repeated the Provider Routing section, the enumerated security-header list and the test-structure line are cut. The gotchas themselves are kept.
+- The `.env.local` template moved from `CLAUDE.md` to a new `.env.example`, which `.gitignore` now lets through (`!.env.example`).
+
 ## [4.56.0] - 2026-11-20 — Audit remediation (2026-11-12 audit), phases A–C and R
 
 Source: `docs/audits/2026-11-12-full-audit/`. Plan: `docs/plans/2026-11-12-audit-remediation.md`. Migrations `0022`–`0024` were applied to production before this deploy (`0022` found no duplicate chunks; `0024` dropped an empty table). Released at the owner's request before the plan's Phases D–E and its Fable whole-branch review; those follow in a later release.
