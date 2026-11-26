@@ -17,35 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Environment Setup
 
-Create `.env.local` with:
-```
-ANTHROPIC_API_KEY=your_key_here
-GOOGLE_GENERATIVE_AI_API_KEY=your_key_here
-DATABASE_URL=postgresql://...@...pooler.supabase.com:6543/postgres   # Supabase pooled (runtime)
-DIRECT_URL=postgresql://...@...supabase.com:5432/postgres            # Supabase direct (migrations)
-
-# Supabase Storage (Phase C-storage) — required for document originals + thumbnails
-SUPABASE_URL=https://<project-ref>.supabase.co          # server-only
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here    # server-only; never expose to client
-NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co   # browser (signed upload)
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key_here             # browser (signed upload)
-SUPABASE_STORAGE_BUCKET=atelier-files                   # default; create as a PRIVATE bucket
-THUMBNAIL_WIDTH=600                                     # optional; default 600px WebP thumbnail
-
-# Web ingestion (Design B, v4.32.0) — "Add from web" via Tavily. Server-only; OFF unless set.
-TAVILY_API_KEY=your_tavily_key_here                     # or set in Settings → API Keys (DB-first); currently set in Vercel env
-WEB_MAP_LIMIT=100                                       # optional; max URLs a site map returns
-WEB_MAP_MAX_DEPTH=2                                     # optional; crawl depth for mapping
-
-# Embedding knobs (src/lib/embedChunks.ts) — all optional
-EMBED_MAX_CHARS=8000                                    # chars of a chat message sent to the embedding model
-EMBED_FAIL_FAST_AFTER=5                                 # embed pool stops after this many consecutive failures
-
-# Access gate (Phase 1 hardening) — single-password gate over the whole app.
-# The gate is OFF unless APP_ACCESS_PASSWORD is set. See docs/AUTH.md.
-APP_ACCESS_PASSWORD=your_access_password_here           # set to enable the gate
-AUTH_SECRET=run_openssl_rand_hex_32                     # HMAC key for the auth cookie + file sigs (REQUIRED in production: gate 503s without it)
-```
+Copy `.env.example` to `.env.local` and fill it in — it lists every variable with its purpose (providers, Supabase DB + Storage, Tavily web ingestion, embedding knobs, access gate).
 
 **Access gate:** single shared password over the whole app via `src/proxy.ts` (Next 16's renamed middleware convention, runs on Node) (+ `/login`, `/api/auth`, `src/lib/auth.ts`). OFF unless `APP_ACCESS_PASSWORD` is set; signed httpOnly cookie = `HMAC-SHA256(AUTH_SECRET, …)`. Single-user app (no per-user data separation) — full per-user auth (Clerk + `ownerId` scoping) is a deferred, separate project. Full operating guide in [docs/AUTH.md](docs/AUTH.md).
 
@@ -74,7 +46,7 @@ The app uses two AI providers with a clear split — **Claude is the brain, Gemi
 
 **Database exposure model:** every `public` table has row-level security enabled with zero policies (migration `0020` — declared in `schema.ts` via `.enableRLS()`, no longer a dashboard-only setting) and `anon`/`authenticated` hold no table grants (`0021`), so the browser-shipped `NEXT_PUBLIC_SUPABASE_ANON_KEY` cannot read or write app tables through PostgREST. The app itself is unaffected: it connects as the table-owning `postgres` role, which bypasses RLS.
 
-**Security headers (`next.config.ts`):** a CSP (with `'unsafe-inline'` — the Next 16 Turbopack nonce pipeline was attempted + found broken, see the inline comment), with `connect-src 'self' <supabase origin>` (no blanket `https:`, so HTML artifacts cannot exfiltrate; `https:` only as the fallback when the Supabase URL is unset) and `object-src 'self'`, plus `X-Content-Type-Options: nosniff`, HSTS, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy: camera=(), microphone=(), geolocation=()`, `X-Powered-By` off, and **`X-Frame-Options: SAMEORIGIN` + CSP `frame-ancestors 'self'`** (relaxed from `DENY`/`'none'` so the app can frame its own same-origin PDF proxy at `/api/artifacts/:id/raw`; cross-origin framing of the app is still blocked). `frame-src`/`img-src` allow the Supabase origin (`img-src` also `i.ytimg.com` for video thumbnail cards; no YouTube frames). Headers are built in `src/lib/securityHeaders.ts`. Note: Next's header `source` cannot negative-lookahead-exclude a path (that's the middleware matcher) — vary a header by relaxing the global value or setting it in the route handler.
+**Security headers (`next.config.ts`, built in `src/lib/securityHeaders.ts`):** the CSP keeps `'unsafe-inline'` (the Next 16 Turbopack nonce pipeline was attempted and found broken — see the inline comment). `connect-src` is `'self'` plus the Supabase origin with no blanket `https:`, so HTML artifacts cannot exfiltrate (`https:` only as the fallback when the Supabase URL is unset). `X-Frame-Options: SAMEORIGIN` + `frame-ancestors 'self'` are relaxed from `DENY` so the app can frame its own same-origin PDF proxy at `/api/artifacts/:id/raw`; cross-origin framing is still blocked. Note: Next's header `source` cannot negative-lookahead-exclude a path (that's the middleware matcher) — vary a header by relaxing the global value or setting it in the route handler.
 
 ## Architecture Overview
 
@@ -125,9 +97,7 @@ Tailwind CSS v4, **warm-minimal palette** (re-theme of 2026-06-25, v4.30.0 — "
 
 Brand tokens live in [src/app/globals.css](src/app/globals.css). **Token names are preserved from the old system; values are warm** (the cool names `--brand-navy` / `--brand-steel-blue` are intentionally repurposed to warm values — no component uses `bg-navy`/`bg-steel-blue` directly):
 
-- **Raw swatches** (don't use directly unless semantic tokens don't fit): `--brand-steel-blue` `#C96442` (**terracotta — the accent/primary**), `--brand-terracotta-light` `#D98A6A` (dark-mode accent), `--brand-navy` `#6B4A38` (deep warm clay — accent-foreground), `--brand-ink` `#20201E` (warm near-black text), `--brand-canvas-light` `#FAF9F6` (warm paper), `--brand-pure-surface` `#FFFFFF`, `--brand-warm-sand` `#E0D6C5`, `--brand-stone-sage` `#94977F`, `--brand-soft-mist` `#F2EFE9`, `--brand-muted-line` `#E8E6DF`, `--brand-slate-text` `#78776E`, `--brand-success` `#4F7A4A`, `--brand-warning` `#A06D2E`. Dark mode overrides surfaces directly (bg `#1A1815`, card `#26231D`, border `#322E26`, foreground `#ECEAE3`).
-- **Semantic tokens (prefer these in components)**: `bg-background` (warm paper / warm near-black), `bg-card`, `bg-primary` (**Terracotta — CTA color**), `bg-secondary`/`bg-muted`/`bg-accent` (Soft Mist light / warm charcoal dark), `text-foreground` (warm Ink), `text-muted-foreground` (warm Slate), `border-border` (warm Muted Line), `ring-ring` (Terracotta), `bg-destructive`.
-- **Direct brand utilities** (rare; for cases where semantic tokens don't express intent): `text-ink`, `bg-warm-sand`, `text-stone-sage`, `text-success`, `text-warning` (these are the only ones in use). The remaining `--color-*` exports still resolve to warm values.
+- **Tokens:** swatch values and semantic token definitions live in `globals.css`. Prefer the semantic tokens in components (terracotta `bg-primary` is the CTA colour; dark mode overrides surfaces directly); the direct brand utilities (`text-ink`, `bg-warm-sand`, `text-stone-sage`, `text-success`, `text-warning`) are rare.
 - **Typography:** **Fraunces** (variable serif via `next/font/google`, exposed as `--font-serif`) on **display headings only** — the home hero greeting and the top-level view titles (Artifacts/Projects/project name). Body & UI stay **Geist Sans**; code stays **Geist Mono**. Apply with the `font-serif` utility; do not put serif on body text.
 
 **Surfaces.** The legacy `.glass-panel` class is retained (16 consumers across dialogs/menus/sidebar) but **redefined** as a light modular card: Pure Surface bg, Muted Line border, soft layered shadow. Dark mode uses an elevated Ink variant. There is **no backdrop-blur, no bg/60 opacity, no dark translucent glass** anywhere in the system.
@@ -178,8 +148,8 @@ Image input (`FileUIPart`), document surfaces, chat-attachment persistence, Nano
 7. **Source deduplication**: Claude web search sends `source-url` parts in `message.parts[]` — deduplicate by URL before rendering
 8. **Multimodal images**: `sendMessage({ text, files: FileUIPart[] })` on client, `convertToModelMessages()` on server handles data URL → inline base64 automatically
 9. **Gemini image generation**: Image models (name contains `image`) require `providerOptions: { google: { responseModalities: ['TEXT', 'IMAGE'] } }` — without this, no images are returned. No tools are attached (grounding tools are incompatible with image output).
-10. **Claude provider**: `claude-*` models route via `@ai-sdk/anthropic` (`createAnthropic({ apiKey })`). Web search via `anthropic.tools.webSearch_20250305({ maxUses: 5 })` under `tools: { web_search }`. **Adaptive thinking + capability-driven effort:** pass `providerOptions.anthropic = { thinking: { type: 'adaptive' }, effort }` — `effort` is only attached when the resolved model's registry `effortLevels` reports that level as supported (see Model Registry & Cost Visibility). `budget_tokens` is removed (400 on Opus 4.8). Haiku 4.5's `effortLevels` is empty (and it reports no adaptive thinking), so neither is attached there — the API rejects effort on it. Effort flows from the active persona (and the composer effort pill, clamped to the selected model's supported levels) → chat request body → `createProvider`. Embeddings stay on Gemini (Anthropic has no embeddings API).
-11. **Model IDs are dynamic, not a hardcoded enum**: the picker (`GET /api/models`) serves the **live model registry** (`src/lib/models/registry.ts`), not a static array — a new Anthropic release appears with zero code change once Anthropic ships it (verified live: Opus 5 appeared with no code change). Request validation (`src/lib/validation.ts`) is a **shape guard only** (`z.string().regex(...)`), not an allow-list — there is no `MODEL_IDS` enum to update for a new id. The registry curates one newest entry per family (`opus`/`fable`/`sonnet`/`haiku`) plus `gemini-3.1-flash-image` (Nano Banana 2) when the Gemini key is set; a retired id like `claude-sonnet-4-6` stays routable via `LEGACY_PINS` (`src/lib/models/seed.ts`) even after it drops out of the picker. Gemini *text* models are still not user-selectable; `gemini-3.5-flash` remains internal-only (title/summarize/memory-suggest) and absent from `GET /api/models`. See **Model Registry & Cost Visibility** above for curation, pricing, alias-vs-dated-id handling, and persona tiers.
+10. **Claude provider**: adaptive thinking and per-level effort are described under Provider Routing above (effort is never attached for Haiku 4.5). Effort flows from the active persona (and the composer effort pill, clamped to the selected model's supported levels) → chat request body → `createProvider`. `budget_tokens` is removed (400 on Opus 4.8). Embeddings stay on Gemini.
+11. **Model IDs are dynamic, not a hardcoded enum**: `GET /api/models` serves the live registry (`src/lib/models/registry.ts`) and request validation (`src/lib/validation.ts`) is a shape guard only — there is no `MODEL_IDS` enum to update for a new id. A retired id like `claude-sonnet-4-6` stays routable via `LEGACY_PINS` (`src/lib/models/seed.ts`). Gemini text models are not user-selectable; `gemini-3.5-flash` is internal-only. Curation, pricing and persona tiers: Model Registry & Cost Visibility above.
 12. **AI-generated image persistence**: The turn pipeline (`useChatPersistence`, at turn end) must save `file` parts from assistant messages to `messageAttachments` via `saveMessageAttachments()`, keyed to the assistant row `/api/chat` saved (`assistantMessageDbId` in the turn metadata) — the server persists message TEXT only. Without this, generated images are lost on page refresh. The load flow (`loadMessages`) already reconstructs `file` parts from attachments.
 13. **Image data URLs in new tabs**: Browsers block `data:` URLs opened via `<a target="_blank">` for security. Use a lightbox overlay instead of linking to `data:` URLs directly.
 14. **Server action body size limit**: `next.config.ts` sets `experimental.serverActions.bodySizeLimit` to `'10mb'`. Without this, `saveMessageAttachments()` fails silently for Gemini-generated images (base64 data URLs are 1-2MB+, exceeding the default 1MB limit).
@@ -189,8 +159,6 @@ Image input (`FileUIPart`), document surfaces, chat-attachment persistence, Nano
 ### Vitest (Unit + Integration)
 
 Config: `vitest.config.ts`. Tests in `tests/`. Node environment by default; hook tests use `// @vitest-environment jsdom` per-file.
-
-**Test structure:** `tests/unit/lib/` (utilities), `tests/unit/actions/` (server actions against in-process PGlite Postgres), `tests/unit/api/` (API routes with mocked providers), `tests/hooks/` (React hooks, jsdom).
 
 **In-process Postgres (PGlite)**: Import `createTestDb`/`testDb` from `tests/helpers/test-db.ts`, mock `@/db` with a getter, call `createTestDb()` in `beforeEach`. The `PGlite` instance (with the `vector` and, since RAG Phase 3, `pg_trgm` extensions — `@electric-sql/pglite/vector` + `@electric-sql/pglite/contrib/pg_trgm`) + real Drizzle migrations from `drizzle/` are created **once per test file** (Vitest's forks pool isolates module state per file — ~9 s per DB file, ~65 s for the whole suite); each later `createTestDb()` in that file `TRUNCATE … RESTART IDENTITY CASCADE`s all tables for isolation. Always call it from `beforeEach` (covered by `hookTimeout: 30000`); `testTimeout` is 15 s. Tests exercise the actual schema incl. pgvector + HNSW + `content_tsv`/trigram GIN indexes; no DB secrets needed in CI. (PGlite is pinned to `^0.4.6` — v0.5.x dropped the `./vector` export.)
 
@@ -211,7 +179,7 @@ Production: **Vercel** at [atelier-ai-app.vercel.app](https://atelier-ai-app.ver
 
 ## CI (GitHub Actions)
 
-Workflow: `.github/workflows/ci.yml` — runs on push to `master` and PRs. Single job (ubuntu-latest, Node 22): lint → typecheck → build → vitest → `drizzle-kit migrate` → playwright. **No secrets required**, but the job runs a **`pgvector/pgvector` Postgres service** (with `DATABASE_URL`/`DIRECT_URL` pointing at it) because the E2E dev server needs a real Postgres and migration `0000` does `CREATE EXTENSION vector`. Unit tests (Vitest) ignore the service — they use in-process PGlite. Provider calls are still mocked. To run E2E **locally**, set `DATABASE_URL`/`DIRECT_URL` (your Supabase URLs or a local pgvector Postgres) and `npx drizzle-kit migrate` first.
+Workflow: `.github/workflows/ci.yml` (push to `master` and PRs; lint → typecheck → build → vitest → `drizzle-kit migrate` → playwright). The job runs a `pgvector/pgvector` Postgres service because the E2E dev server needs a real Postgres and migration `0000` does `CREATE EXTENSION vector`; unit tests use in-process PGlite and provider calls stay mocked. To run E2E locally, set `DATABASE_URL`/`DIRECT_URL` and `npx drizzle-kit migrate` first.
 
 ## Chat Logs
 
